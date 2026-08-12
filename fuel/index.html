@@ -227,7 +227,27 @@
   @media (max-width: 860px) {
     #app-content { padding: 20px 16px 28px; }
     .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
-    #sidebar { position: fixed; z-index: 60; height: 100vh; }
+    body { overflow-x: hidden; }
+    #sidebar {
+      position: fixed; z-index: 60; height: 100vh; top: 0; left: 0;
+      width: var(--sidebar-w) !important;
+      transform: translateX(-100%);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.28);
+    }
+    /* On mobile, the hamburger's "collapsed" toggle is repurposed to mean
+       "drawer open" instead of "narrow icon strip" (which is the desktop meaning). */
+    #sidebar.collapsed {
+      transform: translateX(0);
+      width: var(--sidebar-w) !important;
+    }
+    #sidebar.collapsed .sb-brand .name,
+    #sidebar.collapsed .nav-label {
+      display: block !important;
+    }
+    body:has(#sidebar.collapsed)::before {
+      content: ''; position: fixed; inset: 0; background: rgba(0,0,0,0.42); z-index: 55;
+    }
+    #main-col { width: 100%; }
   }
   @media (max-width: 1024px) and (min-width: 861px) {
     /* iPad / tablet portrait tuning */
