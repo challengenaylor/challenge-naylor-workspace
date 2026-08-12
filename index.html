@@ -1,1655 +1,2102 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Weekly Roster</title>
-<style>
-  :root{
-    --ink:#16161D; --ink-soft:#6B7280; --ink-faint:#9CA3AF;
-    --accent:#4F46E5; --accent-dk:#3730A3; --accent-tint:#EEF2FF;
-    --grey-line:#E5E7EB; --grey-fill:#F8F9FA; --grey-mid:#F3F4F6;
-    --weekend:#F1F0FB; --holiday:#FEF3C7; --holiday-tx:#92400E;
-    --discount:#FCE4F1; --discount-tx:#97266D;
-    --warn-bg:#FEE2E2; --warn-tx:#B91C1C; --ok-bg:#D1FAE5; --ok-tx:#047857;
-    --white:#FFFFFF; --radius:10px; --radius-sm:6px;
-    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-  }
-  *{box-sizing:border-box;}
-  html,body{margin:0;padding:0;height:100%;}
-  body{
-    font-family:var(--font); color:var(--ink); background:var(--white);
-    font-size:14px; -webkit-font-smoothing:antialiased;
-  }
-  ::selection{background:var(--accent-tint);}
-  button{font-family:inherit;}
-  input, select, textarea{font-family:inherit; font-size:13.5px;}
-
-  /* ---------- App shell ---------- */
-  #app{display:flex; min-height:100vh;}
-  #sidebar{
-    width:220px; flex-shrink:0; background:var(--grey-fill);
-    border-right:1px solid var(--grey-line); padding:20px 12px;
-    display:flex; flex-direction:column; gap:2px;
-  }
-  #sidebar .brand{
-    font-size:15px; font-weight:700; padding:4px 10px 18px 10px; color:var(--ink);
-    letter-spacing:-0.01em;
-  }
-  #sidebar .brand span{color:var(--accent);}
-  .nav-btn{
-    display:flex; align-items:center; gap:10px; padding:9px 10px; border:none;
-    background:transparent; border-radius:var(--radius-sm); color:var(--ink-soft);
-    font-size:13.5px; font-weight:500; text-align:left; cursor:pointer; width:100%;
-    transition:background .12s ease, color .12s ease;
-  }
-  .nav-btn:hover{background:var(--grey-mid); color:var(--ink);}
-  .nav-btn.active{background:var(--accent); color:#fff;}
-  .nav-btn .dot{width:6px; height:6px; border-radius:50%; background:currentColor; opacity:.55; flex-shrink:0;}
-  #sidebar .foot{margin-top:auto; padding:10px; font-size:11px; color:var(--ink-faint); line-height:1.5;}
-
-  #main{flex:1; min-width:0; padding:28px 36px 60px 36px; max-width:1400px;}
-  .page{display:none;}
-  .page.active{display:block;}
-
-  h1.page-title{font-size:22px; font-weight:700; margin:0 0 4px 0; letter-spacing:-0.01em;}
-  p.page-sub{color:var(--ink-soft); font-size:13.5px; margin:0 0 24px 0; max-width:720px; line-height:1.5;}
-
-  .card{
-    background:#fff; border:1px solid var(--grey-line); border-radius:var(--radius);
-    padding:18px 20px;
-  }
-  .card + .card{margin-top:16px;}
-  .card h2{font-size:14px; font-weight:700; margin:0 0 14px 0;}
-
-  .row{display:flex; gap:16px; flex-wrap:wrap;}
-  .kpi{
-    flex:1; min-width:160px; background:#fff; border:1px solid var(--grey-line);
-    border-radius:var(--radius); padding:16px 18px;
-  }
-  .kpi .label{font-size:11.5px; font-weight:600; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.03em;}
-  .kpi .value{font-size:28px; font-weight:700; color:var(--accent-dk); margin-top:6px; letter-spacing:-0.01em;}
-
-  table{width:100%; border-collapse:collapse; font-size:13px;}
-  th{
-    text-align:left; font-size:11px; font-weight:700; color:var(--ink-soft);
-    text-transform:uppercase; letter-spacing:.03em; padding:8px 10px; border-bottom:1px solid var(--grey-line);
-  }
-  td{padding:8px 10px; border-bottom:1px solid var(--grey-mid); vertical-align:middle;}
-  tr:last-child td{border-bottom:none;}
-  tr.weekend td{background:var(--weekend);}
-  tr.holiday td{background:var(--holiday); color:var(--holiday-tx); font-weight:600;}
-
-  input[type=text], input[type=number], input[type=date], input[type=time], select{
-    border:1px solid var(--grey-line); border-radius:var(--radius-sm); padding:6px 8px;
-    background:#fff; color:var(--ink); width:100%;
-  }
-  input:focus, select:focus{outline:2px solid var(--accent-tint); border-color:var(--accent);}
-  input:disabled{background:var(--grey-fill); color:var(--ink-faint);}
-
-  .btn{
-    display:inline-flex; align-items:center; gap:6px; border:1px solid var(--grey-line);
-    background:#fff; color:var(--ink); padding:8px 14px; border-radius:var(--radius-sm);
-    font-size:13px; font-weight:600; cursor:pointer; transition:all .12s ease;
-  }
-  .btn:hover{border-color:var(--accent); color:var(--accent-dk);}
-  .btn.primary{background:var(--accent); border-color:var(--accent); color:#fff;}
-  .btn.primary:hover{background:var(--accent-dk); border-color:var(--accent-dk); color:#fff;}
-  .btn.danger{color:var(--warn-tx);}
-  .btn.danger:hover{border-color:var(--warn-tx);}
-  .btn.small{padding:5px 10px; font-size:12px;}
-
-  .badge{display:inline-block; padding:3px 9px; border-radius:99px; font-size:11.5px; font-weight:700;}
-  .badge.ok{background:var(--ok-bg); color:var(--ok-tx);}
-  .badge.warn{background:var(--warn-bg); color:var(--warn-tx);}
-  .badge.info{background:var(--holiday); color:var(--holiday-tx);}
-  .badge.muted{background:var(--grey-mid); color:var(--ink-soft);}
-  .discount-badge{
-    display:inline-block; background:var(--discount); color:var(--discount-tx);
-    font-weight:700; font-size:10.5px; padding:1px 7px; border-radius:99px; margin-top:2px;
-  }
-
-  .alert{
-    display:flex; gap:10px; align-items:flex-start; padding:12px 14px; border-radius:var(--radius-sm);
-    font-size:13px; font-weight:600; margin-bottom:10px; line-height:1.45;
-  }
-  .alert.warn{background:var(--warn-bg); color:var(--warn-tx);}
-  .alert.info{background:var(--accent-tint); color:var(--accent-dk);}
-  .alert.holiday{background:var(--holiday); color:var(--holiday-tx);}
-  .alert.discount{background:var(--discount); color:var(--discount-tx);}
-  .alert.ok{background:var(--ok-bg); color:var(--ok-tx);}
-
-  .grid-2{display:grid; grid-template-columns:1.4fr 1fr; gap:16px; align-items:start;}
-  @media (max-width:1000px){ .grid-2{grid-template-columns:1fr;} }
-
-  .weekbar{
-    display:flex; align-items:center; gap:14px; margin-bottom:18px; flex-wrap:wrap;
-  }
-  .weekbar .weeklabel{font-size:15px; font-weight:700;}
-  .weekbar .navbtn{
-    border:1px solid var(--grey-line); background:#fff; border-radius:var(--radius-sm);
-    width:30px; height:30px; cursor:pointer; font-size:14px; color:var(--ink-soft);
-  }
-  .weekbar .navbtn:hover{border-color:var(--accent); color:var(--accent-dk);}
-
-  .shift-cell{display:flex; flex-direction:column; gap:4px; min-width:150px;}
-  .shift-cell .times{display:flex; gap:4px;}
-  .shift-cell select[data-field]{width:auto; min-width:78px; padding:5px 4px; font-size:12px;}
-  .shift-cell input[type=number]{width:52px; padding:5px 6px; font-size:12.5px;}
-  .shift-cell .brknote{display:flex; gap:4px; align-items:center;}
-  .shift-cell .brknote label{font-size:10.5px; color:var(--ink-faint); white-space:nowrap;}
-  .shift-cell input[type=text].notes{font-size:12px; padding:4px 6px;}
-  .hours-pill{
-    font-size:11.5px; font-weight:700; color:var(--accent-dk); background:var(--accent-tint);
-    border-radius:99px; padding:1px 8px; display:inline-block; margin-top:2px; align-self:flex-start;
-  }
-  .hours-pill.zero{color:var(--ink-faint); background:var(--grey-mid);}
-  .hours-pill.invalid{color:var(--warn-tx); background:var(--warn-bg);}
-
-  .name-cell{font-weight:600; white-space:nowrap;}
-  .status-pill{font-size:10.5px; padding:2px 7px; border-radius:99px; font-weight:700; margin-left:6px;}
-  .status-pill.inactive{background:var(--grey-mid); color:var(--ink-faint);}
-
-  .empty-state{
-    text-align:center; padding:50px 20px; color:var(--ink-soft);
-  }
-  .empty-state .big{font-size:32px; margin-bottom:8px;}
-
-  select#irEmployee, select#histWeekSelect, select#searchEmployee{max-width:240px;}
-
-  .toast{
-    position:fixed; bottom:22px; right:22px; background:var(--ink); color:#fff;
-    padding:11px 18px; border-radius:var(--radius-sm); font-size:13px; font-weight:600;
-    opacity:0; transform:translateY(8px); transition:all .2s ease; pointer-events:none; z-index:999;
-  }
-  .toast.show{opacity:1; transform:translateY(0);}
-
-  .legend-swatch{display:inline-block; width:12px; height:12px; border-radius:3px; margin-right:6px; vertical-align:middle;}
-
-  /* ---------- Team Roster: bold grid, calm colors (scoped to this page only) ---------- */
-  #teamPrintArea table.team-table,
-  #teamPrintArea table.team-table th,
-  #teamPrintArea table.team-table td{
-    border: 1px solid #000 !important;
-  }
-  #teamPrintArea table.team-table{ border-collapse: collapse; }
-  #teamPrintArea table.team-table th{ font-weight:700; color:var(--ink); }
-  #teamPrintArea table.team-table td.name-cell{ font-weight:700; }
-  #teamPrintArea table.team-table td{ font-weight:400; }
-
-  #teamPrintArea .team-weekend{ background:#F1F0FB !important; color:var(--ink-soft) !important; }
-  #teamPrintArea .team-holiday{ background:#FEF3C7 !important; color:#92400E !important; }
-  #teamPrintArea .team-dayoff{ background:#FBEAEA !important; color:#9B4A46 !important; }
-  #teamPrintArea .team-discount{ background:#FCE4F1 !important; color:#97266D !important; }
-  #teamPrintArea .legend-swatch.team-weekend,
-  #teamPrintArea .legend-swatch.team-holiday,
-  #teamPrintArea .legend-swatch.team-dayoff,
-  #teamPrintArea .legend-swatch.team-discount{ border:1px solid #000; }
-
-  @media print{
-    #teamPrintArea table.team-table, #teamPrintArea table.team-table th, #teamPrintArea table.team-table td{
-      border: 1px solid #000 !important;
-    }
-    #teamPrintArea .team-weekend{ background:#F1F0FB !important; color:var(--ink-soft) !important; }
-    #teamPrintArea .team-holiday{ background:#FEF3C7 !important; color:#92400E !important; }
-    #teamPrintArea .team-dayoff{ background:#FBEAEA !important; color:#9B4A46 !important; }
-    #teamPrintArea .team-discount{ background:#FCE4F1 !important; color:#97266D !important; }
-  }
-
-  @media print{
-    @page{ size: landscape; margin: 10mm; }
-    html, body{ -webkit-print-color-adjust: exact; print-color-adjust: exact; color-adjust: exact; }
-    #sidebar, .no-print{display:none !important;}
-    #main{padding:0; max-width:100%;}
-    body{font-size:11px;}
-    .card{border:none; padding:0;}
-    table{width:100%;}
-    th, td{
-      border:1px solid #D8DAE0 !important;
-      white-space:nowrap;
-      -webkit-print-color-adjust: exact; print-color-adjust: exact; color-adjust: exact;
-    }
-  }
-  .sync-pill{
-    position:fixed; top:14px; right:18px; font-size:11.5px; font-weight:700;
-    padding:4px 10px; border-radius:99px; z-index:1000; transition:opacity .3s ease;
-    background:var(--grey-mid); color:var(--ink-soft);
-  }
-  .sync-pill.saving{background:var(--accent-tint); color:var(--accent-dk);}
-  .sync-pill.error{background:var(--warn-bg); color:var(--warn-tx);}
-  .sync-pill.ok{opacity:0;}
-
-  /* ---------- Mobile layout ---------- */
-  @media (max-width:820px){
-    #app{ flex-direction:column; }
-    #sidebar{
-      width:100%; flex-direction:row; overflow-x:auto; white-space:nowrap;
-      padding:10px 10px; gap:6px; border-right:none; border-bottom:1px solid var(--grey-line);
-      -webkit-overflow-scrolling:touch;
-    }
-    #sidebar .brand{ display:none; }
-    #sidebar .foot{ display:none; }
-    .nav-btn{ width:auto; flex-shrink:0; padding:9px 13px; }
-    #main{ padding:16px 14px 50px 14px; max-width:100%; }
-    h1.page-title{ font-size:19px; }
-    p.page-sub{ font-size:13px; }
-    .row{ flex-direction:column; }
-    .grid-2{ grid-template-columns:1fr; }
-    .card{ padding:14px 14px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
-    table{ min-width:640px; }
-    .weekbar{ gap:8px; }
-    .weekbar .weeklabel{ font-size:14px; }
-    .sync-pill{ top:8px; right:8px; font-size:10px; padding:3px 8px; }
-    .kpi{ min-width:130px; padding:14px 14px; }
-    .kpi .value{ font-size:22px; }
-  }
-</style>
-
-<!-- ===================================================================
-     FIREBASE — this is what lets the roster be the same on every device.
-     Paste your OWN project's config here (Firebase console → Project
-     settings → General → "Your apps" → SDK setup and configuration).
-     =================================================================== -->
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
-<script>
-  const firebaseConfig = {
-    apiKey: "AIzaSyAPwS1GFwqj6KR4dQgxifykh9HS5km6OX4",
-    authDomain: "alpha-7fce5.firebaseapp.com",
-    projectId: "alpha-7fce5",
-    storageBucket: "alpha-7fce5.firebasestorage.app",
-    messagingSenderId: "10647816245",
-    appId: "1:10647816245:web:fbfb982260cf2eef97097c"
-  };
-  firebase.initializeApp(firebaseConfig);
-  const auth = firebase.auth();
-  const db = firebase.firestore();
-  // Everyone who opens this page reads/writes the same single document.
-  const rosterDocRef = db.collection("rosterApp").doc("main");
-  // Which entry in a person's "tools" list unlocks THIS tool.
-  const REQUIRED_TOOL_KEY = "roster";
-</script>
-<style>
-  #authGate{
-    position:fixed; inset:0; background:#F5F3EE; z-index:5000;
-    display:flex; align-items:center; justify-content:center;
-  }
-  #authGate .box{
-    width:100%; max-width:360px; background:#fff; border:1px solid #E4DFD1;
-    border-radius:10px; padding:30px 26px; text-align:center; font-family:sans-serif;
-  }
-  #authGate h2{margin:0 0 6px; font-size:1.2rem; color:#1B1B1B;}
-  #authGate p{margin:0 0 20px; font-size:.85rem; color:#6B6455;}
-  #authGate input{
-    width:100%; padding:10px 12px; margin-bottom:10px; border:1px solid #E4DFD1;
-    border-radius:6px; font-size:.9rem; box-sizing:border-box;
-  }
-  #authGate button{
-    width:100%; padding:11px; background:#1B1B1B; color:#fff; border:none;
-    border-radius:6px; font-weight:700; cursor:pointer; margin-top:4px;
-  }
-  #authGate .msg{font-size:.8rem; margin-top:12px; color:#B3402F;}
-  #logoutCorner{
-    position:fixed; bottom:14px; left:14px; z-index:900; font-size:11px;
-    background:#fff; border:1px solid #E4DFD1; padding:5px 10px; border-radius:20px;
-    color:#6B6455; cursor:pointer;
-  }
-</style>
-</head>
-<body>
-<div id="authGate">
-  <div class="box">
-    <h2>Sign in</h2>
-    <p>Enter your login to access the Roster.</p>
-    <input type="email" id="gateEmail" placeholder="Email">
-    <input type="password" id="gatePassword" placeholder="Password">
-    <button id="gateBtn">Sign in</button>
-    <div class="msg" id="gateMsg"></div>
-  </div>
-</div>
-<div id="logoutCorner" style="display:none;">Log out</div>
-<div class="sync-pill" id="syncPill">Loading…</div>
-<div id="app" style="display:none;">
-  <div id="sidebar">
-    <div class="brand">Weekly<span>Roster</span></div>
-    <button class="nav-btn" data-page="dashboard"><span class="dot"></span>Dashboard</button>
-    <button class="nav-btn" data-page="roster"><span class="dot"></span>Roster</button>
-    <button class="nav-btn" data-page="team"><span class="dot"></span>Team Roster</button>
-    <button class="nav-btn" data-page="staff"><span class="dot"></span>Staff</button>
-    <button class="nav-btn" data-page="holidays"><span class="dot"></span>Public Holidays</button>
-    <button class="nav-btn" data-page="discounts"><span class="dot"></span>Discount Days</button>
-    <button class="nav-btn" data-page="individual"><span class="dot"></span>Individual View</button>
-    <button class="nav-btn" data-page="history"><span class="dot"></span>History</button>
-    <button class="nav-btn" data-page="settings"><span class="dot"></span>Settings &amp; Backup</button>
-    <div class="foot">Data saves automatically and syncs across all your devices.</div>
-  </div>
-  <div id="main">
-    <!-- pages injected by JS render functions -->
-    <div class="page" id="page-dashboard"></div>
-    <div class="page" id="page-roster"></div>
-    <div class="page" id="page-team"></div>
-    <div class="page" id="page-staff"></div>
-    <div class="page" id="page-holidays"></div>
-    <div class="page" id="page-discounts"></div>
-    <div class="page" id="page-individual"></div>
-    <div class="page" id="page-history"></div>
-    <div class="page" id="page-settings"></div>
-  </div>
-</div>
-<script>
-  const gateEmail = document.getElementById('gateEmail');
-  const gatePassword = document.getElementById('gatePassword');
-  const gateMsg = document.getElementById('gateMsg');
-  const authGate = document.getElementById('authGate');
-  const logoutCorner = document.getElementById('logoutCorner');
-  const appDiv = document.getElementById('app');
-
-  document.getElementById('gateBtn').addEventListener('click', async () => {
-    gateMsg.textContent = '';
-    try {
-      await auth.signInWithEmailAndPassword(gateEmail.value.trim(), gatePassword.value);
-    } catch (e) {
-      gateMsg.textContent = 'Incorrect email or password.';
-    }
-  });
-  logoutCorner.addEventListener('click', () => auth.signOut());
-
-  let appHasStarted = false;
-  auth.onAuthStateChanged(async (user) => {
-    if (!user) {
-      authGate.style.display = 'flex';
-      logoutCorner.style.display = 'none';
-      appDiv.style.display = 'none';
-      return;
-    }
-    let allowed = false;
-    try {
-      const snap = await db.collection('users').doc(user.uid).get();
-      if (snap.exists) {
-        const data = snap.data();
-        allowed = data.role === 'admin' || (data.tools || []).includes(REQUIRED_TOOL_KEY);
-      }
-    } catch (e) { console.error(e); }
-
-    if (!allowed) {
-      gateMsg.textContent = "You don't have access to this tool.";
-      auth.signOut();
-      return;
-    }
-
-    authGate.style.display = 'none';
-    logoutCorner.style.display = 'block';
-    appDiv.style.display = 'flex';
-    if (!appHasStarted) { appHasStarted = true; startApp(); }
-  });
-</script>
-<div class="toast" id="toast"></div>
-<script>
-/* =========================================================================
-   WEEKLY ROSTER — offline, single-file app. All data lives in this browser's
-   localStorage (key "weeklyRosterData"). No network calls, no dependencies.
-   ========================================================================= */
-
-const STORAGE_KEY = "weeklyRosterData";
-const DAY_NAMES = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
-const DAY_NAMES_SHORT = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
-
-function uid(prefix){ return prefix + "_" + Math.random().toString(36).slice(2,10); }
-
-function defaultState(){
-  const today = new Date();
-  const weekStart = mondayOnOrBefore(today);
-  const staff = [
-    {id:uid("s"), name:"Simon", status:"active", email:""},
-    {id:uid("s"), name:"Omar", status:"active", email:""},
-    {id:uid("s"), name:"Sunil", status:"active", email:""},
-    {id:uid("s"), name:"Jas", status:"active", email:""},
-    {id:uid("s"), name:"Aman", status:"active", email:""},
-  ];
-  const weeks = {};
-  weeks[isoDate(weekStart)] = { shifts: {} };
-  return {
-    staff,
-    holidays: [
-      {date:"2026-10-26", name:"Labour Day"},
-      {date:"2026-12-25", name:"Christmas Day"},
-      {date:"2026-12-26", name:"Boxing Day"}
-    ],
-    discountDays: [],
-    weeks,
-    currentWeek: isoDate(weekStart),
-    overtimeThreshold: 40,
-    settings: { showTotalsOnTeamRoster: true, defaultDiscountRate: 15 }
-  };
-}
-
-// Fill in any fields missing from data saved by an earlier version of the app.
-function migrateState(state){
-  if(!state.settings) state.settings = {};
-  if(typeof state.settings.showTotalsOnTeamRoster !== "boolean") state.settings.showTotalsOnTeamRoster = true;
-  if(typeof state.settings.defaultDiscountRate !== "number") state.settings.defaultDiscountRate = 15;
-  if(!Array.isArray(state.discountDays)) state.discountDays = [];
-  for(const s of state.staff){ if(typeof s.email !== "string") s.email = ""; }
-  for(const wkKey in state.weeks){
-    const wk = state.weeks[wkKey];
-    if(!wk.shifts) wk.shifts = {};
-    for(const staffId in wk.shifts){
-      const days = wk.shifts[staffId];
-      if(!days) continue;
-      for(let i=0;i<days.length;i++){
-        if(days[i] && typeof days[i].off !== "boolean") days[i].off = false;
-      }
-    }
-  }
-  return state;
-}
-
-function mondayOnOrBefore(d){
-  const x = new Date(d);
-  const day = x.getDay(); // 0=Sun..6=Sat
-  const diff = (day === 0) ? -6 : 1 - day;
-  x.setDate(x.getDate() + diff);
-  x.setHours(0,0,0,0);
-  return x;
-}
-function isoDate(d){
-  const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,"0"), dd=String(d.getDate()).padStart(2,"0");
-  return `${y}-${m}-${dd}`;
-}
-function addDays(iso, n){
-  const d = new Date(iso+"T00:00:00");
-  d.setDate(d.getDate()+n);
-  return isoDate(d);
-}
-function fmtDate(iso, opts){
-  const d = new Date(iso+"T00:00:00");
-  return d.toLocaleDateString("en-NZ", opts || {day:"2-digit", month:"short", year:"numeric"});
-}
-function dayNameOf(iso){
-  const d = new Date(iso+"T00:00:00");
-  const jsDay = d.getDay(); // 0=Sun
-  const idx = jsDay === 0 ? 6 : jsDay - 1; // convert to Mon=0..Sun=6
-  return DAY_NAMES[idx];
-}
-function isWeekendIso(iso){
-  const d = new Date(iso+"T00:00:00").getDay();
-  return d === 0 || d === 6;
-}
-
-let STATE = null;
-
-function setSyncPill(mode){
-  const p = document.getElementById("syncPill");
-  if(!p) return;
-  p.classList.remove("saving","error","ok");
-  if(mode === "loading"){ p.textContent = "Loading…"; p.style.opacity = "1"; }
-  else if(mode === "saving"){ p.textContent = "Saving…"; p.classList.add("saving"); p.style.opacity = "1"; }
-  else if(mode === "error"){ p.textContent = "Could not sync — check connection"; p.classList.add("error"); p.style.opacity = "1"; }
-  else { p.textContent = "Saved"; p.classList.add("ok"); }
-}
-
-// Loads the shared roster from Firebase. Every device that opens this page
-// reads from the same document, which is what keeps them all in sync.
-async function loadState(){
-  setSyncPill("loading");
-  try{
-    const snap = await rosterDocRef.get();
-    if(snap.exists){
-      STATE = migrateState(snap.data());
-    } else {
-      STATE = defaultState();
-      await saveState();
-    }
-    setSyncPill("done");
-  }catch(e){
-    console.error("Could not load saved data from Firebase, starting fresh (offline).", e);
-    STATE = defaultState();
-    setSyncPill("error");
-  }
-}
-
-// Saves the shared roster to Firebase so every other device sees the update.
-async function saveState(){
-  setSyncPill("saving");
-  try{
-    await rosterDocRef.set(STATE);
-    setSyncPill("done");
-  }catch(e){
-    console.error(e);
-    setSyncPill("error");
-    showToast("Could not save — check your internet connection.");
-  }
-}
-function showToast(msg){
-  const t = document.getElementById("toast");
-  t.textContent = msg;
-  t.classList.add("show");
-  clearTimeout(showToast._h);
-  showToast._h = setTimeout(()=>t.classList.remove("show"), 2600);
-}
-
-console.log("state layer ready");
-
-/* ---------------------------------------------------------------------
-   CORE DATA HELPERS
-   --------------------------------------------------------------------- */
-function getActiveStaff(){
-  return STATE.staff.filter(s => s.status === "active");
-}
-function getStaffById(id){
-  return STATE.staff.find(s => s.id === id);
-}
-function ensureWeek(weekStart){
-  if(!STATE.weeks[weekStart]) STATE.weeks[weekStart] = { shifts: {} };
-  return STATE.weeks[weekStart];
-}
-function getShift(weekStart, staffId, dayIndex){
-  const wk = ensureWeek(weekStart);
-  if(!wk.shifts[staffId]) wk.shifts[staffId] = [null,null,null,null,null,null,null];
-  return wk.shifts[staffId][dayIndex] || { start:"", finish:"", brk:0, notes:"", off:false };
-}
-function setShift(weekStart, staffId, dayIndex, field, value){
-  const wk = ensureWeek(weekStart);
-  if(!wk.shifts[staffId]) wk.shifts[staffId] = [null,null,null,null,null,null,null];
-  const existing = wk.shifts[staffId][dayIndex] || { start:"", finish:"", brk:0, notes:"", off:false };
-  existing[field] = value;
-  wk.shifts[staffId][dayIndex] = existing;
-  saveState();
-}
-function setDayOff(weekStart, staffId, dayIndex, isOff){
-  const wk = ensureWeek(weekStart);
-  if(!wk.shifts[staffId]) wk.shifts[staffId] = [null,null,null,null,null,null,null];
-  const existing = wk.shifts[staffId][dayIndex] || { start:"", finish:"", brk:0, notes:"", off:false };
-  existing.off = isOff;
-  if(isOff){ existing.start = ""; existing.finish = ""; existing.brk = 0; }
-  wk.shifts[staffId][dayIndex] = existing;
-  saveState();
-}
-
-// Hours calc — handles shifts that cross midnight. start/finish are "HH:MM" strings.
-function computeHours(start, finish, brkMinutes){
-  if(!start || !finish) return null;
-  const [sh, sm] = start.split(":").map(Number);
-  const [fh, fm] = finish.split(":").map(Number);
-  let startMin = sh*60+sm, finishMin = fh*60+fm;
-  let diff = finishMin - startMin;
-  if(diff <= 0) diff += 24*60; // crossed midnight
-  const brk = Number(brkMinutes)||0;
-  const hours = (diff - brk) / 60;
-  return hours;
-}
-
-// 24h "HH:MM" -> "h:MM AM/PM" for display
-function to12h(hhmm){
-  if(!hhmm) return "";
-  const [h, m] = hhmm.split(":").map(Number);
-  const period = h < 12 ? "AM" : "PM";
-  let h12 = h % 12; if(h12 === 0) h12 = 12;
-  return `${h12}:${String(m).padStart(2,"0")} ${period}`;
-}
-
-// Builds <option> list for a 30-minute-step time <select>, values stay 24h "HH:MM"
-function timeOptionsHtml(selected){
-  let html = `<option value="">--</option>`;
-  for(let mins=0; mins<24*60; mins+=30){
-    const h = Math.floor(mins/60), m = mins%60;
-    const val = `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
-    const label = to12h(val);
-    html += `<option value="${val}" ${val===selected?"selected":""}>${label}</option>`;
-  }
-  return html;
-}
-
-function weekDates(weekStart){
-  return Array.from({length:7}, (_,i)=> addDays(weekStart, i));
-}
-
-function holidayForDate(iso){
-  return STATE.holidays.find(h => h.date === iso);
-}
-function discountForDate(iso){
-  return STATE.discountDays.find(d => d.date === iso);
-}
-
-// Per-employee weekly total (active staff only counted on dashboard, but works for any id)
-function weeklyHoursFor(weekStart, staffId){
-  const wk = ensureWeek(weekStart);
-  const shifts = wk.shifts[staffId];
-  if(!shifts) return 0;
-  let total = 0;
-  for(const s of shifts){
-    if(s && s.start && s.finish){
-      const h = computeHours(s.start, s.finish, s.brk);
-      if(h && h > 0) total += h;
-    }
-  }
-  return total;
-}
-
-function totalLabourHours(weekStart){
-  let total = 0;
-  for(const s of STATE.staff){ total += weeklyHoursFor(weekStart, s.id); }
-  return total;
-}
-
-function dailyStaffingCounts(weekStart){
-  const dates = weekDates(weekStart);
-  return dates.map((iso, dayIdx)=>{
-    let count = 0;
-    for(const s of getActiveStaff()){
-      const sh = getShift(weekStart, s.id, dayIdx);
-      if(sh.start && sh.finish) count++;
-    }
-    return count;
-  });
-}
-
-function nextUpcomingHoliday(fromIso){
-  const upcoming = STATE.holidays
-    .filter(h => h.date >= fromIso)
-    .sort((a,b)=> a.date.localeCompare(b.date));
-  return upcoming[0] || null;
-}
-function nextUpcomingDiscountDay(fromIso){
-  const upcoming = STATE.discountDays
-    .filter(d => d.date >= fromIso)
-    .sort((a,b)=> a.date.localeCompare(b.date));
-  return upcoming[0] || null;
-}
-
-console.log("core logic ready");
-
-/* ---------------------------------------------------------------------
-   NAVIGATION
-   --------------------------------------------------------------------- */
-let CURRENT_PAGE = "dashboard";
-const RENDERERS = {}; // filled in below per page
-
-function showPage(name){
-  CURRENT_PAGE = name;
-  document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
-  document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
-  document.getElementById("page-"+name).classList.add("active");
-  const btn = document.querySelector(`.nav-btn[data-page="${name}"]`);
-  if(btn) btn.classList.add("active");
-  if(RENDERERS[name]) RENDERERS[name]();
-}
-document.querySelectorAll(".nav-btn").forEach(btn=>{
-  btn.addEventListener("click", ()=> showPage(btn.dataset.page));
-});
-
-function renderAll(){
-  for(const name in RENDERERS) RENDERERS[name]();
-}
-
-/* ---------------------------------------------------------------------
-   DASHBOARD
-   --------------------------------------------------------------------- */
-RENDERERS.dashboard = function(){
-  const el = document.getElementById("page-dashboard");
-  const weekStart = STATE.currentWeek;
-  const dates = weekDates(weekStart);
-  const active = getActiveStaff();
-  const total = totalLabourHours(weekStart);
-  const threshold = STATE.overtimeThreshold;
-
-  const perEmployee = active.map(s => ({ staff:s, hours: weeklyHoursFor(weekStart, s.id) }));
-  const missing = perEmployee.filter(p => p.hours === 0).map(p=>p.staff.name);
-  const overtime = perEmployee.filter(p => p.hours > threshold).map(p=>p.staff.name);
-  const maxHours = Math.max(1, ...perEmployee.map(p=>p.hours));
-
-  let emptySpots = 0;
-  for(const s of active){
-    for(let d=0; d<7; d++){
-      const sh = getShift(weekStart, s.id, d);
-      if(!sh.start || !sh.finish){ if(!sh.off) emptySpots++; }
-    }
-  }
-
-  const dailyCounts = dailyStaffingCounts(weekStart);
-  const nextHol = nextUpcomingHoliday(weekStart);
-  const holidayIsUpcoming = nextHol && nextHol.date <= addDays(weekStart, 21);
-  const nextDisc = nextUpcomingDiscountDay(weekStart);
-  const discountIsUpcoming = nextDisc && nextDisc.date <= addDays(weekStart, 21);
-
-  el.innerHTML = `
-    <h1 class="page-title">Manager Dashboard</h1>
-    <p class="page-sub">A live read-out of ${fmtDate(weekStart)} – ${fmtDate(addDays(weekStart,6))}. Nothing here needs manual editing.</p>
-
-    <div class="row" style="margin-bottom:16px;">
-      <div class="kpi"><div class="label">Total labour hours</div><div class="value">${total.toFixed(2)}</div></div>
-      <div class="kpi"><div class="label">Active staff</div><div class="value">${active.length}</div></div>
-      <div class="kpi"><div class="label">Empty roster spots</div><div class="value">${emptySpots}</div></div>
-      <div class="kpi">
-        <div class="label">Overtime threshold (hrs/wk)</div>
-        <input type="number" id="overtimeInput" value="${threshold}" min="0" step="1"
-          style="font-size:22px; font-weight:700; color:var(--accent-dk); border:none; padding:4px 0; width:80px; margin-top:2px;">
-      </div>
-    </div>
-
-    <div class="grid-2">
-      <div class="card">
-        <h2>Hours by employee</h2>
-        <table>
-          <thead><tr><th>Employee</th><th>Hours</th><th>Status</th></tr></thead>
-          <tbody>
-          ${perEmployee.map(p=>{
-            let status = "OK", cls="ok";
-            if(p.hours === 0){ status="No shifts"; cls="info"; }
-            else if(p.hours > threshold){ status="Overtime"; cls="warn"; }
-            const barWidth = Math.round((p.hours/maxHours)*100);
-            return `<tr>
-              <td class="name-cell">${escapeHtml(p.staff.name)}</td>
-              <td>
-                <div style="display:flex; align-items:center; gap:8px;">
-                  <div style="flex:1; background:var(--grey-mid); border-radius:4px; height:8px; overflow:hidden;">
-                    <div style="width:${barWidth}%; background:var(--accent); height:100%;"></div>
-                  </div>
-                  <span style="font-weight:600; min-width:44px; text-align:right;">${p.hours.toFixed(2)}</span>
-                </div>
-              </td>
-              <td><span class="badge ${cls}">${status}</span></td>
-            </tr>`;
-          }).join("") || `<tr><td colspan="3" style="color:var(--ink-faint);">No active staff yet — add staff on the Staff page.</td></tr>`}
-          </tbody>
-        </table>
-      </div>
-
-      <div>
-        <div class="card">
-          <h2>Alerts</h2>
-          <div class="alert warn">Missing shifts: ${missing.length ? escapeHtml(missing.join(", ")) : "none this week"}</div>
-          <div class="alert warn">Overtime warning: ${overtime.length ? escapeHtml(overtime.join(", "))+" over "+threshold+" hrs" : "no one is over "+threshold+" hrs"}</div>
-          <div class="alert info">Empty roster spots this week: ${emptySpots}</div>
-          <div class="alert ${holidayIsUpcoming ? "holiday" : "ok"}">
-            ${nextHol ? (holidayIsUpcoming
-                ? "Upcoming public holiday: "+escapeHtml(nextHol.name)+" on "+fmtDate(nextHol.date, {weekday:"long", day:"2-digit", month:"short", year:"numeric"})
-                : "No public holiday in the next 3 weeks.")
-              : "No public holidays on record after this week."}
-          </div>
-          <div class="alert ${discountIsUpcoming ? "discount" : "ok"}">
-            ${nextDisc ? (discountIsUpcoming
-                ? "\u{1F389} Upcoming discount day: "+nextDisc.rate+"c off on "+fmtDate(nextDisc.date, {weekday:"long", day:"2-digit", month:"short", year:"numeric"})+" — consider extra staff."
-                : "No discount day in the next 3 weeks.")
-              : "No discount days on record after this week."}
-          </div>
-        </div>
-        <div class="card">
-          <h2>Daily staffing count</h2>
-          <div class="row" style="gap:8px;">
-            ${dates.map((iso,i)=>`
-              <div style="flex:1; min-width:60px; text-align:center; background:var(--grey-fill); border-radius:var(--radius-sm); padding:8px 4px;">
-                <div style="font-size:10.5px; color:var(--ink-soft); font-weight:700;">${DAY_NAMES_SHORT[i]}<br>${fmtDate(iso,{day:"numeric",month:"numeric"})}</div>
-                <div style="font-size:18px; font-weight:700; color:var(--accent-dk); margin-top:4px;">${dailyCounts[i]}</div>
-              </div>
-            `).join("")}
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-
-  document.getElementById("overtimeInput").addEventListener("change", (e)=>{
-    STATE.overtimeThreshold = Number(e.target.value) || 0;
-    saveState();
-    RENDERERS.dashboard();
-  });
-};
-
-function escapeHtml(str){
-  return String(str).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-}
-
-/* ---------------------------------------------------------------------
-   ROSTER — the page you edit every week
-   --------------------------------------------------------------------- */
-RENDERERS.roster = function(){
-  const el = document.getElementById("page-roster");
-  const weekStart = STATE.currentWeek;
-  const dates = weekDates(weekStart);
-  const active = getActiveStaff();
-
-  el.innerHTML = `
-    <h1 class="page-title">Roster</h1>
-    <p class="page-sub">Pick start, finish and break for each shift (30-minute steps). Hours calculate automatically — even overnight shifts. Tick <strong>Day off</strong> for anyone not working. Use <strong>⧉</strong> to repeat a shift across other days.</p>
-
-    <div class="weekbar no-print">
-      <button class="navbtn" id="prevWeekBtn" title="Previous week">&#8592;</button>
-      <div class="weeklabel">${fmtDate(weekStart,{weekday:"long",day:"2-digit",month:"short",year:"numeric"})} &ndash; ${fmtDate(addDays(weekStart,6),{weekday:"long",day:"2-digit",month:"short",year:"numeric"})}</div>
-      <button class="navbtn" id="nextWeekBtn" title="Next week">&#8594;</button>
-      <input type="date" id="jumpDate" value="${weekStart}" style="width:150px;">
-      <button class="btn primary" id="newWeekBtn">+ Next week</button>
-      <button class="btn" id="clearWeekBtn">Clear this week</button>
-      <button class="btn" id="printRosterBtn">Print this week</button>
-    </div>
-
-    <div class="card" style="overflow-x:auto;">
-      <table>
-        <thead>
-          <tr>
-            <th style="min-width:130px;">Staff</th>
-            ${dates.map((iso,i)=>{
-              const hol = holidayForDate(iso);
-              const disc = discountForDate(iso);
-              const wknd = isWeekendIso(iso);
-              const tone = hol ? "color:var(--holiday-tx);" : wknd ? "color:var(--ink-soft);" : "";
-              return `<th style="${tone}">${DAY_NAMES_SHORT[i]}<br><span style="font-weight:600;">${fmtDate(iso,{day:"2-digit",month:"short"})}</span>${hol?`<br><span style="font-weight:700;">${escapeHtml(hol.name)}</span>`:""}${disc?`<br><span class="discount-badge">🎉 ${disc.rate}c off</span>`:""}</th>`;
-            }).join("")}
-            <th style="text-align:right;">Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${active.length === 0 ? `<tr><td colspan="9" style="color:var(--ink-faint); padding:24px;">No active staff. Add staff on the Staff page to start building the roster.</td></tr>` : ""}
-          ${active.map(s=>{
-            const weekTotal = weeklyHoursFor(weekStart, s.id);
-            return `<tr>
-              <td class="name-cell">${escapeHtml(s.name)}</td>
-              ${dates.map((iso,dayIdx)=>{
-                const sh = getShift(weekStart, s.id, dayIdx);
-                const hours = computeHours(sh.start, sh.finish, sh.brk);
-                const hol = holidayForDate(iso);
-                const disc = discountForDate(iso);
-                const wknd = isWeekendIso(iso);
-                let pillClass="zero", pillText="—";
-                if(sh.off){ pillClass="zero"; pillText="Day off"; }
-                else if(sh.start && sh.finish){
-                  if(hours !== null && hours > 0){ pillClass=""; pillText = hours.toFixed(2)+"h"; }
-                  else { pillClass="invalid"; pillText="check times"; }
-                } else if(sh.start || sh.finish){
-                  pillClass="invalid"; pillText="incomplete";
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Statement SmartCoder v2026</title>
+    <script>
+        // Apply saved theme before first paint, so there's no flash of the wrong theme.
+        (function () {
+            var theme = 'light';
+            try {
+                var saved = localStorage.getItem('smartcoder-theme');
+                if (saved) {
+                    theme = saved;
+                } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                    theme = 'dark';
                 }
-                const cellBg = hol ? "background:var(--holiday);" : disc ? "background:var(--discount);" : wknd ? "background:var(--weekend);" : "";
-                const canCopy = !sh.off && sh.start && sh.finish;
-                return `<td style="${cellBg}">
-                  <div class="shift-cell">
-                    <label style="display:flex; align-items:center; gap:5px; font-size:11px; color:var(--ink-soft); font-weight:600;">
-                      <input type="checkbox" class="dayOffChk" data-staff="${s.id}" data-day="${dayIdx}" ${sh.off?"checked":""}> Day off
-                    </label>
-                    <div class="times" style="${sh.off?"display:none;":""}">
-                      <select data-staff="${s.id}" data-day="${dayIdx}" data-field="start" class="shift-input">${timeOptionsHtml(sh.start)}</select>
-                      <select data-staff="${s.id}" data-day="${dayIdx}" data-field="finish" class="shift-input">${timeOptionsHtml(sh.finish)}</select>
-                    </div>
-                    <div class="brknote" style="${sh.off?"display:none;":""}">
-                      <label>Brk(m)</label>
-                      <input type="number" min="0" step="5" value="${sh.brk||0}" data-staff="${s.id}" data-day="${dayIdx}" data-field="brk" class="shift-input">
-                      ${canCopy ? `<button class="copyDayBtn" data-staff="${s.id}" data-day="${dayIdx}" title="Copy this shift to other days" style="margin-left:auto; border:none; background:none; color:var(--accent); cursor:pointer; font-size:13px;">⧉</button>` : ""}
-                    </div>
-                    <input type="text" class="notes" placeholder="Notes" style="${sh.off?"display:none;":""}" value="${escapeHtml(sh.notes||"")}" data-staff="${s.id}" data-day="${dayIdx}" data-field="notes">
-                    <span class="hours-pill ${pillClass}">${pillText}</span>
-                  </div>
-                </td>`;
-              }).join("")}
-              <td style="text-align:right; font-weight:700; color:var(--accent-dk);">${weekTotal.toFixed(2)}</td>
-            </tr>`;
-          }).join("")}
-        </tbody>
-        ${active.length > 0 ? `<tfoot><tr>
-          <td style="font-weight:700;">Total labour hours</td>
-          <td colspan="7"></td>
-          <td style="text-align:right; font-weight:700; font-size:15px; color:var(--accent-dk);">${totalLabourHours(weekStart).toFixed(2)}</td>
-        </tr></tfoot>` : ""}
-      </table>
-    </div>
-  `;
-
-  el.querySelectorAll(".shift-input").forEach(inp=>{
-    inp.addEventListener("change", (e)=>{
-      const {staff, day, field} = e.target.dataset;
-      let val = e.target.value;
-      if(field === "brk") val = Number(val)||0;
-      setShift(weekStart, staff, Number(day), field, val);
-      RENDERERS.roster();
-    });
-  });
-
-  el.querySelectorAll(".dayOffChk").forEach(chk=>{
-    chk.addEventListener("change", (e)=>{
-      const {staff, day} = e.target.dataset;
-      setDayOff(weekStart, staff, Number(day), e.target.checked);
-      RENDERERS.roster();
-    });
-  });
-
-  el.querySelectorAll(".copyDayBtn").forEach(btn=>{
-    btn.addEventListener("click", (e)=>{
-      openCopyShiftModal(weekStart, e.target.dataset.staff, Number(e.target.dataset.day));
-    });
-  });
-
-
-  document.getElementById("prevWeekBtn").addEventListener("click", ()=>{
-    goToWeek(addDays(weekStart, -7));
-  });
-  document.getElementById("nextWeekBtn").addEventListener("click", ()=>{
-    goToWeek(addDays(weekStart, 7));
-  });
-  document.getElementById("jumpDate").addEventListener("change", (e)=>{
-    goToWeek(mondayOnOrBeforeIso(e.target.value));
-  });
-  document.getElementById("newWeekBtn").addEventListener("click", ()=>{
-    goToWeek(addDays(STATE.currentWeek, 7));
-  });
-  document.getElementById("clearWeekBtn").addEventListener("click", ()=>{
-    if(confirm("Clear every shift in this week? This can't be undone.")){
-      ensureWeek(weekStart).shifts = {};
-      saveState();
-      showToast("Week cleared");
-      RENDERERS.roster();
-    }
-  });
-  document.getElementById("printRosterBtn").addEventListener("click", ()=> window.print());
-};
-
-function mondayOnOrBeforeIso(iso){
-  return isoDate(mondayOnOrBefore(new Date(iso+"T00:00:00")));
-}
-
-// Navigate to a week. If it's brand new (no shifts saved yet) and moving
-// forward in time, automatically bring across the previous week's shifts
-// so most weeks need little more than a few tweaks.
-function goToWeek(target){
-  const alreadyExists = !!STATE.weeks[target];
-  ensureWeek(target);
-  if(!alreadyExists){
-    const prev = addDays(target, -7);
-    if(STATE.weeks[prev] && STATE.weeks[prev].shifts && Object.keys(STATE.weeks[prev].shifts).length){
-      STATE.weeks[target].shifts = JSON.parse(JSON.stringify(STATE.weeks[prev].shifts));
-      showToast("Brought last week's shifts across — adjust as needed");
-    }
-  }
-  STATE.currentWeek = target;
-  saveState();
-  RENDERERS.roster();
-}
-
-/* ---- Copy a shift to other days (modal) ---- */
-let copySource = null;
-
-function ensureCopyModal(){
-  if(document.getElementById("copyModal")) return;
-  const div = document.createElement("div");
-  div.id = "copyModal";
-  div.className = "no-print";
-  div.style.cssText = "display:none; position:fixed; inset:0; background:rgba(22,22,29,.45); z-index:1000; align-items:center; justify-content:center;";
-  div.innerHTML = `
-    <div style="background:#fff; border-radius:12px; padding:22px 24px; width:340px; max-width:90vw; box-shadow:0 20px 60px rgba(0,0,0,.25);">
-      <h2 style="font-size:15px; margin:0 0 4px 0;">Copy shift to&hellip;</h2>
-      <p style="font-size:12.5px; color:var(--ink-soft); margin:0 0 14px 0;" id="copyModalSub"></p>
-      <div id="copyModalDays" style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;"></div>
-      <div style="display:flex; gap:8px; justify-content:flex-end;">
-        <button class="btn" id="copyModalCancel">Cancel</button>
-        <button class="btn primary" id="copyModalApply">Copy</button>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(div);
-  document.getElementById("copyModalCancel").addEventListener("click", closeCopyModal);
-  document.getElementById("copyModalApply").addEventListener("click", applyCopyModal);
-}
-
-function openCopyShiftModal(weekStart, staffId, sourceDay){
-  ensureCopyModal();
-  copySource = { weekStart, staffId, sourceDay };
-  const sh = getShift(weekStart, staffId, sourceDay);
-  const staff = getStaffById(staffId);
-  document.getElementById("copyModalSub").textContent =
-    `${staff.name} — ${to12h(sh.start)}\u2013${to12h(sh.finish)} (${DAY_NAMES[sourceDay]}). Choose which days to copy it to:`;
-  const dates = weekDates(weekStart);
-  const box = document.getElementById("copyModalDays");
-  box.innerHTML = dates.map((iso,i)=>{
-    if(i === sourceDay) return "";
-    return `<label style="display:flex; align-items:center; gap:8px; font-size:13px;">
-      <input type="checkbox" class="copyDayChk" data-day="${i}" checked>
-      ${DAY_NAMES[i]} (${fmtDate(iso,{day:"2-digit",month:"short"})})
-    </label>`;
-  }).join("");
-  document.getElementById("copyModal").style.display = "flex";
-}
-function closeCopyModal(){
-  document.getElementById("copyModal").style.display = "none";
-  copySource = null;
-}
-function applyCopyModal(){
-  if(!copySource) return;
-  const { weekStart, staffId, sourceDay } = copySource;
-  const sh = getShift(weekStart, staffId, sourceDay);
-  document.querySelectorAll(".copyDayChk:checked").forEach(chk=>{
-    const day = Number(chk.dataset.day);
-    setShift(weekStart, staffId, day, "start", sh.start);
-    setShift(weekStart, staffId, day, "finish", sh.finish);
-    setShift(weekStart, staffId, day, "brk", sh.brk || 0);
-    setShift(weekStart, staffId, day, "notes", sh.notes || "");
-  });
-  closeCopyModal();
-  showToast("Shift copied");
-  RENDERERS.roster();
-}
-
-/* ---- Clean plain-text export for WhatsApp / email ---- */
-function buildRosterText(weekStart, opts){
-  opts = opts || {};
-  const includeTotals = opts.includeTotals !== false;
-  const plainOnly = !!opts.plainOnly;
-  const dates = weekDates(weekStart);
-  const active = getActiveStaff();
-  const dayLabel = (iso,i) => DAY_NAMES_SHORT[i]+" "+fmtDate(iso,{day:"2-digit",month:"short"});
-
-  const cellText = (weekStart, staffId, dayIdx) => {
-    const sh = getShift(weekStart, staffId, dayIdx);
-    if(sh.off) return "Day off";
-    if(sh.start && sh.finish) return `${to12h(sh.start)}-${to12h(sh.finish)}`;
-    return "-";
-  };
-
-  const nameColWidth = Math.max(3, ...active.map(s=>s.name.length)) + 2;
-  const dayColWidth = 20;
-
-  let lines = [];
-  lines.push(`WEEKLY ROSTER`);
-  lines.push(`${fmtDate(weekStart,{day:"2-digit",month:"short",year:"numeric"})} - ${fmtDate(addDays(weekStart,6),{day:"2-digit",month:"short",year:"numeric"})}`);
-  lines.push("");
-
-  const header = "Staff".padEnd(nameColWidth) + dates.map((iso,i)=> dayLabel(iso,i).padEnd(dayColWidth)).join("");
-  lines.push(header);
-  lines.push("-".repeat(header.length));
-
-  for(const s of active){
-    let row = s.name.padEnd(nameColWidth);
-    for(let i=0;i<7;i++){
-      row += cellText(weekStart, s.id, i).padEnd(dayColWidth);
-    }
-    lines.push(row);
-  }
-
-  if(includeTotals){
-    lines.push("-".repeat(header.length));
-    for(const s of active){
-      const total = weeklyHoursFor(weekStart, s.id);
-      lines.push(`${s.name.padEnd(nameColWidth)}Total: ${total.toFixed(2)}h`);
-    }
-    lines.push("");
-    lines.push(`Total labour hours: ${totalLabourHours(weekStart).toFixed(2)}h`);
-  }
-
-  const body = lines.join("\n");
-  return plainOnly ? body : ("```\n" + body + "\n```");
-}
-
-function copyToClipboard(text){
-  // execCommand works reliably even when this file is opened directly (file://),
-  // where the modern Clipboard API is often blocked as an insecure context.
-  const ta = document.createElement("textarea");
-  ta.value = text;
-  ta.style.position = "fixed";
-  ta.style.left = "-9999px";
-  document.body.appendChild(ta);
-  ta.select();
-  let ok = false;
-  try{ ok = document.execCommand("copy"); }catch(e){ ok = false; }
-  document.body.removeChild(ta);
-  if(ok){
-    showToast("Roster copied — paste into WhatsApp or email");
-  } else if(navigator.clipboard && navigator.clipboard.writeText){
-    navigator.clipboard.writeText(text).then(
-      ()=> showToast("Roster copied — paste into WhatsApp or email"),
-      ()=> showToast("Couldn't copy automatically — select and copy the text manually")
-    );
-  } else {
-    showToast("Couldn't copy automatically — select and copy the text manually");
-  }
-}
-
-/* ---------------------------------------------------------------------
-   TEAM ROSTER — read-only, clean, all-staff view for posting/printing so
-   everyone can see who's working when (the whole-team version of the
-   Individual View, which stays private/per-person).
-   --------------------------------------------------------------------- */
-let teamSelectedWeek = null;
-
-RENDERERS.team = function(){
-  const el = document.getElementById("page-team");
-  if(!teamSelectedWeek || !STATE.weeks[teamSelectedWeek]) teamSelectedWeek = STATE.currentWeek;
-  const weekStart = teamSelectedWeek;
-  const dates = weekDates(weekStart);
-  const active = getActiveStaff();
-  const weeks = Object.keys(STATE.weeks).sort();
-  const showTotals = STATE.settings.showTotalsOnTeamRoster;
-
-  el.innerHTML = `
-    <h1 class="page-title">Team Roster</h1>
-
-    <div class="weekbar no-print">
-      <button class="navbtn" id="teamPrevBtn" title="Previous week">&#8592;</button>
-      <div class="weeklabel">${fmtDate(weekStart,{weekday:"long",day:"2-digit",month:"short",year:"numeric"})} &ndash; ${fmtDate(addDays(weekStart,6),{weekday:"long",day:"2-digit",month:"short",year:"numeric"})}</div>
-      <button class="navbtn" id="teamNextBtn" title="Next week">&#8594;</button>
-      <select id="teamWeekSelect" style="max-width:260px;">
-        ${weeks.map(w=>`<option value="${w}" ${w===weekStart?"selected":""}>${fmtDate(w)} – ${fmtDate(addDays(w,6))}${w===STATE.currentWeek?" (current)":""}</option>`).join("")}
-      </select>
-      <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--ink-soft);">
-        <input type="checkbox" id="showTotalsChk" ${showTotals?"checked":""}> Show total hours
-      </label>
-    </div>
-    <div class="row no-print" style="margin-bottom:16px;">
-      <button class="btn" id="teamCopyFormattedBtn">Copy formatted (for Email/Docs)</button>
-      <button class="btn primary" id="teamPrintBtn">Print / Export PDF</button>
-    </div>
-
-    <div class="card" id="teamPrintArea">
-      <h2 style="font-size:17px; margin-bottom:2px;">${fmtDate(weekStart,{day:"2-digit",month:"short",year:"numeric"})} – ${fmtDate(addDays(weekStart,6),{day:"2-digit",month:"short",year:"numeric"})}</h2>
-      <p style="color:var(--ink-soft); font-size:12.5px; margin:0 0 14px 0;">
-        <span class="legend-swatch team-dayoff"></span>Day off &nbsp;
-        <span class="legend-swatch team-weekend"></span>Weekend &nbsp;
-        <span class="legend-swatch team-holiday"></span>Public holiday &nbsp;
-        <span class="legend-swatch team-discount"></span>Discount day
-      </p>
-      <table class="team-table">
-        <thead>
-          <tr>
-            <th style="min-width:120px;">Staff</th>
-            ${dates.map((iso,i)=>{
-              const hol = holidayForDate(iso);
-              const disc = discountForDate(iso);
-              const wknd = isWeekendIso(iso);
-              const cls = hol ? "team-holiday" : disc ? "team-discount" : wknd ? "team-weekend" : "";
-              return `<th class="${cls}">${DAY_NAMES_SHORT[i]}<br><span>${fmtDate(iso,{day:"2-digit",month:"short"})}</span>${hol?`<br><span>${escapeHtml(hol.name)}</span>`:""}${disc?`<br><span>\u{1F389} ${disc.rate}c off day</span>`:""}</th>`;
-            }).join("")}
-            ${showTotals ? `<th style="text-align:right;">Total</th>` : ""}
-          </tr>
-        </thead>
-        <tbody>
-        ${active.length===0 ? `<tr><td colspan="9" style="color:var(--ink-faint);">No active staff.</td></tr>` : ""}
-        ${active.map(s=>{
-          const total = weeklyHoursFor(weekStart, s.id);
-          return `<tr>
-            <td class="name-cell">${escapeHtml(s.name)}</td>
-            ${dates.map((iso,dayIdx)=>{
-              const sh = getShift(weekStart, s.id, dayIdx);
-              const hol = holidayForDate(iso);
-              const disc = discountForDate(iso);
-              const wknd = isWeekendIso(iso);
-              let cls = hol ? "team-holiday" : disc ? "team-discount" : wknd ? "team-weekend" : "";
-              let cellContent;
-              if(sh.off){
-                cls = "team-dayoff";
-                cellContent = `Day off`;
-              } else if(sh.start && sh.finish){
-                const note = sh.notes ? `<div style="font-size:11px; font-weight:500;">${escapeHtml(sh.notes)}</div>` : "";
-                cellContent = `${to12h(sh.start)}\u2013${to12h(sh.finish)}${note}`;
-              } else {
-                cellContent = "";
-              }
-              return `<td class="${cls}" style="text-align:center;">${cellContent}</td>`;
-            }).join("")}
-            ${showTotals ? `<td style="text-align:right; font-weight:700; color:var(--accent-dk);">${total>0?total.toFixed(2):""}</td>` : ""}
-          </tr>`;
-        }).join("")}
-        </tbody>
-        ${active.length>0 && showTotals ? `<tfoot><tr>
-          <td style="font-weight:700;">Total labour hours</td><td colspan="7"></td>
-          <td style="text-align:right; font-weight:700; font-size:15px; color:var(--accent-dk);">${totalLabourHours(weekStart).toFixed(2)}</td>
-        </tr></tfoot>` : ""}
-      </table>
-    </div>
-  `;
-
-  document.getElementById("teamPrevBtn").addEventListener("click", ()=>{ teamSelectedWeek = addDays(weekStart,-7); ensureWeek(teamSelectedWeek); RENDERERS.team(); });
-  document.getElementById("teamNextBtn").addEventListener("click", ()=>{ teamSelectedWeek = addDays(weekStart,7); ensureWeek(teamSelectedWeek); RENDERERS.team(); });
-  document.getElementById("teamWeekSelect").addEventListener("change", e=>{ teamSelectedWeek = e.target.value; RENDERERS.team(); });
-  document.getElementById("showTotalsChk").addEventListener("change", e=>{
-    STATE.settings.showTotalsOnTeamRoster = e.target.checked;
-    saveState();
-    RENDERERS.team();
-  });
-  document.getElementById("teamPrintBtn").addEventListener("click", ()=> window.print());
-  document.getElementById("teamCopyFormattedBtn").addEventListener("click", ()=> copyFormattedTable("teamPrintArea"));
-};
-
-// Selects the rendered (styled) table itself and copies it — most email
-// clients, Word and Google Docs paste this back as a real formatted table
-// with colours. WhatsApp has no rich-text paste, so it will show plain text there.
-function copyFormattedTable(containerId){
-  const node = document.getElementById(containerId);
-  if(!node){ showToast("Nothing to copy"); return; }
-  const range = document.createRange();
-  range.selectNodeContents(node);
-  const sel = window.getSelection();
-  sel.removeAllRanges();
-  sel.addRange(range);
-  let ok = false;
-  try{ ok = document.execCommand("copy"); }catch(e){ ok = false; }
-  sel.removeAllRanges();
-  if(ok) showToast("Copied with formatting — paste into Email, Word or Docs. (WhatsApp shows plain text only.)");
-  else showToast("Couldn't copy automatically — try Print / Export PDF instead.");
-}
-
-
-
-/* ---------------------------------------------------------------------
-   STAFF — add / remove / activate / deactivate
-   --------------------------------------------------------------------- */
-RENDERERS.staff = function(){
-  const el = document.getElementById("page-staff");
-  el.innerHTML = `
-    <h1 class="page-title">Staff</h1>
-    <p class="page-sub">Add a row for each staff member. Set someone to Inactive to remove them from the roster without losing their history — deleting is permanent.</p>
-
-    <div class="card">
-      <table>
-        <thead><tr><th>Name</th><th style="width:140px;">Status</th><th style="width:90px;"></th></tr></thead>
-        <tbody id="staffRows"></tbody>
-      </table>
-      <div style="margin-top:14px;">
-        <button class="btn primary" id="addStaffBtn">+ Add staff member</button>
-      </div>
-    </div>
-  `;
-  const rows = document.getElementById("staffRows");
-  rows.innerHTML = STATE.staff.map(s=>`
-    <tr>
-      <td><input type="text" value="${escapeHtml(s.name)}" data-id="${s.id}" class="staffName" placeholder="Full name"></td>
-      <td>
-        <select data-id="${s.id}" class="staffStatus">
-          <option value="active" ${s.status==="active"?"selected":""}>Active</option>
-          <option value="inactive" ${s.status==="inactive"?"selected":""}>Inactive</option>
-        </select>
-      </td>
-      <td><button class="btn danger small" data-id="${s.id}" data-action="delete">Delete</button></td>
-    </tr>
-  `).join("") || `<tr><td colspan="3" style="color:var(--ink-faint);">No staff yet.</td></tr>`;
-
-  rows.querySelectorAll(".staffName").forEach(inp=>{
-    inp.addEventListener("change", e=>{
-      getStaffById(e.target.dataset.id).name = e.target.value.trim() || "Unnamed";
-      saveState(); renderAll();
-    });
-  });
-  rows.querySelectorAll(".staffStatus").forEach(sel=>{
-    sel.addEventListener("change", e=>{
-      getStaffById(e.target.dataset.id).status = e.target.value;
-      saveState(); renderAll();
-    });
-  });
-  rows.querySelectorAll("[data-action=delete]").forEach(btn=>{
-    btn.addEventListener("click", e=>{
-      const s = getStaffById(e.target.dataset.id);
-      if(confirm(`Delete ${s.name} permanently? Their past hours in History will keep their name, but this can't be undone.\n\nTip: choose "Inactive" instead if you just want to stop scheduling them.`)){
-        STATE.staff = STATE.staff.filter(x=>x.id!==s.id);
-        saveState(); renderAll();
-      }
-    });
-  });
-  document.getElementById("addStaffBtn").addEventListener("click", ()=>{
-    STATE.staff.push({id:uid("s"), name:"New staff member", status:"active", email:""});
-    saveState(); RENDERERS.staff();
-  });
-};
-
-/* ---------------------------------------------------------------------
-   PUBLIC HOLIDAYS
-   --------------------------------------------------------------------- */
-RENDERERS.holidays = function(){
-  const el = document.getElementById("page-holidays");
-  el.innerHTML = `
-    <h1 class="page-title">Public Holidays</h1>
-    <p class="page-sub">Enter each holiday once. The Roster automatically highlights these dates, and the Dashboard warns you before they arrive.</p>
-    <div class="card">
-      <table>
-        <thead><tr><th style="width:180px;">Date</th><th>Holiday name</th><th style="width:90px;"></th></tr></thead>
-        <tbody id="holRows"></tbody>
-      </table>
-      <div style="margin-top:14px;">
-        <button class="btn primary" id="addHolBtn">+ Add holiday</button>
-      </div>
-    </div>
-  `;
-  const sorted = [...STATE.holidays].sort((a,b)=> a.date.localeCompare(b.date));
-  const rows = document.getElementById("holRows");
-  rows.innerHTML = sorted.map((h,idx)=>`
-    <tr>
-      <td><input type="date" value="${h.date}" data-idx="${STATE.holidays.indexOf(h)}" class="holDate"></td>
-      <td><input type="text" value="${escapeHtml(h.name)}" data-idx="${STATE.holidays.indexOf(h)}" class="holName" placeholder="Holiday name"></td>
-      <td><button class="btn danger small" data-idx="${STATE.holidays.indexOf(h)}" data-action="delete">Delete</button></td>
-    </tr>
-  `).join("") || `<tr><td colspan="3" style="color:var(--ink-faint);">No holidays added yet.</td></tr>`;
-
-  rows.querySelectorAll(".holDate").forEach(inp=>{
-    inp.addEventListener("change", e=>{ STATE.holidays[e.target.dataset.idx].date = e.target.value; saveState(); renderAll(); });
-  });
-  rows.querySelectorAll(".holName").forEach(inp=>{
-    inp.addEventListener("change", e=>{ STATE.holidays[e.target.dataset.idx].name = e.target.value; saveState(); renderAll(); });
-  });
-  rows.querySelectorAll("[data-action=delete]").forEach(btn=>{
-    btn.addEventListener("click", e=>{
-      STATE.holidays.splice(Number(e.target.dataset.idx),1);
-      saveState(); RENDERERS.holidays();
-    });
-  });
-  document.getElementById("addHolBtn").addEventListener("click", ()=>{
-    STATE.holidays.push({date: isoDate(new Date()), name:"New holiday"});
-    saveState(); RENDERERS.holidays();
-  });
-};
-
-/* ---------------------------------------------------------------------
-   DISCOUNT DAYS — mark fuel discount days in advance so you remember to
-   roster extra staff. Highlighted in a fun, distinct way on the Roster
-   and Team Roster so staff notice it too.
-   --------------------------------------------------------------------- */
-RENDERERS.discounts = function(){
-  const el = document.getElementById("page-discounts");
-  el.innerHTML = `
-    <h1 class="page-title">Discount Days</h1>
-    <p class="page-sub">Mark fuel discount days in advance — they'll be highlighted on the Roster (so you remember to add extra staff) and on the Team Roster (so everyone can see it's a busy day).</p>
-    <div class="card">
-      <table>
-        <thead><tr><th style="width:180px;">Date</th><th style="width:180px;">Discount</th><th style="width:90px;"></th></tr></thead>
-        <tbody id="discRows"></tbody>
-      </table>
-      <div style="margin-top:14px;">
-        <button class="btn primary" id="addDiscBtn">+ Add discount day</button>
-      </div>
-    </div>
-  `;
-  const sorted = [...STATE.discountDays].sort((a,b)=> a.date.localeCompare(b.date));
-  const rows = document.getElementById("discRows");
-  rows.innerHTML = sorted.map(d=>`
-    <tr>
-      <td><input type="date" value="${d.date}" data-idx="${STATE.discountDays.indexOf(d)}" class="discDate"></td>
-      <td>
-        <div style="display:flex; align-items:center; gap:6px;">
-          <input type="number" min="0" step="1" value="${d.rate}" data-idx="${STATE.discountDays.indexOf(d)}" class="discRate" style="width:70px;">
-          <span style="color:var(--ink-soft); font-size:13px;">c off / litre</span>
-        </div>
-      </td>
-      <td><button class="btn danger small" data-idx="${STATE.discountDays.indexOf(d)}" data-action="delete">Delete</button></td>
-    </tr>
-  `).join("") || `<tr><td colspan="3" style="color:var(--ink-faint);">No discount days added yet.</td></tr>`;
-
-  rows.querySelectorAll(".discDate").forEach(inp=>{
-    inp.addEventListener("change", e=>{ STATE.discountDays[e.target.dataset.idx].date = e.target.value; saveState(); renderAll(); });
-  });
-  rows.querySelectorAll(".discRate").forEach(inp=>{
-    inp.addEventListener("change", e=>{ STATE.discountDays[e.target.dataset.idx].rate = Number(e.target.value)||0; saveState(); renderAll(); });
-  });
-  rows.querySelectorAll("[data-action=delete]").forEach(btn=>{
-    btn.addEventListener("click", e=>{
-      STATE.discountDays.splice(Number(e.target.dataset.idx),1);
-      saveState(); RENDERERS.discounts();
-    });
-  });
-  document.getElementById("addDiscBtn").addEventListener("click", ()=>{
-    STATE.discountDays.push({date: isoDate(new Date()), rate: STATE.settings.defaultDiscountRate || 15});
-    saveState(); RENDERERS.discounts();
-  });
-};
-
-/* ---------------------------------------------------------------------
-   INDIVIDUAL VIEW — pick one person, see only their shifts. Print/export
-   just this page to share a roster without exposing anyone else's hours.
-   --------------------------------------------------------------------- */
-let irSelectedStaff = null;
-let irSelectedWeek = null;
-
-RENDERERS.individual = function(){
-  const el = document.getElementById("page-individual");
-  const allStaff = STATE.staff;
-  if(!irSelectedStaff && allStaff.length) irSelectedStaff = allStaff[0].id;
-  if(!irSelectedWeek) irSelectedWeek = STATE.currentWeek;
-
-  const availableWeeks = Object.keys(STATE.weeks).sort().reverse();
-  if(!availableWeeks.includes(irSelectedWeek)) irSelectedWeek = STATE.currentWeek;
-
-  const staff = getStaffById(irSelectedStaff);
-  const dates = staff ? weekDates(irSelectedWeek) : [];
-  const total = staff ? weeklyHoursFor(irSelectedWeek, staff.id) : 0;
-
-  el.innerHTML = `
-    <h1 class="page-title">Individual Roster</h1>
-    <p class="page-sub">Pick a name, then print or export this page to share it — it never shows anyone else's shifts, hours, or totals.</p>
-
-    <div class="row no-print" style="margin-bottom:16px; align-items:flex-end;">
-      <div style="min-width:220px;">
-        <label style="font-size:11.5px; font-weight:700; color:var(--ink-soft); display:block; margin-bottom:4px;">Staff member</label>
-        <select id="irEmployee">
-          ${allStaff.map(s=>`<option value="${s.id}" ${s.id===irSelectedStaff?"selected":""}>${escapeHtml(s.name)}${s.status==="inactive"?" (inactive)":""}</option>`).join("")}
-        </select>
-      </div>
-      <div style="min-width:220px;">
-        <label style="font-size:11.5px; font-weight:700; color:var(--ink-soft); display:block; margin-bottom:4px;">Week</label>
-        <select id="irWeek">
-          ${availableWeeks.map(w=>`<option value="${w}" ${w===irSelectedWeek?"selected":""}>${fmtDate(w)} – ${fmtDate(addDays(w,6))}</option>`).join("")}
-        </select>
-      </div>
-      <button class="btn" id="irPrintBtn">Print / Export PDF</button>
-    </div>
-
-    ${!staff ? `<div class="empty-state"><div class="big">No staff yet</div>Add someone on the Staff page first.</div>` : `
-    <div class="card">
-      <h2 style="font-size:16px;">${escapeHtml(staff.name)} — ${fmtDate(irSelectedWeek)} to ${fmtDate(addDays(irSelectedWeek,6))}</h2>
-      <table>
-        <thead><tr><th>Day</th><th>Date</th><th>Start</th><th>Finish</th><th>Break</th><th>Notes</th><th style="text-align:right;">Hours</th></tr></thead>
-        <tbody>
-        ${dates.map((iso,dayIdx)=>{
-          const sh = getShift(irSelectedWeek, staff.id, dayIdx);
-          const hours = computeHours(sh.start, sh.finish, sh.brk);
-          const hol = holidayForDate(iso);
-          const disc = discountForDate(iso);
-          const wknd = isWeekendIso(iso);
-          const rowCls = sh.off ? "" : hol ? "holiday" : wknd ? "weekend" : "";
-          const rowBg = sh.off ? "background:var(--grey-mid);" : "";
-          if(sh.off){
-            return `<tr style="${rowBg}">
-              <td>${DAY_NAMES[dayIdx]}</td>
-              <td>${fmtDate(iso)}</td>
-              <td colspan="4" style="color:var(--ink-faint); font-weight:700;">Day off</td>
-              <td style="text-align:right;">—</td>
-            </tr>`;
-          }
-          return `<tr class="${rowCls}">
-            <td>${DAY_NAMES[dayIdx]}</td>
-            <td>${fmtDate(iso)}${hol?` — <strong>${escapeHtml(hol.name)}</strong>`:""}${disc?` <span class="discount-badge">\u{1F389} ${disc.rate}c off</span>`:""}</td>
-            <td>${sh.start?to12h(sh.start):"—"}</td>
-            <td>${sh.finish?to12h(sh.finish):"—"}</td>
-            <td>${sh.brk?sh.brk+" min":"—"}</td>
-            <td>${escapeHtml(sh.notes||"")}</td>
-            <td style="text-align:right; font-weight:700;">${hours && hours>0 ? hours.toFixed(2) : "—"}</td>
-          </tr>`;
-        }).join("")}
-        </tbody>
-        <tfoot><tr><td colspan="6" style="font-weight:700;">Total hours this week</td><td style="text-align:right; font-weight:700; font-size:16px; color:var(--accent-dk);">${total.toFixed(2)}</td></tr></tfoot>
-      </table>
-    </div>
-    `}
-  `;
-
-
-  if(staff){
-    document.getElementById("irEmployee").addEventListener("change", e=>{ irSelectedStaff = e.target.value; RENDERERS.individual(); });
-    document.getElementById("irWeek").addEventListener("change", e=>{ irSelectedWeek = e.target.value; RENDERERS.individual(); });
-    document.getElementById("irPrintBtn").addEventListener("click", ()=> window.print());
-  }
-};
-
-/* ---------------------------------------------------------------------
-   HISTORY — browse every past week, search hours by employee
-   --------------------------------------------------------------------- */
-let histSelectedWeek = null;
-let histSearchEmployee = null;
-
-RENDERERS.history = function(){
-  const el = document.getElementById("page-history");
-  const weeks = Object.keys(STATE.weeks).sort().reverse();
-  if(!histSelectedWeek || !weeks.includes(histSelectedWeek)) histSelectedWeek = weeks[0];
-  if(!histSearchEmployee && STATE.staff.length) histSearchEmployee = STATE.staff[0].id;
-
-  const dates = histSelectedWeek ? weekDates(histSelectedWeek) : [];
-  const staffWithHours = STATE.staff.map(s=>({s, hours: histSelectedWeek ? weeklyHoursFor(histSelectedWeek, s.id) : 0}))
-    .filter(x => x.hours > 0 || x.s.status === "active");
-
-  // search results: every week this employee has hours in
-  let searchRows = [];
-  let allTimeTotal = 0;
-  if(histSearchEmployee){
-    for(const w of weeks){
-      const h = weeklyHoursFor(w, histSearchEmployee);
-      if(h > 0){ searchRows.push({week:w, hours:h}); allTimeTotal += h; }
-    }
-  }
-
-  el.innerHTML = `
-    <h1 class="page-title">History</h1>
-    <p class="page-sub">Every week is kept — nothing is overwritten. Browse a past week, or search total hours by employee.</p>
-
-    <div class="grid-2">
-      <div class="card">
-        <h2>Browse a week</h2>
-        <select id="histWeekSelect" style="max-width:320px; margin-bottom:14px;">
-          ${weeks.map(w=>`<option value="${w}" ${w===histSelectedWeek?"selected":""}>${fmtDate(w)} – ${fmtDate(addDays(w,6))} ${w===STATE.currentWeek?"(current)":""}</option>`).join("")}
-        </select>
-        ${!histSelectedWeek ? `<div class="empty-state">No weeks recorded yet.</div>` : `
-        <table>
-          <thead><tr><th>Staff</th>${dates.map((iso,i)=>`<th>${DAY_NAMES_SHORT[i]} ${fmtDate(iso,{day:"numeric",month:"numeric"})}</th>`).join("")}<th style="text-align:right;">Total</th></tr></thead>
-          <tbody>
-          ${staffWithHours.map(({s,hours})=>`
-            <tr>
-              <td class="name-cell">${escapeHtml(s.name)}${s.status==="inactive"?'<span class="status-pill inactive">inactive</span>':""}</td>
-              ${dates.map((iso,dayIdx)=>{
-                const sh = getShift(histSelectedWeek, s.id, dayIdx);
-                return `<td style="font-size:12px;">${sh.off ? "Day off" : (sh.start&&sh.finish ? to12h(sh.start)+"–"+to12h(sh.finish) : "—")}</td>`;
-              }).join("")}
-              <td style="text-align:right; font-weight:700;">${hours.toFixed(2)}</td>
-            </tr>
-          `).join("") || `<tr><td colspan="9" style="color:var(--ink-faint);">No shifts recorded for this week.</td></tr>`}
-          </tbody>
-          <tfoot><tr><td style="font-weight:700;">Total labour hours</td><td colspan="7"></td><td style="text-align:right; font-weight:700;">${totalLabourHours(histSelectedWeek).toFixed(2)}</td></tr></tfoot>
-        </table>
-        `}
-      </div>
-
-      <div class="card">
-        <h2>Search by employee</h2>
-        <select id="searchEmployee" style="margin-bottom:14px;">
-          ${STATE.staff.map(s=>`<option value="${s.id}" ${s.id===histSearchEmployee?"selected":""}>${escapeHtml(s.name)}</option>`).join("")}
-        </select>
-        <div class="row" style="margin-bottom:14px;">
-          <div class="kpi"><div class="label">All-time hours</div><div class="value">${allTimeTotal.toFixed(2)}</div></div>
-          <div class="kpi"><div class="label">Weeks worked</div><div class="value">${searchRows.length}</div></div>
-        </div>
-        <table>
-          <thead><tr><th>Week</th><th style="text-align:right;">Hours</th></tr></thead>
-          <tbody>
-          ${searchRows.slice().reverse().map(r=>`<tr><td>${fmtDate(r.week)}</td><td style="text-align:right;">${r.hours.toFixed(2)}</td></tr>`).join("") || `<tr><td colspan="2" style="color:var(--ink-faint);">No recorded hours yet.</td></tr>`}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  `;
-
-  const wsel = document.getElementById("histWeekSelect");
-  if(wsel) wsel.addEventListener("change", e=>{ histSelectedWeek = e.target.value; RENDERERS.history(); });
-  const esel = document.getElementById("searchEmployee");
-  if(esel) esel.addEventListener("change", e=>{ histSearchEmployee = e.target.value; RENDERERS.history(); });
-};
-
-/* ---------------------------------------------------------------------
-   SETTINGS & BACKUP — export/import is important: localStorage is the
-   only copy of this data, tied to this one browser on this one computer.
-   --------------------------------------------------------------------- */
-RENDERERS.settings = function(){
-  const el = document.getElementById("page-settings");
-  const weekCount = Object.keys(STATE.weeks).length;
-  const staffCount = STATE.staff.length;
-  el.innerHTML = `
-    <h1 class="page-title">Settings &amp; Backup</h1>
-    <p class="page-sub">This roster saves itself automatically and syncs across every device. Still worth backing up occasionally as extra insurance.</p>
-
-    <div class="card">
-      <h2>Back up your data</h2>
-      <p style="color:var(--ink-soft); margin:0 0 14px 0;">Currently storing ${staffCount} staff and ${weekCount} week${weekCount===1?"":"s"} of rosters.</p>
-      <button class="btn primary" id="exportBtn">Download backup (.json)</button>
-      <label class="btn" style="margin-left:10px;">
-        Restore from backup
-        <input type="file" id="importFile" accept="application/json" style="display:none;">
-      </label>
-    </div>
-
-    <div class="card">
-      <h2>Colour legend</h2>
-      <div style="display:flex; flex-wrap:wrap; gap:18px; font-size:13px;">
-        <div><span class="legend-swatch" style="background:var(--weekend);"></span>Weekend</div>
-        <div><span class="legend-swatch" style="background:var(--holiday);"></span>Public holiday</div>
-        <div><span class="legend-swatch" style="background:var(--warn-bg);"></span>Needs attention</div>
-        <div><span class="legend-swatch" style="background:var(--ok-bg);"></span>OK</div>
-        <div><span class="legend-swatch" style="background:var(--accent-tint);"></span>Info</div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Weekly workflow</h2>
-      <ol style="margin:0; padding-left:18px; line-height:1.9; color:var(--ink-soft);">
-        <li>Open <strong>Roster</strong> and click <strong>+ New week</strong> — dates and day names roll forward automatically.</li>
-        <li>Choose whether to copy last week's shift pattern across, or start blank.</li>
-        <li>Adjust the shifts that changed. Everything else — hours, totals, warnings — updates on its own.</li>
-      </ol>
-    </div>
-
-    <div class="card">
-      <h2>Reset</h2>
-      <p style="color:var(--ink-soft); margin:0 0 14px 0;">Wipes all staff, shifts, and history from this browser. Cannot be undone — back up first.</p>
-      <button class="btn danger" id="resetBtn">Erase all data</button>
-    </div>
-  `;
-
-  document.getElementById("exportBtn").addEventListener("click", ()=>{
-    const blob = new Blob([JSON.stringify(STATE, null, 2)], {type:"application/json"});
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "weekly-roster-backup-"+isoDate(new Date())+".json";
-    a.click();
-    showToast("Backup downloaded");
-  });
-
-  document.getElementById("importFile").addEventListener("change", (e)=>{
-    const file = e.target.files[0];
-    if(!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try{
-        const parsed = JSON.parse(reader.result);
-        if(!parsed.staff || !parsed.weeks) throw new Error("not a roster backup file");
-        if(confirm("This will replace all current data with the backup file. Continue?")){
-          STATE = parsed;
-          saveState();
-          showToast("Backup restored");
-          renderAll();
-          showPage("dashboard");
+            } catch (e) {}
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* ---------- Token system: sleek dashboard, light + dark ---------- */
+        :root{
+            --paper:#FFFFFF;
+            --paper-panel:#FFFFFF;
+            --panel-alt:#F5F6FB;
+            --bg-tint:#EEF0F7;
+            --rule:#E3E6EF;
+            --rule-strong:#CBD1E0;
+            --ink:#12141C;
+            --ink-soft:#6B7280;
+            --forest:#6D5EF5;
+            --forest-deep:#5847E8;
+            --brass:#0E93AE;
+            --brass-deep:#0B7A91;
+            --rust:#E0362C;
+            --rust-deep:#C22A21;
+            --success:#15A362;
+            --success-deep:#0F8850;
+            --accent-2:#22D3EE;
+            --glow:rgba(109,94,245,0.22);
+            --accent-soft:rgba(109,94,245,0.08);
+            --danger-soft:rgba(224,54,44,0.08);
+            --warning-bg:#FDECEA;
+            --warning-border:#F3C6BC;
+            --header-bg:#12141C;
+            --header-text:#FFFFFF;
+            --overlay:rgba(10,12,20,0.55);
+            --font-display:'Plus Jakarta Sans', sans-serif;
+            --font-body:'Plus Jakarta Sans', sans-serif;
+            --font-mono:'JetBrains Mono', monospace;
         }
-      }catch(err){
-        alert("Could not read this file — it doesn't look like a Weekly Roster backup.");
-      }
-    };
-    reader.readAsText(file);
-  });
+        [data-theme="dark"]{
+            --paper:#12141C;
+            --paper-panel:#12141C;
+            --panel-alt:#171A24;
+            --bg-tint:#0A0C12;
+            --rule:#242836;
+            --rule-strong:#323747;
+            --ink:#EDEFF6;
+            --ink-soft:#8B93A6;
+            --forest:#8C7BFF;
+            --forest-deep:#A594FF;
+            --brass:#22D3EE;
+            --brass-deep:#67E8F9;
+            --rust:#F2665C;
+            --rust-deep:#F98F87;
+            --success:#34D399;
+            --success-deep:#6EE7B7;
+            --accent-2:#8C7BFF;
+            --glow:rgba(140,123,255,0.4);
+            --accent-soft:rgba(140,123,255,0.14);
+            --danger-soft:rgba(242,102,92,0.14);
+            --warning-bg:rgba(242,102,92,0.12);
+            --warning-border:rgba(242,102,92,0.35);
+            --header-bg:#1B1F2B;
+            --header-text:#EDEFF6;
+            --overlay:rgba(4,5,9,0.7);
+        }
+        @media (prefers-reduced-motion: reduce){
+            *{ animation-duration:0.001ms !important; animation-iteration-count:1 !important; transition-duration:0.001ms !important; }
+        }
 
-  document.getElementById("resetBtn").addEventListener("click", ()=>{
-    if(confirm("Erase ALL staff, shifts, holidays and history from this browser? This cannot be undone.")){
-      STATE = defaultState();
-      saveState();
-      renderAll();
-      showPage("dashboard");
-      showToast("All data erased");
-    }
-  });
-};
+        html, body{ background:var(--bg-tint); color:var(--ink); font-family:var(--font-body); }
+        body{ position:relative; transition:background .2s ease, color .2s ease; }
+        body::before{
+            content:''; position:fixed; inset:0; z-index:-1; pointer-events:none;
+            background:
+                radial-gradient(600px circle at 12% -8%, var(--glow), transparent 60%),
+                radial-gradient(480px circle at 108% 8%, rgba(34,211,238,0.16), transparent 60%);
+        }
+        h1, h2, .display{ font-family:var(--font-display); letter-spacing:-0.01em; }
+        .mono{ font-family:var(--font-mono); }
 
-/* ---------------------------------------------------------------------
-   INIT
-   --------------------------------------------------------------------- */
-async function startApp(){
-  await loadState();
-  showPage("dashboard");
-}
-</script>
+        .text-ink{ color:var(--ink); }
+        .text-ink-soft{ color:var(--ink-soft); }
+        .text-brass{ color:var(--brass); }
+        .text-forest{ color:var(--forest); }
+        .text-rust{ color:var(--rust); }
+
+        .panel{ background:var(--paper-panel); border:1px solid var(--rule); transition:background .2s ease, border-color .2s ease; }
+        .panel-title{ font-family:var(--font-display); font-weight:600; color:var(--ink); border-bottom:1px solid var(--rule); }
+
+        /* Logo mark */
+        .logo-mark{
+            width:44px; height:44px; border-radius:13px; flex-shrink:0;
+            background:linear-gradient(135deg, var(--forest), var(--accent-2));
+            display:flex; align-items:center; justify-content:center;
+            box-shadow:0 6px 20px var(--glow);
+        }
+        .logo-mark svg{ width:22px; height:22px; color:#fff; }
+
+        /* Chip / pill buttons */
+        .btn-chip{
+            display:inline-flex; align-items:center; gap:6px;
+            padding:8px 14px; border-radius:999px;
+            font-size:0.8125rem; font-weight:600; font-family:var(--font-body);
+            border:1px solid var(--rule-strong); background:var(--panel-alt); color:var(--ink-soft);
+            transition:all .15s ease;
+        }
+        .btn-chip svg{ width:15px; height:15px; }
+        .btn-chip:hover{ border-color:var(--forest); color:var(--forest); background:var(--paper-panel); }
+        .btn-chip.danger:hover{ border-color:var(--rust); color:var(--rust); }
+        .btn-chip.primary{ border-color:var(--forest); color:var(--forest); }
+        .btn-chip.primary:hover{ background:var(--forest); color:#fff; }
+
+        .pdf-menu{
+            position:absolute; top:calc(100% + 6px); right:0; z-index:50; min-width:150px;
+            background:var(--paper-panel); border:1px solid var(--rule-strong); border-radius:10px;
+            box-shadow:0 14px 32px rgba(0,0,0,0.22); padding:5px;
+        }
+        .pdf-menu-item{
+            display:flex; align-items:center; gap:8px; width:100%; text-align:left;
+            padding:8px 10px; border-radius:7px; font-size:0.8125rem; color:var(--ink);
+        }
+        .pdf-menu-item svg{ width:15px; height:15px; color:var(--ink-soft); flex-shrink:0; }
+        .pdf-menu-item:hover{ background:var(--accent-soft); }
+
+        /* Theme toggle */
+        .theme-toggle{
+            width:40px; height:40px; border-radius:12px; flex-shrink:0;
+            border:1px solid var(--rule-strong); background:var(--panel-alt);
+            display:flex; align-items:center; justify-content:center;
+            color:var(--ink-soft); cursor:pointer; transition:all .15s ease;
+        }
+        .theme-toggle:hover{ border-color:var(--forest); color:var(--forest); }
+        .theme-toggle svg{ width:19px; height:19px; }
+        [data-theme="dark"] .icon-sun{ display:none; }
+        [data-theme="light"] .icon-moon, :root:not([data-theme]) .icon-moon{ display:none; }
+
+        /* Stat pills */
+        .stat-pill{
+            display:inline-flex; align-items:center; gap:6px;
+            padding:6px 12px; border-radius:999px;
+            background:var(--panel-alt); border:1px solid var(--rule);
+            font-family:var(--font-mono); font-size:0.75rem; color:var(--ink-soft);
+            white-space:nowrap;
+        }
+        .stat-pill b{ color:var(--ink); font-weight:600; }
+        .stat-pill.warn b{ color:var(--rust); }
+
+        /* Warning banner */
+        .warning-banner{ background:var(--warning-bg); color:var(--rust-deep); border:1px solid var(--warning-border); }
+
+        /* Drop zone -- compact horizontal bar */
+        #drop-zone{
+            border:2px dashed var(--rule-strong);
+            background:var(--panel-alt);
+            display:flex; align-items:center; gap:14px;
+            transition:all .2s ease;
+        }
+        #drop-zone:hover, #drop-zone.drag-over{
+            border-color:var(--forest);
+            background:var(--paper-panel);
+            box-shadow:0 0 0 4px var(--accent-soft);
+        }
+        .dz-icon-wrap{
+            width:40px; height:40px; border-radius:11px; flex-shrink:0;
+            background:linear-gradient(135deg, var(--forest), var(--accent-2));
+            display:flex; align-items:center; justify-content:center;
+            box-shadow:0 4px 14px var(--glow);
+        }
+        .dz-icon-wrap svg{ width:20px; height:20px; color:#fff; }
+        .dz-title{ color:var(--ink); font-family:var(--font-display); font-weight:600; font-size:0.9rem; line-height:1.3; }
+        .dz-sub{ color:var(--ink-soft); font-size:0.75rem; }
+
+        /* Loading */
+        #loading{ color:var(--brass-deep); font-family:var(--font-mono); }
+
+        /* Totals panel */
+        #grand-total{ color:var(--forest); font-family:var(--font-mono); }
+        .legend-row{ border-bottom:1px solid var(--rule); }
+        .legend-dot{ width:9px; height:9px; border-radius:50%; display:inline-block; flex-shrink:0; }
+        .legend-name{ color:var(--ink-soft); }
+        .legend-code{ color:var(--ink); font-weight:600; font-size:12px; }
+        .legend-amount{ color:var(--ink); font-family:var(--font-mono); font-weight:600; }
+
+        /* Table */
+        table thead tr{ background:var(--header-bg); color:var(--header-text); }
+        table thead th{ font-family:var(--font-body); }
+        .item-row{ border-bottom:1px solid var(--rule); }
+        .item-row:hover{ background:var(--panel-alt); }
+        .item-row:nth-child(even){ background:rgba(125,125,140,0.04); }
+        .date-input{ border:1px solid var(--rule-strong); color:var(--ink); font-family:var(--font-mono); background:var(--paper-panel); }
+        .date-input:focus{ border-color:var(--forest); outline:none; }
+        .desc-input{ border:1px solid transparent; color:var(--ink); font-family:var(--font-body); background:transparent; }
+        .desc-input:hover{ border-color:var(--rule-strong); }
+        .desc-input:focus{ border-color:var(--forest); background:var(--paper-panel); outline:none; box-shadow:0 0 0 3px var(--accent-soft); }
+        .account-select{ border:1px solid var(--rule-strong); color:var(--ink); background:var(--paper-panel); font-family:var(--font-body); }
+
+        /* Searchable account picker (replaces a plain long dropdown for 145 accounts) */
+        .acc-combo{ position:relative; }
+        .account-search-input{
+            width:100%; border-radius:8px; padding:8px 10px; font-size:0.8125rem;
+            border:1px solid var(--rule-strong); background:var(--paper-panel); color:var(--ink);
+            outline:none; cursor:pointer; font-family:var(--font-body);
+        }
+        .account-search-input:focus{ border-color:var(--forest); box-shadow:0 0 0 3px var(--accent-soft); cursor:text; }
+        .acc-combo-panel{
+            position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:40; min-width:280px;
+            background:var(--paper-panel); border:1px solid var(--rule-strong); border-radius:10px;
+            box-shadow:0 14px 32px rgba(0,0,0,0.22); max-height:320px; overflow-y:auto; padding:5px;
+        }
+        .acc-combo-item{
+            display:flex; align-items:center; gap:8px; padding:7px 8px; border-radius:7px;
+            font-size:0.8125rem; cursor:pointer;
+        }
+        .acc-combo-item:hover, .acc-combo-item.active{ background:var(--accent-soft); }
+        .acc-combo-item .dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+        .acc-combo-item .code{ font-family:var(--font-mono); font-weight:600; color:var(--ink); flex-shrink:0; }
+        .acc-combo-item .name{ color:var(--ink-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex-grow:1; }
+        .acc-combo-item .cat-tag{ font-size:9.5px; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-soft); background:var(--panel-alt); padding:2px 6px; border-radius:999px; flex-shrink:0; }
+        .acc-combo-empty{ padding:16px 10px; text-align:center; color:var(--ink-soft); font-size:0.8125rem; }
+        .acc-combo-count{ padding:4px 8px 6px; font-size:10.5px; color:var(--ink-soft); border-bottom:1px solid var(--rule); margin-bottom:4px; }
+        .account-select:focus{ border-color:var(--forest); outline:none; }
+        .amount-input{ border:1px solid var(--rule-strong); color:var(--ink); font-family:var(--font-mono); background:var(--paper-panel); }
+        .amount-input:focus{ border-color:var(--forest); outline:none; }
+        .amount-input.is-credit{ color:var(--success); }
+        .ignore-btn{ color:var(--ink-soft); }
+        .attach-btn{
+            display:inline-flex; align-items:center; gap:5px;
+            padding:4px 9px; border-radius:999px; font-size:11px; font-weight:600;
+            border:1px dashed var(--rule-strong); color:var(--brass-deep); background:transparent;
+            cursor:pointer; transition:all .15s ease;
+        }
+        .attach-btn svg{ width:12px; height:12px; }
+        .attach-btn:hover{ border-color:var(--brass); background:var(--accent-soft); }
+        .breakdown-line{ font-size:10.5px; color:var(--ink-soft); margin-top:3px; display:block; line-height:1.5; font-family:var(--font-mono); }
+        .breakdown-row{ display:flex; align-items:flex-start; gap:8px; margin-top:2px; }
+        .breakdown-row .breakdown-line{ margin-top:0; flex:1; }
+        .breakdown-edit-btn{
+            display:inline-flex; align-items:center; gap:3px; flex-shrink:0;
+            font-size:10.5px; font-weight:600; color:var(--brass-deep);
+            padding:1px 6px; border-radius:999px; border:1px solid var(--rule-strong);
+            background:transparent; cursor:pointer; transition:all .15s ease;
+        }
+        .breakdown-edit-btn svg{ width:10px; height:10px; }
+        .breakdown-edit-btn:hover{ border-color:var(--brass); background:var(--accent-soft); }
+        .breakdown-edit-row{ align-items:center; }
+        .breakdown-amount-input{ border:1px solid var(--rule-strong); color:var(--ink); background:var(--paper-panel); font-family:var(--font-mono); }
+        .breakdown-amount-input:focus{ border-color:var(--forest); outline:none; }
+        .ignore-btn:hover{ color:var(--rust); }
+        .add-btn{ color:var(--forest); font-weight:600; }
+        .add-btn:hover{ color:var(--forest-deep); }
+        .table-footer{ background:var(--paper-panel); border-top:1px solid var(--rule); }
+
+        /* Confidence badges -- sleek pill + dot */
+        .conf-badge{
+            display:inline-flex; align-items:center; gap:5px;
+            font-family:var(--font-mono); font-size:11px; font-weight:500; letter-spacing:0.02em;
+            padding:4px 10px; border-radius:999px;
+            background:var(--panel-alt); border:1px solid var(--rule);
+        }
+        .conf-badge::before{ content:''; width:6px; height:6px; border-radius:50%; background:currentColor; flex-shrink:0; }
+        .conf-high{ color:var(--success); }
+        .conf-med{ color:var(--brass); }
+        .conf-low{ color:var(--rust); background:var(--danger-soft); }
+        .conf-manual{ color:var(--ink-soft); }
+        .conf-excluded{ color:var(--ink-soft); border-style:dashed; }
+
+        .confirm-btn{
+            width:24px; height:24px; border-radius:7px; flex-shrink:0;
+            display:flex; align-items:center; justify-content:center;
+            border:1px solid var(--rule-strong); background:var(--paper-panel);
+            color:var(--rule-strong); cursor:pointer; transition:all .15s ease;
+        }
+        .confirm-btn svg{ width:13px; height:13px; }
+        .confirm-btn:hover{ border-color:var(--forest); color:var(--forest); }
+        .confirm-btn.confirmed{ border-color:var(--success); background:var(--success); color:#fff; }
+        .confirm-btn.confirmed:hover{ filter:brightness(1.08); }
+
+        /* Modal */
+        .modal-overlay{ background:var(--overlay); }
+        .modal-card{ background:var(--paper-panel); border:1px solid var(--rule); }
+        .modal-title{ font-family:var(--font-display); font-weight:600; color:var(--ink); }
+        .modal-sub{ color:var(--ink-soft); }
+        .modal-close{ color:var(--ink-soft); }
+        .modal-close:hover{ color:var(--ink); }
+        .modal-footer{ background:var(--panel-alt); border-top:1px solid var(--rule); }
+        .btn-secondary{ color:var(--ink-soft); }
+        .btn-secondary:hover{ background:var(--rule); color:var(--ink); }
+        .btn-primary{ background:linear-gradient(135deg, var(--forest), var(--accent-2)); color:#fff; box-shadow:0 4px 14px var(--glow); }
+        .btn-primary:hover{ filter:brightness(1.08); }
+        .acc-code, .acc-name{ border:1px solid var(--rule-strong); color:var(--ink); background:var(--paper-panel); font-family:var(--font-body); }
+        .acc-code{ font-family:var(--font-mono); }
+        .acc-code:focus, .acc-name:focus{ border-color:var(--forest); outline:none; }
+        .acc-swatch{ width:12px; height:12px; border-radius:50%; display:inline-block; }
+        .field-label{ color:var(--ink-soft); }
+
+        .hide{ display:none !important; }
+
+        /* ---------- Printable coded-statement export ---------- */
+        .print-report{ display:none; }
+        @media print{
+            html, body{ background:#fff !important; }
+            body *{ visibility:hidden; }
+            #print-report, #print-report *{ visibility:visible; }
+            #print-report{ display:block !important; position:absolute; top:0; left:0; width:100%; padding:10mm 4mm; }
+            #print-report h1{ font-size:16px; margin-bottom:2px; color:#000; font-family:Arial, sans-serif; }
+            #print-report .print-sub{ font-size:10px; color:#555; margin-bottom:10px; font-family:Arial, sans-serif; }
+            .print-meta-table{ width:100%; margin-bottom:14px; font-size:10.5px; border-collapse:collapse; font-family:Arial, sans-serif; }
+            .print-meta-table td{ padding:2px 10px 2px 0; color:#000; }
+            .print-meta-table td.label{ font-weight:700; color:#333; width:110px; }
+            .print-table{ width:100%; border-collapse:collapse; margin-bottom:16px; font-size:10.5px; font-family:Arial, sans-serif; }
+            .print-table th{ text-align:left; border-bottom:1.5px solid #000; padding:5px 6px; font-size:9.5px; text-transform:uppercase; color:#000; }
+            .print-table td{ border-bottom:1px solid #ccc; padding:4px 6px; color:#000; }
+            .print-table td.right, .print-table th.right{ text-align:right; font-variant-numeric:tabular-nums; }
+            .print-table tr{ page-break-inside:avoid; }
+            .needs-review-cell{ color:#a6402a; font-weight:700; }
+            .print-warning{ background:#fdecea; border:1px solid #d9a29a; padding:7px 10px; margin-bottom:14px; font-size:10.5px; color:#7c2e1e; font-family:Arial, sans-serif; }
+            .print-report h2{ font-size:12.5px; margin:16px 0 6px; color:#000; font-family:Arial, sans-serif; }
+            .print-footer{ font-size:9px; color:#666; margin-top:18px; font-family:Arial, sans-serif; }
+            @page{ margin:14mm 12mm; }
+        }
+        @media (max-width:640px){
+            header h1{ font-size:1.35rem !important; }
+            #drop-zone{ flex-direction:column; text-align:center; }
+        }
+        #authGate{
+            position:fixed; inset:0; background:#F5F6FB; z-index:5000;
+            display:flex; align-items:center; justify-content:center;
+        }
+        #authGate .box{
+            width:100%; max-width:360px; background:#fff; border:1px solid #E3E6EF;
+            border-radius:10px; padding:30px 26px; text-align:center; font-family:sans-serif;
+        }
+        #authGate h2{margin:0 0 6px; font-size:1.2rem; color:#12141C;}
+        #authGate p{margin:0 0 20px; font-size:.85rem; color:#6B7280;}
+        #authGate input{
+            width:100%; padding:10px 12px; margin-bottom:10px; border:1px solid #E3E6EF;
+            border-radius:6px; font-size:.9rem; box-sizing:border-box;
+        }
+        #authGate button{
+            width:100%; padding:11px; background:#6D5EF5; color:#fff; border:none;
+            border-radius:6px; font-weight:700; cursor:pointer; margin-top:4px;
+        }
+        #authGate .msg{font-size:.8rem; margin-top:12px; color:#E0362C;}
+        #logoutCorner{
+            position:fixed; bottom:14px; left:14px; z-index:900; font-size:11px;
+            background:#fff; border:1px solid #E3E6EF; padding:5px 10px; border-radius:20px;
+            color:#6B7280; cursor:pointer;
+        }
+    </style>
+    <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyAPwS1GFwqj6KR4dQgxifykh9HS5km6OX4",
+            authDomain: "alpha-7fce5.firebaseapp.com",
+            projectId: "alpha-7fce5",
+            storageBucket: "alpha-7fce5.firebasestorage.app",
+            messagingSenderId: "10647816245",
+            appId: "1:10647816245:web:fbfb982260cf2eef97097c"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+        const ccDocRef = db.collection("ccSmartCoderApp").doc("main");
+        const REQUIRED_TOOL_KEY = "creditcard";
+    </script>
+</head>
+<body class="p-4 md:p-8">
+    <div id="authGate">
+      <div class="box">
+        <h2>Sign in</h2>
+        <p>Enter your login to access the Credit Card SmartCoder.</p>
+        <input type="email" id="gateEmail" placeholder="Email">
+        <input type="password" id="gatePassword" placeholder="Password">
+        <button id="gateBtn">Sign in</button>
+        <div class="msg" id="gateMsg"></div>
+      </div>
+    </div>
+    <div id="logoutCorner" style="display:none;">Log out</div>
+    <div id="appWrap" style="display:none;">
+    <div class="max-w-7xl mx-auto">
+
+        <header class="mb-6 flex justify-between items-center flex-wrap gap-4">
+            <div class="flex items-center gap-3">
+                <div class="logo-mark" aria-hidden="true">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 2L4.5 13.5H11L10 22L19 10H12.5L13 2Z"/></svg>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-bold text-ink">Statement SmartCoder</h1>
+                    <p class="text-ink-soft text-sm mt-0.5">Offline credit card statement processing with manual overrides.</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <span id="stats-pill" class="stat-pill hide"></span>
+                <button onclick="openAccountManager()" class="btn-chip">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 3v2m6-2v2M4 9h16M5 7h14a1 1 0 011 1v11a1 1 0 01-1 1H5a1 1 0 01-1-1V8a1 1 0 011-1z"/></svg>
+                    Account Codes
+                </button>
+                <button onclick="clearLearnedRules()" class="btn-chip danger">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M4 7h16M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"/></svg>
+                    Reset Rules
+                </button>
+                <div class="relative">
+                    <button onclick="togglePdfMenu()" class="btn-chip primary">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M4 20h16"/></svg>
+                        Download PDF
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" style="width:12px;height:12px;"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                    </button>
+                    <div id="pdf-menu" class="hide pdf-menu">
+                        <button onclick="exportPDF('portrait')" class="pdf-menu-item">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect x="6" y="3" width="12" height="18" rx="1.5"/></svg>
+                            Portrait
+                        </button>
+                        <button onclick="exportPDF('landscape')" class="pdf-menu-item">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect x="3" y="6" width="18" height="12" rx="1.5"/></svg>
+                            Landscape
+                        </button>
+                    </div>
+                </div>
+                <button class="theme-toggle" onclick="toggleTheme()" title="Toggle light / dark mode" aria-label="Toggle theme">
+                    <svg class="icon-sun" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+                    <svg class="icon-moon" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+                </button>
+            </div>
+        </header>
+
+        <div id="total-warning" class="hide warning-banner p-4 rounded-lg mb-6 text-sm font-semibold shadow-sm flex items-center">
+            <svg class="w-6 h-6 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+            <span id="warning-text">Warning: Coded total does not match.</span>
+        </div>
+
+        <input type="file" id="woolworths-invoice-input" class="hidden" accept="application/pdf">
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+            <div class="lg:col-span-2 flex flex-col">
+                <div id="drop-zone" class="rounded-2xl p-4 cursor-pointer">
+                    <input type="file" id="file-input" class="hidden" accept="application/pdf">
+                    <div class="dz-icon-wrap">
+                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                    </div>
+                    <div class="text-left">
+                        <p class="dz-title">Drop credit card statement PDF here or click to upload</p>
+                        <p class="dz-sub">Processed entirely on your device</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="lg:col-span-1 panel rounded-xl shadow-sm p-6 flex flex-col">
+                <h2 class="panel-title text-lg pb-2 mb-4">Category Totals</h2>
+
+                <div class="flex justify-center mb-2">
+                    <div style="position:relative; width:150px; height:150px;">
+                        <canvas id="category-chart" width="150" height="150"></canvas>
+                    </div>
+                </div>
+
+                <div id="totals-summary" class="flex-grow overflow-y-auto pr-2 text-sm space-y-0">
+                    <p class="text-ink-soft italic">Upload a statement to see totals.</p>
+                </div>
+                <div class="border-t pt-4 mt-4 flex justify-between items-center text-lg font-bold" style="border-color:var(--rule);">
+                    <span class="text-ink">Total Coded:</span>
+                    <span id="grand-total">$0.00</span>
+                </div>
+            </div>
+        </div>
+
+        <div id="loading" class="hide text-center py-4 font-medium animate-pulse">
+            Extracting transactions from statement...
+        </div>
+
+        <div class="panel rounded-xl shadow-sm overflow-hidden mb-8">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="uppercase text-xs tracking-wider">
+                            <th class="p-4 w-28">Date</th>
+                            <th class="p-4 w-4/12">Description</th>
+                            <th class="p-4 w-1/4">Account Code</th>
+                            <th class="p-4 w-32">Amount ($)</th>
+                            <th class="p-4">Confidence</th>
+                            <th class="p-4 text-right">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="transaction-body" class="text-sm">
+                        <tr id="empty-state"><td colspan="6" class="p-8 text-center text-ink-soft">No transactions loaded.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="table-footer p-3 px-4">
+                <button id="add-row-btn" class="add-btn text-sm flex items-center transition-colors">
+                    <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                    Add Missing Transaction
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Account Code Manager Modal -->
+    <div id="account-modal" class="hide modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="modal-card rounded-xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+            <div class="p-5 border-b flex justify-between items-center" style="border-color:var(--rule);">
+                <div>
+                    <h2 class="modal-title text-xl">Manage Account Codes</h2>
+                    <p class="modal-sub text-sm mt-0.5">Add new account codes or edit existing ones. Changes apply immediately to all rows.</p>
+                </div>
+                <button onclick="closeAccountManager()" class="modal-close" title="Close">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="p-5 overflow-y-auto flex-grow">
+                <input type="text" id="account-manager-search" placeholder="Search codes or names to filter this list..." autocomplete="off" class="w-full rounded-md p-2.5 text-sm outline-none mb-3" style="border:1px solid var(--rule-strong); background:var(--paper-panel); color:var(--ink);">
+                <div class="grid grid-cols-12 gap-2 text-xs font-semibold uppercase field-label mb-2 px-1">
+                    <span class="col-span-1"></span>
+                    <span class="col-span-3">Account Code</span>
+                    <span class="col-span-7">Description</span>
+                    <span class="col-span-1"></span>
+                </div>
+                <div id="account-rows"></div>
+                <button type="button" onclick="addAccountRow()" class="add-btn mt-2 text-sm flex items-center transition-colors">
+                    <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                    Add New Account Code
+                </button>
+            </div>
+            <div class="modal-footer p-5 flex justify-between items-center rounded-b-xl">
+                <button type="button" onclick="resetAccountCodes()" class="btn-chip danger">Reset to Defaults</button>
+                <div class="flex gap-3">
+                    <button type="button" onclick="closeAccountManager()" class="btn-secondary px-4 py-2 text-sm font-semibold rounded-md transition-colors">Cancel</button>
+                    <button type="button" onclick="saveAccountChanges()" class="btn-primary px-4 py-2 text-sm font-semibold rounded-md transition-colors">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Breakdown Editor Modal -->
+    <div id="breakdown-modal" class="hide modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="modal-card rounded-xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col">
+            <div class="p-5 border-b flex justify-between items-center" style="border-color:var(--rule);">
+                <div>
+                    <h2 class="modal-title text-xl">Edit Category Breakdown</h2>
+                    <p class="modal-sub text-sm mt-0.5" id="breakdown-modal-sub">Adjust how this transaction is split across accounts.</p>
+                </div>
+                <button onclick="closeBreakdownEditor()" class="modal-close" title="Close">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            <div class="p-5 overflow-y-auto flex-grow">
+                <div class="grid grid-cols-12 gap-2 text-xs font-semibold uppercase field-label mb-2 px-1">
+                    <span class="col-span-7">Account</span>
+                    <span class="col-span-4">Amount</span>
+                    <span class="col-span-1"></span>
+                </div>
+                <div id="breakdown-edit-rows"></div>
+                <button type="button" onclick="addBreakdownEditRow()" class="add-btn mt-2 text-sm flex items-center transition-colors">
+                    <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                    Add Category
+                </button>
+                <div class="mt-4 pt-3 flex justify-between items-center text-sm" style="border-top:1px solid var(--rule);">
+                    <span class="text-ink-soft">Breakdown total</span>
+                    <span id="breakdown-edit-total" class="mono font-semibold">$0.00</span>
+                </div>
+                <div class="flex justify-between items-center text-sm mt-1">
+                    <span class="text-ink-soft">Transaction amount</span>
+                    <span id="breakdown-edit-target" class="mono font-semibold">$0.00</span>
+                </div>
+                <p id="breakdown-edit-mismatch" class="hide text-xs mt-2" style="color:var(--rust);"></p>
+            </div>
+            <div class="modal-footer p-5 flex justify-end gap-3 rounded-b-xl">
+                <button type="button" onclick="closeBreakdownEditor()" class="btn-secondary px-4 py-2 text-sm font-semibold rounded-md transition-colors">Cancel</button>
+                <button type="button" onclick="saveBreakdownEdits()" class="btn-primary px-4 py-2 text-sm font-semibold rounded-md transition-colors">Save Breakdown</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Printable coded-statement export (hidden on screen, shown only when printing) -->
+    <div id="print-report" class="print-report">
+        <h1>Coded Credit Card Statement</h1>
+        <table class="print-meta-table">
+            <tr>
+                <td class="label">Account name</td><td id="print-account-name">&mdash;</td>
+                <td class="label">Statement period</td><td id="print-period">&mdash;</td>
+            </tr>
+            <tr>
+                <td class="label">Account number</td><td id="print-account-number">&mdash;</td>
+                <td class="label">Exported</td><td id="print-generated-date">&mdash;</td>
+            </tr>
+        </table>
+
+        <div id="print-review-warning" class="print-warning hide"></div>
+
+        <table class="print-table">
+            <thead>
+                <tr><th>Date</th><th>Description</th><th>Account Code</th><th class="right">Debit</th><th class="right">Credit</th></tr>
+            </thead>
+            <tbody id="print-transaction-body"></tbody>
+        </table>
+
+        <h2>Category Totals</h2>
+        <table class="print-table">
+            <thead><tr><th>Code</th><th>Category</th><th class="right">Amount</th></tr></thead>
+            <tbody id="print-totals-body"></tbody>
+        </table>
+    </div>
+    </div><!-- /#appWrap -->
+
+    <script>
+        const gateEmail = document.getElementById('gateEmail');
+        const gatePassword = document.getElementById('gatePassword');
+        const gateMsg = document.getElementById('gateMsg');
+        const authGate = document.getElementById('authGate');
+        const logoutCorner = document.getElementById('logoutCorner');
+        const appWrap = document.getElementById('appWrap');
+
+        document.getElementById('gateBtn').addEventListener('click', async () => {
+            gateMsg.textContent = '';
+            try {
+                await auth.signInWithEmailAndPassword(gateEmail.value.trim(), gatePassword.value);
+            } catch (e) {
+                gateMsg.textContent = 'Incorrect email or password.';
+            }
+        });
+        logoutCorner.addEventListener('click', () => auth.signOut());
+
+        let appHasStarted = false;
+        auth.onAuthStateChanged(async (user) => {
+            if (!user) {
+                authGate.style.display = 'flex';
+                logoutCorner.style.display = 'none';
+                appWrap.style.display = 'none';
+                return;
+            }
+            let allowed = false;
+            try {
+                const snap = await db.collection('users').doc(user.uid).get();
+                if (snap.exists) {
+                    const data = snap.data();
+                    allowed = data.role === 'admin' || (data.tools || []).includes(REQUIRED_TOOL_KEY);
+                }
+            } catch (e) { console.error(e); }
+
+            if (!allowed) {
+                gateMsg.textContent = "You don't have access to this tool.";
+                auth.signOut();
+                return;
+            }
+
+            authGate.style.display = 'none';
+            logoutCorner.style.display = 'block';
+            appWrap.style.display = 'block';
+            if (!appHasStarted) { appHasStarted = true; init(); }
+        });
+    </script>
+
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        // --- Theme toggle ---
+        function toggleTheme() {
+            const html = document.documentElement;
+            const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+            html.setAttribute('data-theme', next);
+            try { localStorage.setItem('smartcoder-theme', next); } catch (e) {}
+        }
+
+        const UNCODED_ENTRY = { id: "UNCODED", name: "⚠️ NEEDS REVIEW" };
+        // A separate, deliberate "not an expense" option -- for card payments, transfers,
+        // etc. Picking this (instead of leaving a row as UNCODED) means it won't sit in
+        // the "needs review" count forever, and won't show up in category totals.
+        const EXCLUDED_ENTRY = { id: "EXCLUDED", name: "N/A \u2014 not a coded expense (e.g. card payment/transfer)" };
+        // Set only by attachInvoiceToRow (never manually pickable) -- marks a row as
+        // covered by a category breakdown rather than one single account.
+        const SPLIT_ENTRY = { id: "SPLIT", name: "Multiple categories (see breakdown below)" };
+
+        // Your full real chart of accounts (145 accounts, from CashManager export).
+        // Fully editable via "Manage Account Codes" -- add, rename, or remove any of these.
+        const defaultChartOfAccounts = [
+            { id: '182', name: 'PRICE SUPPORT', category: 'Income' },
+            { id: '211/00', name: 'Total Sales', category: 'Income' },
+            { id: '214/002', name: 'MTA Gift Card Commission', category: 'Income' },
+            { id: '214/03', name: 'BOOKING FEES', category: 'Income' },
+            { id: '214/04', name: 'CHEQUE FEE RECEIVED', category: 'Income' },
+            { id: '215/00', name: 'SUNDRY INCOME', category: 'Income' },
+            { id: '216', name: 'Rebates Received Tyres', category: 'Income' },
+            { id: '216/00', name: 'REBATES RECEIVED', category: 'Income' },
+            { id: '216/01', name: 'Rebates Recd Capricorn', category: 'Income' },
+            { id: '216/02', name: 'Rebates Recd Tobacco', category: 'Income' },
+            { id: '217/00', name: 'LPG EXCISE DUTY REFUND', category: 'Income' },
+            { id: '219/00', name: 'INTEREST RECEIVED', category: 'Income' },
+            { id: '246', name: 'Sub-Contractor- Workshop', category: 'Direct Costs' },
+            { id: '280/00', name: 'PURCHASES - PETROL 96', category: 'Direct Costs' },
+            { id: '280/01', name: 'PURCHASES - PETROL 91', category: 'Direct Costs' },
+            { id: '280/02', name: 'PURCHASES - DIESEL', category: 'Direct Costs' },
+            { id: '280/03', name: 'PURCHASES - L.P.G.', category: 'Direct Costs' },
+            { id: '280/04', name: 'PURCHASES - FORECOURT OILS', category: 'Direct Costs' },
+            { id: '280/05', name: 'PURCHASES - C.N.G', category: 'Direct Costs' },
+            { id: '280/06', name: 'PURCHASES - TYRES & TUBES', category: 'Direct Costs' },
+            { id: '280/07', name: 'PURCHASES - ACCESSORIES', category: 'Direct Costs' },
+            { id: '280/08', name: 'PURCHASES - BATTERIES', category: 'Direct Costs' },
+            { id: '280/09', name: 'PURCHASES - GROCERIES', category: 'Direct Costs' },
+            { id: '280/10', name: 'PURCHASES - HOT FOOD', category: 'Direct Costs' },
+            { id: '280/11', name: 'PURCHASES - CIGARETTES', category: 'Direct Costs' },
+            { id: '280/12', name: 'PURCHASES - CONFECTIONERY', category: 'Direct Costs' },
+            { id: '280/13', name: 'PURCHASES - DRINKS', category: 'Direct Costs' },
+            { id: '280/14', name: 'PURCHASES - CHIPS & NUTS', category: 'Direct Costs' },
+            { id: '280/15', name: 'PURCHASES-W/SHOP OILS', category: 'Direct Costs' },
+            { id: '280/16', name: 'PURCHASES- MOWER PARTS ETC', category: 'Direct Costs' },
+            { id: '280/17', name: 'PURCHASES - WORKSHOP PARTS', category: 'Direct Costs' },
+            { id: '280/18', name: 'PURCHASES - WORKSHOP OUTWORK', category: 'Direct Costs' },
+            { id: '280/19', name: 'PURCHASES - MAGAZINES & PAPERS', category: 'Direct Costs' },
+            { id: '280/20', name: 'PURCHASES - MILK', category: 'Direct Costs' },
+            { id: '280/21', name: 'PURCHASES - FROZEN FOODS', category: 'Direct Costs' },
+            { id: '280/23', name: 'PURCHASES - BREAD', category: 'Direct Costs' },
+            { id: '280/24', name: 'PURCHASES - SUPPLEMENTS', category: 'Direct Costs' },
+            { id: '280/25', name: 'PURCHASES - STAMPS AND PHONECARDS', category: 'Direct Costs' },
+            { id: '280/26', name: 'PURCHASES WHEEL ALIGNMENT', category: 'Direct Costs' },
+            { id: '280/27', name: 'Coffee Machine', category: 'Overheads' },
+            { id: '283', name: 'FREIGHT', category: 'Direct Costs' },
+            { id: '290/16', name: 'DIRECT WAGES - WORKSHOP', category: 'Direct Costs' },
+            { id: '290/17', name: 'Wages-Profit Share', category: 'Direct Costs' },
+            { id: '291/00', name: 'CONSUMABLES - FORECOURT', category: 'Direct Costs' },
+            { id: '291/17', name: 'CONSUMABLES - WORKSHOP', category: 'Direct Costs' },
+            { id: '292/06', name: 'Tyrepower Admin Fees', category: 'Overheads' },
+            { id: '296', name: 'Workshop Comebacks', category: 'Direct Costs' },
+            { id: '297', name: 'DAMAGES AND WASTAGE', category: 'Direct Costs' },
+            { id: '298', name: 'DRIVE OFFS', category: 'Direct Costs' },
+            { id: '370', name: 'WAGES - FORECOURT', category: 'Overheads' },
+            { id: '371', name: 'WAGES - OFFICE', category: 'Overheads' },
+            { id: '372', name: 'Wages - Tyre Bay', category: 'Overheads' },
+            { id: '382', name: 'ELECTRCITY', category: 'Overheads' },
+            { id: '383', name: 'CLEANING', category: 'Overheads' },
+            { id: '410', name: 'PROTECTIVE CLOTHING/UNIFORMS', category: 'Overheads' },
+            { id: '410/00', name: 'Protective Clothing Workshop', category: 'Overheads' },
+            { id: '411', name: 'HARDWARE AND TOOLS', category: 'Overheads' },
+            { id: '413', name: 'VEHICLE EXPENSES', category: 'Overheads' },
+            { id: '413/00', name: 'Trailer R & M', category: 'Overheads' },
+            { id: '420', name: 'REPAIRS AND MAINTENANCE', category: 'Overheads' },
+            { id: '420/01', name: 'R & M W/SHOP', category: 'Overheads' },
+            { id: '452', name: 'ACCOUNTANCY FEES', category: 'Overheads' },
+            { id: '453/00', name: 'BAD DEBTS', category: 'Overheads' },
+            { id: '453/01', name: 'TILL OVER AND UNDERS', category: 'Overheads' },
+            { id: '453/02', name: 'UNPAID ITEMS & REBANKS', category: 'Overheads' },
+            { id: '453/10', name: 'ROBBERY OF PREMISES', category: 'Overheads' },
+            { id: '454', name: 'ENTERTAINMENT', category: 'Overheads' },
+            { id: '456', name: 'GENERAL EXPENSES', category: 'Overheads' },
+            { id: '457/00', name: 'LEGAL EXPENSES', category: 'Overheads' },
+            { id: '458', name: 'POSTAGES', category: 'Overheads' },
+            { id: '459', name: 'PRINTING AND STATIONERY', category: 'Overheads' },
+            { id: '459/01', name: 'PRINT & STATIONERY WORKSHOP', category: 'Overheads' },
+            { id: '460', name: 'COMPUTER EXPENSES', category: 'Overheads' },
+            { id: '461', name: 'TELEPHONE AND TOLLS', category: 'Overheads' },
+            { id: '462/00', name: 'TRAVELLING EXPENSES', category: 'Overheads' },
+            { id: '462/01', name: 'OVERSEAS TRAVEL / CONFERENCES', category: 'Overheads' },
+            { id: '463', name: 'ADVERTISING/DONATIONS', category: 'Overheads' },
+            { id: '464', name: 'CREDIT CARD COMMISSION', category: 'Overheads' },
+            { id: '464/001', name: 'MTA Gift Card Redemption', category: 'Overheads' },
+            { id: '464/003', name: 'Fuel Card Discounts', category: 'Other Items' },
+            { id: '464/01', name: 'CHALLENGE CARD COMMISSION', category: 'Overheads' },
+            { id: '465', name: 'LICENCES AND REGISTRATION', category: 'Overheads' },
+            { id: '466', name: 'BANK CHARGES', category: 'Overheads' },
+            { id: '467', name: 'Fuel Savers', category: 'Overheads' },
+            { id: '468', name: 'My Challenge Redemptions', category: 'Overheads' },
+            { id: '468/01', name: 'Gold Card Redemptions', category: 'Overheads' },
+            { id: '468/02', name: 'GREYPOWER REDEMPTIONS', category: 'Overheads' },
+            { id: '469', name: 'COLLECTION EXPENSES', category: 'Overheads' },
+            { id: '470', name: 'BARTERCARD CHARGES', category: 'Overheads' },
+            { id: '473', name: 'SECURITY', category: 'Overheads' },
+            { id: '474', name: 'STAFF TRAINING AND WELFARE', category: 'Overheads' },
+            { id: '479', name: 'FRINGE BENEFIT TAX', category: 'Overheads' },
+            { id: '480', name: 'INSURANCE', category: 'Overheads' },
+            { id: '481', name: 'RATES', category: 'Overheads' },
+            { id: '483', name: 'INTEREST - H.P', category: 'Overheads' },
+            { id: '484', name: 'INTEREST - BANK', category: 'Overheads' },
+            { id: '485', name: 'RENT', category: 'Overheads' },
+            { id: '487', name: 'LEASE OF PLANT', category: 'Overheads' },
+            { id: '488/00', name: 'ACCIDENT COMPENSATION LEVIES', category: 'Overheads' },
+            { id: '488/01', name: 'ACCIDENT COMPENSATION REFUNDS', category: 'Overheads' },
+            { id: '648', name: 'BDF Fund Pre payment', category: 'Overheads' },
+            { id: '651', name: 'Whangamata Transfers', category: 'Other Items' },
+            { id: '669/00', name: 'SUNDRY DEBTORS', category: 'Other Items' },
+            { id: '669/01', name: 'CREDIT CARDS & EFT - POS', category: 'Other Items' },
+            { id: '669/02', name: 'Banking', category: 'Other Items' },
+            { id: '669/03', name: 'Amex', category: 'Other Items' },
+            { id: '669/04', name: 'Diners', category: 'Other Items' },
+            { id: '669/05', name: 'Q Card', category: 'Other Items' },
+            { id: '669/06', name: 'BARTERCARD', category: 'Other Items' },
+            { id: '669/07', name: 'Fleet/Cardlink', category: 'Other Items' },
+            { id: '669/08', name: 'Starcard', category: 'Other Items' },
+            { id: '669/09', name: 'RD1 CARD', category: 'Other Items' },
+            { id: '669/10', name: 'F/F CARD', category: 'Other Items' },
+            { id: '676', name: 'PETROL VOUCHERS - BOUGHT AND SOLD', category: 'Other Items' },
+            { id: '676/001', name: 'MTA Gift Cards', category: 'Other Items' },
+            { id: '676/01', name: 'Challenge Promo Vouchers', category: 'Other Items' },
+            { id: '679', name: 'TILL FLOATS', category: 'Other Items' },
+            { id: '681/00', name: 'TAX RESERVE ACCOUNT', category: 'Other Items' },
+            { id: '686', name: 'FAR NORTH FUELS', category: 'Other Items' },
+            { id: '783', name: 'CHALLENGE RESERVE', category: 'Other Items' },
+            { id: '787/00', name: 'Purchase of Shares', category: 'Other Items' },
+            { id: '812/05', name: 'Payments for Plant', category: 'Other Items' },
+            { id: '840/02', name: 'FINANCE CO. REPAYMENTS', category: 'Other Items' },
+            { id: '860/02', name: 'LOAN REPAYMENTS', category: 'Other Items' },
+            { id: '876/00', name: 'COMPANY TERMINAL TAX PAID', category: 'Other Items' },
+            { id: '876/04', name: 'COMPANY TAX REFUND RECEIVED', category: 'Other Items' },
+            { id: '891/00', name: 'FUNDS INTRODUCED - OWNER', category: 'Other Items' },
+            { id: '895/00', name: 'DRAWINGS - OWNER', category: 'Other Items' },
+            { id: '896/00', name: 'PERSONAL TAXATION - OWNER', category: 'Other Items' },
+            { id: '897/00', name: 'PERSONAL INSURANCE - OWNER', category: 'Other Items' },
+            { id: '899', name: 'Suspense Prev Bankings', category: 'Other Items' },
+            { id: '910', name: 'GST PAYMENT & REFUND', category: 'Other Items' },
+            { id: '920', name: 'FBT Payments & Refunds', category: 'Other Items' },
+            { id: '954/003', name: 'GE Finance- Sam System', category: 'Direct Costs' },
+            { id: '954/004', name: 'GE Finance- Ute', category: 'Overheads' },
+            { id: '954/005', name: 'BMW FINANCE - HOLDEN UTE', category: 'Overheads' },
+            { id: '954/006', name: 'D/C Services Mitsubishi Ute', category: 'Overheads' },
+            { id: '954/008', name: 'Sam Repayments $810.30', category: 'Direct Costs' },
+            { id: '956/02', name: 'PRIME FINANCE $292.92', category: 'Other Items' },
+            { id: '964/02', name: 'Kapadia Loan Payment', category: 'Other Items' },
+            { id: '965/04', name: 'Kiwibank Loan - 03', category: 'Other Items' },
+            { id: '965/05', name: 'GE FINANCE HOIST', category: 'Overheads' },
+            { id: '967/02', name: 'Kiwi Bank Loan - 02', category: 'Other Items' },
+            { id: '998', name: 'PURCHASE AND SALE OF ASSETS', category: 'Other Items' },
+            { id: '999', name: 'SUSPENSE', category: 'Other Items' }
+        ];
+
+        // Natural sort for account codes (e.g. "280/09" before "280/10" before "283"),
+        // so the dropdown and account manager list read in the same sensible order
+        // as a real chart of accounts, instead of insertion order.
+        function naturalCompare(a, b) {
+            const re = /(\d+)|(\D+)/g;
+            const pa = String(a).match(re) || [];
+            const pb = String(b).match(re) || [];
+            const len = Math.max(pa.length, pb.length);
+            for (let i = 0; i < len; i++) {
+                const x = pa[i] || '';
+                const y = pb[i] || '';
+                if (x === y) continue;
+                const xNum = /^\d+$/.test(x), yNum = /^\d+$/.test(y);
+                if (xNum && yNum) {
+                    const diff = parseInt(x, 10) - parseInt(y, 10);
+                    if (diff !== 0) return diff;
+                } else {
+                    const cmp = x.localeCompare(y);
+                    if (cmp !== 0) return cmp;
+                }
+            }
+            return pa.length - pb.length;
+        }
+        function sortAccounts(list) {
+            return [...list].sort((a, b) => naturalCompare(a.id, b.id));
+        }
+
+        // Working list (mutable). Starts as defaults; overridden by any saved custom list on init().
+        let chartOfAccounts = [ UNCODED_ENTRY, ...sortAccounts(defaultChartOfAccounts) ];
+
+        // Palette used for the doughnut chart + legend dots (cycles if more categories exist)
+        const CHART_PALETTE = ['#6D5EF5','#22D3EE','#15A362','#F59E0B','#F472B6','#3B82F6','#A78BFA','#FB923C','#34D399','#F87171'];
+
+        // Fixed color per account code (not positional), so e.g. 280/13 is always the
+        // same color everywhere -- the pie chart, the legend, AND the dropdown list.
+        let accountColorMap = {};
+        function buildAccountColorMap() {
+            accountColorMap = {};
+            chartOfAccounts.filter(a => a.id !== 'UNCODED').forEach((a, i) => {
+                accountColorMap[a.id] = CHART_PALETTE[i % CHART_PALETTE.length];
+            });
+        }
+        buildAccountColorMap();
+
+        // Keyword auto-categorization against your existing account codes. Only
+        // confident, unambiguous matches are pre-coded -- most credit card merchants
+        // won't have a natural home in this chart, so they're correctly left as
+        // "Needs Review" for you to code manually. Once you code one, it's learned
+        // and applied automatically to future statements with that same merchant.
+        const baseRules = {
+            "280/09": ["woolworths", "pak n save", "pak'n save", "costco", "new world", "fresh choice", "four square"],
+            "283": ["nz post", "new zealand post", "postshop", "courier", "freight"],
+            "461": ["spark pay"],
+            "EXCLUDED": ["payment thankyou", "direct debit payment", "automatic payment"]
+        };
+
+        let userLearnedRules = {};
+        let expectedTotal = null;
+        let categoryChart = null;
+
+        // Statement header metadata, captured while parsing, used to label the PDF export
+        let statementAccountName = '';
+        let statementAccountNumber = '';
+        let statementPeriodFrom = '';
+        let statementPeriodTo = '';
+        let statementCardMasked = '';
+        let periodState = 'idle';
+
+        async function init() {
+            try {
+                const snap = await ccDocRef.get();
+                const data = snap.exists ? snap.data() : {};
+                if (data.userLearnedRules) userLearnedRules = data.userLearnedRules;
+                if (data.customChartOfAccounts && Array.isArray(data.customChartOfAccounts) && data.customChartOfAccounts.length) {
+                    chartOfAccounts = [ UNCODED_ENTRY, ...sortAccounts(data.customChartOfAccounts) ];
+                    buildAccountColorMap();
+                }
+            } catch (e) {
+                console.error("Could not load synced settings, starting fresh (offline).", e);
+            }
+
+            initCategoryChart();
+        }
+
+        async function syncToCloud() {
+            try {
+                await ccDocRef.set({
+                    userLearnedRules: userLearnedRules,
+                    customChartOfAccounts: chartOfAccounts.filter(a => a.id !== 'UNCODED')
+                });
+            } catch (e) {
+                console.error("Could not sync to cloud — check your internet connection.", e);
+            }
+        }
+
+        function categorizeItem(description) {
+            const desc = description.toLowerCase().trim();
+            for (const [exactPhrase, accountId] of Object.entries(userLearnedRules)) {
+                if (desc.includes(exactPhrase)) return { id: accountId, conf: 1.0 };
+            }
+            for (const [accountId, keywords] of Object.entries(baseRules)) {
+                if (keywords.some(k => desc.includes(k))) return { id: accountId, conf: 0.90 };
+            }
+            return { id: "UNCODED", conf: 0.0 };
+        }
+
+        // --- Woolworths invoice breakdown (attach to a single statement row) ---
+        // A separate, finer-grained keyword set for individual grocery *products*
+        // (as opposed to baseRules above, which matches whole merchant names on
+        // the statement). Used only when breaking a Woolworths transaction down
+        // into its line items.
+        const invoiceItemRules = {
+            "280/12": ["chocolate", "lollies", "lolly", "candy", "sweets", "biscuit", "cookie", "whittakers", "pascall", "cadbury", "m&m", "confectionery"],
+            "280/13": ["coca cola", "coke", "fanta", "sprite", "pepsi", "juice", "soft drink", "energy drink", "red bull", "v energy", "kombucha", "cordial", "lemonade", "gatorade", "powerade"],
+            "280/14": ["chips", "pringles", "crisps", "popcorn", "nuts"],
+            "280/20": ["milk", "cream"],
+            "280/21": ["frozen", "ice cream", "icecream", "gelato"],
+            "280/23": ["bread", "bagel", "loaf", "baguette"],
+            "280/10": ["hot food", " pie ", "sausage roll", "roast chicken", "rotisserie", "deli"],
+            "280/11": ["cigarette", "tobacco", "rollies", "vape"],
+            "280/24": ["vitamin", "supplement", "protein powder"],
+            "280/25": ["stamp", "phonecard", "prepay"],
+            "283": ["paper bag", "pick up fee", "pick up", "delivery", "freight", "courier", "shipping"],
+            // Kept last: broad pantry catch-all, checked only once nothing more
+            // specific matched, so generic words like "sauce" can't shadow a
+            // branded product (e.g. "salt & vinegar chips", "zero sugar coke").
+            "280/09": ["flour", "rice", "pasta", "noodle", "cereal", "canned", " tin ", "spice", "condiment", "spread", "jam", "honey", "peanut butter", "baking", "yeast", "cooking oil", "sauce"]
+        };
+        function categorizeInvoiceItem(description) {
+            const desc = description.toLowerCase();
+            for (const [accountId, keywords] of Object.entries(invoiceItemRules)) {
+                if (keywords.some(k => desc.includes(k))) return { id: accountId, conf: 0.90 };
+            }
+            return { id: "UNCODED", conf: 0.0 };
+        }
+
+        // Parses a Woolworths "Tax Invoice/Receipt" PDF into line items + its printed
+        // total. Woolworths' PDF export sometimes places the dollar figure right
+        // *before* its label (e.g. "$558.10" then "Invoice Total") rather than after,
+        // so the total is found by checking both neighbours of the "Invoice Total"
+        // label. Line-item scanning stops the moment any totals-section marker is
+        // seen, so the summary box (Sub Total / fees / Credit Card) never gets
+        // mistaken for extra product rows.
+        function parseWoolworthsInvoice(textArray) {
+            const TOTALS_SECTION_MARKERS = [
+                'invoice total', 'sub total', 'total includes gst', 'credit card',
+                'non-taxable items', 'for your convenience', 'you will only be charged',
+                'if you purchased any weighted items'
+            ];
+            const structuralHeaders = [
+                'deliver to', 'description', 'ordered', 'supplied', 'unit price', 'amount',
+                'ref', 'order no', 'courier track', 'customer pick up', 'standard packs',
+                'delivery:', 'fulfilled by', 'invoice number', 'gst number',
+                'date', 'page', 'tax invoice', 'liquor licence', 'expiry date',
+                'need help', 'virtual assistant', 'refund', 'order confirmation',
+                'general distributors', 'private bag', 'all amounts include gst',
+                'except those with', 'ww bridge st', 'find olive'
+            ];
+
+            let invoiceTotal = null;
+            for (let i = 0; i < textArray.length; i++) {
+                if (textArray[i].trim().toLowerCase() === 'invoice total') {
+                    const before = (textArray[i - 1] || '').trim().match(/^\$([\d,]+\.\d{2})$/);
+                    const after = (textArray[i + 1] || '').trim().match(/^\$([\d,]+\.\d{2})$/);
+                    if (before) invoiceTotal = parseFloat(before[1].replace(/,/g, ''));
+                    else if (after) invoiceTotal = parseFloat(after[1].replace(/,/g, ''));
+                    break;
+                }
+            }
+
+            let invoiceNumber = null;
+            for (let i = 0; i < textArray.length; i++) {
+                if (textArray[i].trim() === 'Order Confirmation/Invoice Number') {
+                    const next = (textArray[i + 1] || '').trim();
+                    if (next) invoiceNumber = next;
+                    break;
+                }
+            }
+
+            let pendingItem = null;
+            const items = [];
+            let pastItemsSection = false;
+
+            textArray.forEach((raw) => {
+                if (pastItemsSection) return;
+                const str = raw.trim();
+                if (!str) return;
+                const lowerStr = str.toLowerCase();
+
+                if (TOTALS_SECTION_MARKERS.some(m => lowerStr.includes(m))) {
+                    pastItemsSection = true;
+                    pendingItem = null;
+                    return;
+                }
+
+                if (str.startsWith('$') && !lowerStr.includes('/ea')) {
+                    const val = parseFloat(str.replace('$', '').replace(/,/g, ''));
+                    if (pendingItem) {
+                        pendingItem.amount = val;
+                        pendingItem.category = categorizeInvoiceItem(pendingItem.desc);
+                        items.push(pendingItem);
+                        pendingItem = null;
+                    }
+                    return;
+                }
+
+                if (/^\d+\s*ea$/i.test(lowerStr) || str.length < 3) return;
+                if (!isNaN(str.charAt(0))) return;
+
+                if (structuralHeaders.some(w => lowerStr === w || (w.length > 5 && lowerStr.includes(w)))) {
+                    pendingItem = null;
+                    return;
+                }
+
+                const cleanStr = str.replace(/^\+\s*/, '').replace(/^\(Sub\)\s*/i, '');
+                if (/[a-zA-Z]{3,}/.test(cleanStr)) {
+                    if (pendingItem) {
+                        if (!pendingItem.desc.includes(cleanStr)) pendingItem.desc += ' ' + cleanStr;
+                    } else {
+                        pendingItem = { desc: cleanStr, amount: 0 };
+                    }
+                }
+            });
+
+            return { items, invoiceTotal, invoiceNumber };
+        }
+
+        // Breaks one statement row down into category rows using an attached
+        // Woolworths invoice PDF: groups the invoice's line items by account and
+        // folds any small leftover (paper bags / pick-up fee, typically) into
+        // Freight. The transaction stays ONE row -- the breakdown is shown as a
+        // small line under the description, not as separate rows in the table.
+        async function attachInvoiceToRow(row, file) {
+            if (file.type !== "application/pdf") { alert("Please upload a PDF file."); return; }
+
+            document.getElementById('loading').textContent = 'Reading Woolworths invoice...';
+            document.getElementById('loading').classList.remove('hide');
+
+            let fullText;
+            try {
+                const typedarray = new Uint8Array(await file.arrayBuffer());
+                const pdf = await pdfjsLib.getDocument(typedarray).promise;
+                fullText = [];
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    fullText = fullText.concat(textContent.items.map(it => it.str.trim()).filter(s => s.length > 0));
+                }
+            } finally {
+                document.getElementById('loading').classList.add('hide');
+                document.getElementById('loading').textContent = 'Extracting transactions from statement...';
+            }
+
+            const { items, invoiceTotal, invoiceNumber } = parseWoolworthsInvoice(fullText);
+            if (items.length === 0 || invoiceTotal === null) {
+                alert("Could not read this as a Woolworths invoice. Make sure it's a Woolworths Tax Invoice/Receipt PDF.");
+                return;
+            }
+
+            const rowAmount = parseFloat(row.querySelector('.amount-input').value) || 0;
+            if (Math.abs(rowAmount - invoiceTotal) > 0.05) {
+                const proceed = confirm(
+                    `This invoice total (${formatCurrency(invoiceTotal)}) doesn't match this transaction's amount (${formatCurrency(rowAmount)}). Attach and break it down anyway?`
+                );
+                if (!proceed) return;
+            }
+
+            const catTotals = {};
+            let uncodedTotal = 0;
+            items.forEach(it => {
+                if (it.category.id === 'UNCODED') { uncodedTotal += it.amount; return; }
+                catTotals[it.category.id] = (catTotals[it.category.id] || 0) + it.amount;
+            });
+            const sumParsed = items.reduce((s, it) => s + it.amount, 0);
+            const remainder = invoiceTotal - sumParsed;
+            let unallocated = uncodedTotal;
+
+            if (Math.abs(remainder) > 0.004) {
+                if (remainder > 0 && remainder < Math.max(20, invoiceTotal * 0.1)) {
+                    // Small positive residual -- almost always delivery/bag fees
+                    catTotals['283'] = (catTotals['283'] || 0) + remainder;
+                } else {
+                    unallocated += remainder;
+                }
+            }
+
+            // Set the row to SPLIT and store the breakdown for calculateTotals to read
+            const select = row.querySelector('.account-select');
+            select.value = 'SPLIT';
+            row.dataset.breakdown = JSON.stringify(catTotals);
+            applySelectSwatch(select);
+            syncComboInputToSelection(select);
+
+            const confBadge = row.querySelector('.conf-badge');
+            confBadge.className = "conf-high conf-badge font-semibold";
+            confBadge.textContent = "From Invoice";
+            row.querySelector('.confirm-btn').classList.remove('confirmed');
+
+            // Small breakdown line under the description
+            const parts = Object.entries(catTotals).map(([id, amt]) => {
+                const name = (chartOfAccounts.find(a => a.id === id) || {}).name || id;
+                const shortName = name.replace(/^PURCHASES - /, '');
+                return `${id} ${shortName} ${formatCurrency(amt)}`;
+            });
+            if (unallocated > 0.004) parts.push(`\u26A0 Unallocated ${formatCurrency(unallocated)}`);
+            const tag = invoiceNumber ? ` \u00b7 Invoice ${invoiceNumber}` : '';
+
+            const breakdownLine = row.querySelector('.breakdown-line');
+            breakdownLine.textContent = parts.join('  \u00b7  ') + tag;
+            row.querySelector('.breakdown-row').classList.remove('hide');
+
+            calculateTotals();
+        }
+
+        const woolworthsInvoiceInput = document.getElementById('woolworths-invoice-input');
+        let pendingAttachRow = null;
+        woolworthsInvoiceInput.onchange = (e) => {
+            const file = e.target.files[0];
+            const row = pendingAttachRow;
+            pendingAttachRow = null;
+            woolworthsInvoiceInput.value = '';
+            if (file && row) attachInvoiceToRow(row, file);
+        };
+
+        // --- Breakdown editor -- lets you correct or adjust a row's category
+        // split by hand (e.g. if an item was auto-categorized into the wrong
+        // account) without needing to re-attach the invoice.
+        let editingBreakdownRow = null;
+
+        function createBreakdownEditRowEl(accountId, amount) {
+            const div = document.createElement('div');
+            div.className = "grid grid-cols-12 gap-2 mb-2 breakdown-edit-row";
+            div.innerHTML = `
+                <div class="col-span-7">
+                    <div class="acc-combo">
+                        <input type="text" class="account-search-input" autocomplete="off" placeholder="Search code or name...">
+                        <div class="acc-combo-panel hide"><div class="acc-combo-list"></div></div>
+                        <select class="account-select hide">${buildAccountOptionsHTML(accountId || 'UNCODED')}</select>
+                    </div>
+                </div>
+                <div class="col-span-4">
+                    <input type="number" step="0.01" class="breakdown-amount-input w-full rounded-md p-2 text-sm text-right outline-none" value="${(amount || 0).toFixed(2)}">
+                </div>
+                <div class="col-span-1 flex items-center justify-center">
+                    <button type="button" class="ignore-btn" title="Remove">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                </div>
+            `;
+            const combo = div.querySelector('.acc-combo');
+            const select = div.querySelector('.account-select');
+            applySelectSwatch(select);
+            syncComboInputToSelection(select);
+            initAccountCombo(combo, select);
+            select.addEventListener('change', () => { applySelectSwatch(select); updateBreakdownEditTotal(); });
+            div.querySelector('.breakdown-amount-input').addEventListener('input', updateBreakdownEditTotal);
+            div.querySelector('.ignore-btn').addEventListener('click', () => { div.remove(); updateBreakdownEditTotal(); });
+            return div;
+        }
+
+        function addBreakdownEditRow() {
+            document.getElementById('breakdown-edit-rows').appendChild(createBreakdownEditRowEl('UNCODED', 0));
+            updateBreakdownEditTotal();
+        }
+
+        function updateBreakdownEditTotal() {
+            const rows = document.querySelectorAll('#breakdown-edit-rows .breakdown-edit-row');
+            let total = 0;
+            rows.forEach(r => { total += parseFloat(r.querySelector('.breakdown-amount-input').value) || 0; });
+            document.getElementById('breakdown-edit-total').textContent = formatCurrency(total);
+
+            const target = editingBreakdownRow ? (parseFloat(editingBreakdownRow.querySelector('.amount-input').value) || 0) : 0;
+            document.getElementById('breakdown-edit-target').textContent = formatCurrency(target);
+
+            const mismatchEl = document.getElementById('breakdown-edit-mismatch');
+            if (Math.abs(total - target) > 0.01) {
+                mismatchEl.textContent = `\u26A0 Breakdown total doesn't match the transaction amount (difference: ${formatCurrency(total - target)}).`;
+                mismatchEl.classList.remove('hide');
+            } else {
+                mismatchEl.classList.add('hide');
+            }
+        }
+
+        function openBreakdownEditor(row) {
+            editingBreakdownRow = row;
+            const container = document.getElementById('breakdown-edit-rows');
+            container.innerHTML = '';
+
+            let breakdown = {};
+            try { breakdown = JSON.parse(row.dataset.breakdown || '{}'); } catch (e) {}
+            const entries = Object.entries(breakdown);
+            if (entries.length === 0) {
+                container.appendChild(createBreakdownEditRowEl('UNCODED', parseFloat(row.querySelector('.amount-input').value) || 0));
+            } else {
+                entries.forEach(([id, amt]) => container.appendChild(createBreakdownEditRowEl(id, amt)));
+            }
+
+            document.getElementById('breakdown-modal-sub').textContent =
+                `Adjust how "${row.querySelector('.desc-input').value}" (${formatCurrency(parseFloat(row.querySelector('.amount-input').value) || 0)}) is split across accounts.`;
+
+            updateBreakdownEditTotal();
+            document.getElementById('breakdown-modal').classList.remove('hide');
+        }
+
+        function closeBreakdownEditor() {
+            document.getElementById('breakdown-modal').classList.add('hide');
+            editingBreakdownRow = null;
+        }
+
+        function saveBreakdownEdits() {
+            if (!editingBreakdownRow) return;
+            const row = editingBreakdownRow;
+            const rows = document.querySelectorAll('#breakdown-edit-rows .breakdown-edit-row');
+
+            const newBreakdown = {};
+            let unallocated = 0;
+            rows.forEach(r => {
+                const select = r.querySelector('.account-select');
+                const id = select.value;
+                const amt = parseFloat(r.querySelector('.breakdown-amount-input').value) || 0;
+                if (Math.abs(amt) < 0.004) return;
+                if (id === 'EXCLUDED') return; // deliberately not counted
+                if (id === 'UNCODED') { unallocated += amt; return; }
+                newBreakdown[id] = (newBreakdown[id] || 0) + amt;
+            });
+
+            row.dataset.breakdown = JSON.stringify(newBreakdown);
+
+            const parts = Object.entries(newBreakdown).map(([id, amt]) => {
+                const name = (chartOfAccounts.find(a => a.id === id) || {}).name || id;
+                const shortName = name.replace(/^PURCHASES - /, '');
+                return `${id} ${shortName} ${formatCurrency(amt)}`;
+            });
+            if (unallocated > 0.004) parts.push(`\u26A0 Unallocated ${formatCurrency(unallocated)}`);
+
+            row.querySelector('.breakdown-line').textContent = parts.join('  \u00b7  ');
+            row.querySelector('.breakdown-row').classList.remove('hide');
+
+            const rowSelect = row.querySelector('.account-select');
+            if (rowSelect.value !== 'SPLIT') {
+                rowSelect.value = 'SPLIT';
+                applySelectSwatch(rowSelect);
+                syncComboInputToSelection(rowSelect);
+                row.querySelector('.conf-badge').className = "conf-high conf-badge font-semibold";
+                row.querySelector('.conf-badge').textContent = "From Invoice";
+            }
+
+            closeBreakdownEditor();
+            calculateTotals();
+        }
+
+        // Formats a signed dollar amount as "$1,234.56" or "-$1,234.56"
+        function formatCurrency(val) {
+            const sign = val < 0 ? '-' : '';
+            const abs = Math.abs(val);
+            return `${sign}$${abs.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        }
+
+        // --- UI Events ---
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const tbody = document.getElementById('transaction-body');
+        const addRowBtn = document.getElementById('add-row-btn');
+
+        dropZone.onclick = () => fileInput.click();
+        dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('drag-over'); };
+        dropZone.ondragleave = () => dropZone.classList.remove('drag-over');
+        dropZone.ondrop = (e) => {
+            e.preventDefault(); dropZone.classList.remove('drag-over');
+            if (e.dataTransfer.files.length) processPDF(e.dataTransfer.files[0]);
+        };
+        fileInput.onchange = (e) => {
+            if (e.target.files.length) processPDF(e.target.files[0]);
+            fileInput.value = '';
+        };
+
+        // Add Manual Row Event
+        addRowBtn.onclick = () => {
+            const emptyState = document.getElementById('empty-state');
+            if (emptyState) emptyState.remove();
+
+            renderRow("", "", { id: "UNCODED", conf: 0 }, 0.00, true);
+        };
+
+        async function processPDF(file) {
+            if (file.type !== "application/pdf") { alert("Please upload a PDF file."); return; }
+            document.getElementById('loading').classList.remove('hide');
+            document.getElementById('total-warning').classList.add('hide');
+            expectedTotal = null;
+            statementAccountName = '';
+            statementAccountNumber = '';
+            statementPeriodFrom = '';
+            statementPeriodTo = '';
+            statementCardMasked = '';
+
+            const emptyState = document.getElementById('empty-state');
+            if (emptyState) emptyState.remove();
+
+            const fileReader = new FileReader();
+            fileReader.onload = async function() {
+                const typedarray = new Uint8Array(this.result);
+                const pdf = await pdfjsLib.getDocument(typedarray).promise;
+                let fullText = [];
+
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    const strings = textContent.items.map(item => item.str.trim()).filter(s => s.length > 0);
+                    fullText = fullText.concat(strings);
+                }
+
+                document.getElementById('loading').classList.add('hide');
+                parseStatementText(fullText);
+            };
+            fileReader.readAsArrayBuffer(file);
+        }
+
+        // Parses a bank/credit-card "transaction history" export. Each transaction line
+        // in these exports is emitted by the PDF as a clean sequence of fields (Date,
+        // Description, Card, Amount), so this parser tracks a single "current transaction"
+        // and fills in its fields as they arrive. It also picks up the statement's header
+        // details (account name/number, masked card, search date range) along the way,
+        // used to label the PDF export later.
+        function parseStatementText(textArray) {
+            let inTransactionSection = false;
+            let pendingTxn = null;
+            const transactions = [];
+            periodState = 'idle';
+
+            textArray.forEach((raw) => {
+                const s = raw.trim();
+                if (!s) return;
+
+                // --- Header metadata (appears before the transaction table) ---
+                if (s.startsWith('Account name:')) { statementAccountName = s.replace('Account name:', '').trim(); return; }
+                if (s.startsWith('Account number:')) { statementAccountNumber = s.replace('Account number:', '').trim(); return; }
+                if (s === 'Transactions from:') { periodState = 'from'; return; }
+                if (periodState === 'from' && /^\d{2}\/\d{2}\/\d{4}$/.test(s)) { statementPeriodFrom = s; periodState = 'to-word'; return; }
+                if (periodState === 'to-word' && s === 'to') { periodState = 'to-date'; return; }
+                if (periodState === 'to-date' && /^\d{2}\/\d{2}\/\d{4}$/.test(s)) { statementPeriodTo = s; periodState = 'done'; return; }
+
+                if (s === 'Date') { inTransactionSection = true; pendingTxn = null; return; }
+                if (s.startsWith('Printed:')) { inTransactionSection = false; pendingTxn = null; return; }
+                if (!inTransactionSection) return;
+                if (['Description', 'Card', 'Debit', 'Credit'].includes(s)) return;
+
+                // Date column -- starts a new transaction
+                if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
+                    pendingTxn = { date: s, desc: null, amount: null, isCredit: false };
+                    transactions.push(pendingTxn);
+                    return;
+                }
+
+                if (!pendingTxn) return; // stray text before the first transaction row
+
+                // Masked card number, e.g. "•••• 0641"
+                if (/^•+\s*\d+$/.test(s)) {
+                    if (!statementCardMasked) statementCardMasked = s;
+                    return;
+                }
+
+                // Amount column, e.g. "-$149.49" (debit/spend) or "+$3,778.54" (credit/payment)
+                const amtMatch = s.match(/^([+-])\$([\d,]+\.\d{2})$/);
+                if (amtMatch) {
+                    const isDebit = amtMatch[1] === '-';
+                    const rawVal = parseFloat(amtMatch[2].replace(/,/g, ''));
+                    pendingTxn.amount = isDebit ? rawVal : -rawVal;
+                    pendingTxn.isCredit = !isDebit;
+                    return;
+                }
+
+                // Otherwise, treat as (part of) the description
+                const clean = s.replace(/^\+\s*/, '').trim();
+                if (!clean) return;
+                if (pendingTxn.desc === null) pendingTxn.desc = clean;
+                else if (!pendingTxn.desc.includes(clean)) pendingTxn.desc += ' ' + clean;
+            });
+
+            const complete = transactions.filter(t => t.desc && t.amount !== null);
+
+            complete.forEach(t => {
+                renderRow(t.date, t.desc, categorizeItem(t.desc), t.amount, false);
+            });
+
+            if (complete.length === 0) {
+                alert("Could not detect any transaction rows. Ensure the PDF is a standard bank/credit card statement export.");
+            } else {
+                expectedTotal = complete.reduce((sum, t) => sum + t.amount, 0);
+            }
+
+            calculateTotals();
+        }
+
+        // Builds the <option> list for the underlying (hidden) select, using the CURRENT
+        // chartOfAccounts. This select stays the source of truth for the row's value;
+        // the visible search box on top of it is just the UI (see initAccountCombo).
+        // SPLIT is included here so it's assignable by attachInvoiceToRow, but it's
+        // deliberately left out of the searchable picker list (see renderComboList).
+        function buildAccountOptionsHTML(selectedId) {
+            const fullList = [UNCODED_ENTRY, EXCLUDED_ENTRY, SPLIT_ENTRY, ...chartOfAccounts.filter(a => a.id !== 'UNCODED')];
+            return fullList.map(a => {
+                const color = accountColorMap[a.id];
+                const style = color ? ` style="color:${color};"` : '';
+                const label = (a.id !== 'UNCODED' && a.id !== 'EXCLUDED' && a.id !== 'SPLIT') ? a.id + ' - ' : '';
+                return `<option value="${a.id}" ${a.id === selectedId ? 'selected' : ''}${style}>${label}${a.name}</option>`;
+            }).join('');
+        }
+
+        // Tints the visible search box's left edge to match the coded category's
+        // color, so it's visible at a glance without opening the picker.
+        function applySelectSwatch(select) {
+            const color = accountColorMap[select.value];
+            const input = select.closest('.acc-combo').querySelector('.account-search-input');
+            if (input) input.style.borderLeft = color ? `4px solid ${color}` : '4px solid var(--rule-strong)';
+        }
+
+        // Keeps the visible search box's displayed text in sync with the hidden
+        // select's actual value (e.g. after account codes are edited/renamed).
+        function syncComboInputToSelection(select) {
+            const input = select.closest('.acc-combo').querySelector('.account-search-input');
+            if (!input) return;
+            const id = select.value;
+            if (id === 'EXCLUDED') { input.value = EXCLUDED_ENTRY.name; return; }
+            if (id === 'SPLIT') { input.value = SPLIT_ENTRY.name; return; }
+            const account = chartOfAccounts.find(a => a.id === id) || UNCODED_ENTRY;
+            input.value = id !== 'UNCODED' ? `${id} - ${account.name}` : account.name;
+        }
+
+        // Substring match across code, name, and category -- "wor"/"work"/"workshop"
+        // all match "WORKSHOP PARTS" wherever the text appears, not just at the start.
+        function filterAccounts(query) {
+            const q = query.trim().toLowerCase();
+            const list = chartOfAccounts.filter(a => a.id !== 'UNCODED');
+            if (!q) return list;
+            return list.filter(a =>
+                a.id.toLowerCase().includes(q) ||
+                a.name.toLowerCase().includes(q) ||
+                (a.category || '').toLowerCase().includes(q)
+            );
+        }
+
+        function createComboItem(a, activeId) {
+            const div = document.createElement('div');
+            div.className = "acc-combo-item" + (a.id === activeId ? ' active' : '');
+            div.dataset.id = a.id;
+            const color = accountColorMap[a.id] || '#9AA0AE';
+            const codeHtml = (a.id !== 'UNCODED' && a.id !== 'EXCLUDED') ? `<span class="code">${a.id}</span>` : '';
+            const catHtml = a.category ? `<span class="cat-tag">${a.category}</span>` : '';
+            div.innerHTML = `<span class="dot" style="background:${color};"></span>${codeHtml}<span class="name">${a.name}</span>${catHtml}`;
+            return div;
+        }
+
+        function renderComboList(listEl, accounts, activeId) {
+            listEl.innerHTML = '';
+            const count = document.createElement('div');
+            count.className = 'acc-combo-count';
+            count.textContent = `${accounts.length} of ${chartOfAccounts.length - 1} accounts`;
+            listEl.appendChild(count);
+            listEl.appendChild(createComboItem(UNCODED_ENTRY, activeId));
+            listEl.appendChild(createComboItem(EXCLUDED_ENTRY, activeId));
+            if (accounts.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'acc-combo-empty';
+                empty.textContent = 'No matching accounts';
+                listEl.appendChild(empty);
+                return;
+            }
+            accounts.forEach(a => listEl.appendChild(createComboItem(a, activeId)));
+        }
+
+        function highlightIndex(items, idx) {
+            items.forEach((it, i) => it.classList.toggle('active', i === idx));
+            if (items[idx]) items[idx].scrollIntoView({ block: 'nearest' });
+        }
+
+        // Wires up the searchable picker for one row's account cell: a text input
+        // that filters the 145-account list live as you type (by code, name, or
+        // category), with keyboard navigation, sitting on top of a hidden <select>
+        // that remains the actual source of truth for the row's coded value.
+        function initAccountCombo(combo, select) {
+            const input = combo.querySelector('.account-search-input');
+            const panel = combo.querySelector('.acc-combo-panel');
+            const listEl = combo.querySelector('.acc-combo-list');
+
+            function openPanel(query) {
+                panel.classList.remove('hide');
+                renderComboList(listEl, filterAccounts(query), select.value);
+            }
+            function closePanel() {
+                panel.classList.add('hide');
+            }
+            function selectAccount(id) {
+                select.value = id;
+                syncComboInputToSelection(select);
+                closePanel();
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+
+            input.addEventListener('focus', () => {
+                input.select();
+                openPanel('');
+            });
+            input.addEventListener('input', () => openPanel(input.value));
+            input.addEventListener('blur', () => {
+                // Delay so a mousedown selection on the list registers before the panel closes
+                setTimeout(() => { closePanel(); syncComboInputToSelection(select); }, 150);
+            });
+            input.addEventListener('keydown', (e) => {
+                const items = [...listEl.querySelectorAll('.acc-combo-item')];
+                let idx = items.findIndex(i => i.classList.contains('active'));
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (panel.classList.contains('hide')) { openPanel(input.value); return; }
+                    highlightIndex(items, Math.min(idx + 1, items.length - 1));
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    highlightIndex(items, Math.max(idx - 1, 0));
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const target = items[idx] || items[0];
+                    if (target) selectAccount(target.dataset.id);
+                } else if (e.key === 'Escape') {
+                    closePanel();
+                    syncComboInputToSelection(select);
+                    input.blur();
+                }
+            });
+            panel.addEventListener('mousedown', (e) => {
+                const item = e.target.closest('.acc-combo-item');
+                if (!item) return;
+                e.preventDefault(); // keep focus so blur doesn't fire before we read the click
+                selectAccount(item.dataset.id);
+            });
+        }
+
+        // Renders one transaction row. Handles editable date/description and manual status.
+        function renderRow(date, desc, category, amount, isManual = false) {
+            const row = document.createElement('tr');
+            row.className = "item-row transition-colors";
+
+            const options = buildAccountOptionsHTML(category.id);
+
+            let confClass = "conf-low";
+            let confText = "Needs Review";
+            if (category.id === 'EXCLUDED') {
+                confClass = "conf-excluded";
+                confText = "Excluded";
+            }
+            else if (category.fromInvoice) {
+                confClass = "conf-high";
+                confText = "From Invoice";
+            }
+            else if (isManual) {
+                confClass = "conf-manual";
+                confText = "Manual Entry";
+            }
+            else if (category.conf >= 0.95) { confClass = "conf-high"; confText = "High (" + (category.conf*100) + "%)"; }
+            else if (category.conf >= 0.80) { confClass = "conf-med"; confText = "Med (" + (category.conf*100) + "%)"; }
+
+            row.innerHTML = `
+                <td class="p-4">
+                    <input type="text" class="date-input w-full rounded-md p-1.5 text-sm outline-none" value="${date}" placeholder="DD/MM/YYYY">
+                </td>
+                <td class="p-4">
+                    <input type="text" class="desc-input w-full rounded-md p-1.5 text-sm font-medium outline-none transition-all" value="${desc}" placeholder="Enter transaction description...">
+                    <div class="breakdown-row hide">
+                        <span class="breakdown-line"></span>
+                        <button type="button" class="breakdown-edit-btn" title="Edit this breakdown">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                            Edit
+                        </button>
+                    </div>
+                    <button type="button" class="attach-btn hide mt-1.5" title="Break this down using a Woolworths invoice PDF">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"/></svg>
+                        Attach Woolworths Invoice
+                    </button>
+                </td>
+                <td class="p-4">
+                    <div class="acc-combo">
+                        <input type="text" class="account-search-input" autocomplete="off" placeholder="Search code or name...">
+                        <div class="acc-combo-panel hide"><div class="acc-combo-list"></div></div>
+                        <select class="account-select hide">
+                            ${options}
+                        </select>
+                    </div>
+                </td>
+                <td class="p-4">
+                    <input type="number" step="0.01" class="amount-input w-24 rounded-md p-1.5 text-sm outline-none text-right ${amount < 0 ? 'is-credit' : ''}" value="${amount.toFixed(2)}">
+                </td>
+                <td class="p-4">
+                    <div class="flex items-center gap-2">
+                        <span class="${confClass} conf-badge">${confText}</span>
+                        <button class="confirm-btn" title="Confirm this code is correct &amp; remember it for future statements">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path></svg>
+                        </button>
+                    </div>
+                </td>
+                <td class="p-4 text-right">
+                    <button class="ignore-btn transition-colors" title="Remove">
+                        <svg class="w-5 h-5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </td>
+            `;
+
+            const descInput = row.querySelector('.desc-input');
+            const select = row.querySelector('.account-select');
+            const combo = row.querySelector('.acc-combo');
+            const amountInput = row.querySelector('.amount-input');
+            const confBadge = row.querySelector('.conf-badge');
+            const confirmBtn = row.querySelector('.confirm-btn');
+            const attachBtn = row.querySelector('.attach-btn');
+
+            syncComboInputToSelection(select);
+            applySelectSwatch(select);
+            initAccountCombo(combo, select);
+
+            // Only show the "attach invoice" option for rows that look like a
+            // Woolworths transaction -- shown/hidden live as the description is edited.
+            function updateAttachVisibility() {
+                attachBtn.classList.toggle('hide', !descInput.value.toLowerCase().includes('woolworths'));
+            }
+            descInput.addEventListener('input', updateAttachVisibility);
+            updateAttachVisibility();
+
+            attachBtn.addEventListener('click', () => {
+                pendingAttachRow = row;
+                woolworthsInvoiceInput.click();
+            });
+
+            row.querySelector('.breakdown-edit-btn').addEventListener('click', () => openBreakdownEditor(row));
+
+            // Shared by both "pick a new code" and "tick to confirm the existing code" --
+            // either path teaches the system this description belongs to this account,
+            // so future statements with the same wording auto-code at full confidence.
+            async function learnAndConfirm(accountId) {
+                const itemDesc = descInput.value.toLowerCase().trim();
+                if (itemDesc.length > 2) {
+                    userLearnedRules[itemDesc] = accountId;
+                    await syncToCloud();
+                }
+                if (accountId === 'EXCLUDED') {
+                    confBadge.className = "conf-excluded conf-badge font-semibold";
+                    confBadge.textContent = "Excluded";
+                    confirmBtn.title = "Marked as not a coded expense \u2014 remembered for future statements";
+                } else {
+                    confBadge.className = "conf-high conf-badge font-semibold";
+                    confBadge.textContent = "Learned (100%)";
+                    confirmBtn.title = "Confirmed \u2014 remembered for future statements";
+                }
+                confirmBtn.classList.add('confirmed');
+                calculateTotals();
+            }
+
+            select.addEventListener('change', (e) => {
+                const newAccountId = e.target.value;
+                applySelectSwatch(select);
+                confirmBtn.classList.remove('confirmed'); // a fresh selection needs re-confirming
+                // Picking a new code by hand means any prior invoice breakdown no longer applies
+                delete row.dataset.breakdown;
+                row.querySelector('.breakdown-row').classList.add('hide');
+                if (newAccountId !== "UNCODED") {
+                    learnAndConfirm(newAccountId);
+                } else {
+                    calculateTotals();
+                }
+            });
+
+            confirmBtn.addEventListener('click', () => {
+                const accountId = select.value;
+                if (accountId === "UNCODED") {
+                    alert("Please choose an account code for this item before confirming it.");
+                    return;
+                }
+                learnAndConfirm(accountId);
+            });
+
+            amountInput.addEventListener('input', () => {
+                amountInput.classList.toggle('is-credit', parseFloat(amountInput.value) < 0);
+                calculateTotals();
+            });
+
+            row.querySelector('.ignore-btn').addEventListener('click', () => {
+                row.remove();
+                calculateTotals();
+            });
+
+            tbody.appendChild(row);
+
+            if (isManual) row.querySelector('.date-input').focus();
+
+            return row;
+        }
+
+        function initCategoryChart() {
+            const canvas = document.getElementById('category-chart');
+            if (!canvas || typeof Chart === 'undefined') return;
+            categoryChart = new Chart(canvas.getContext('2d'), {
+                type: 'doughnut',
+                data: { labels: [], datasets: [{ data: [], backgroundColor: [], borderColor: getComputedStyle(document.documentElement).getPropertyValue('--paper-panel') || '#FFFFFF', borderWidth: 2 }] },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '68%',
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${formatCurrency(ctx.parsed || 0)}` } }
+                    }
+                }
+            });
+        }
+
+        function updateStatsPill() {
+            const pill = document.getElementById('stats-pill');
+            const rows = document.querySelectorAll('.item-row');
+            if (rows.length === 0) { pill.classList.add('hide'); return; }
+            let needsReview = 0;
+            rows.forEach(row => { if (row.querySelector('.account-select').value === 'UNCODED') needsReview++; });
+            pill.classList.remove('hide');
+            pill.classList.toggle('warn', needsReview > 0);
+            pill.innerHTML = `<b>${rows.length}</b>&nbsp;items&nbsp;·&nbsp;<b>${needsReview}</b>&nbsp;need review`;
+        }
+
+        function calculateTotals() {
+            const rows = document.querySelectorAll('.item-row');
+            const totalsMap = {};
+            let grandTotal = 0;
+
+            rows.forEach(row => {
+                const select = row.querySelector('.account-select');
+                const catId = select.value;
+                const amount = parseFloat(row.querySelector('.amount-input').value) || 0;
+
+                if (catId === 'SPLIT') {
+                    let breakdown = {};
+                    try { breakdown = JSON.parse(row.dataset.breakdown || '{}'); } catch (e) {}
+                    Object.entries(breakdown).forEach(([id, amt]) => {
+                        if (!totalsMap[id]) {
+                            const acc = chartOfAccounts.find(a => a.id === id);
+                            totalsMap[id] = { name: acc ? acc.name : id, amount: 0 };
+                        }
+                        totalsMap[id].amount += amt;
+                    });
+                } else if (catId !== 'UNCODED' && catId !== 'EXCLUDED') {
+                    if (!totalsMap[catId]) {
+                        totalsMap[catId] = {
+                            name: select.options[select.selectedIndex].text.replace(catId + ' - ', ''),
+                            amount: 0
+                        };
+                    }
+                    totalsMap[catId].amount += amount;
+                }
+                grandTotal += amount;
+            });
+
+            const entries = Object.entries(totalsMap);
+            const summaryDiv = document.getElementById('totals-summary');
+            summaryDiv.innerHTML = '';
+
+            if (entries.length === 0) {
+                summaryDiv.innerHTML = '<p class="text-ink-soft italic">No coded items to summarize.</p>';
+            } else {
+                entries.forEach(([id, data]) => {
+                    const color = accountColorMap[id] || '#9AA0AE';
+                    summaryDiv.innerHTML += `
+                        <div class="legend-row flex justify-between items-center py-2 gap-2">
+                            <span class="flex items-center gap-2 min-w-0">
+                                <span class="legend-dot" style="background:${color};"></span>
+                                <span class="legend-name truncate" title="${id} - ${data.name}">
+                                    <span class="legend-code mono">${id}</span> ${data.name}
+                                </span>
+                            </span>
+                            <span class="legend-amount">${formatCurrency(data.amount)}</span>
+                        </div>
+                    `;
+                });
+            }
+
+            document.getElementById('grand-total').textContent = formatCurrency(grandTotal);
+
+            if (categoryChart) {
+                // The chart only shows positive expense categories (credits would render as negative slices, which doughnut charts can't display)
+                const chartEntries = entries.filter(([, d]) => d.amount > 0);
+                categoryChart.data.labels = chartEntries.map(([, d]) => d.name);
+                categoryChart.data.datasets[0].data = chartEntries.map(([, d]) => d.amount);
+                categoryChart.data.datasets[0].backgroundColor = chartEntries.map(([id]) => accountColorMap[id] || '#9AA0AE');
+                categoryChart.update();
+            }
+
+            updateStatsPill();
+
+            const warningDiv = document.getElementById('total-warning');
+            const warningText = document.getElementById('warning-text');
+
+            if (expectedTotal !== null) {
+                if (Math.abs(grandTotal - expectedTotal) > 0.05) {
+                    warningText.textContent = `Warning: Coded total (${formatCurrency(grandTotal)}) does not match the parsed statement total (${formatCurrency(expectedTotal)}). Please check for missing or incorrect amounts.`;
+                    warningDiv.classList.remove('hide');
+                } else {
+                    warningDiv.classList.add('hide');
+                }
+            } else {
+                warningDiv.classList.add('hide');
+            }
+        }
+
+        async function clearLearnedRules() {
+            if (confirm("Are you sure you want to delete all custom rules the software has learned?")) {
+                userLearnedRules = {};
+                await syncToCloud();
+                alert("Rules cleared. Refresh or re-upload your document.");
+            }
+        }
+
+        // --- Account Code Manager ---
+
+        function createAccountRowEl(id = '', name = '') {
+            const div = document.createElement('div');
+            div.className = "grid grid-cols-12 gap-2 mb-2 account-row";
+            const color = accountColorMap[id] || 'var(--rule-strong)';
+            div.innerHTML = `
+                <div class="col-span-1 flex items-center justify-center">
+                    <span class="acc-swatch" style="background:${color};" title="Chart color for this code"></span>
+                </div>
+                <input type="text" class="acc-code col-span-3 rounded-md p-2 text-sm outline-none" value="${id}" placeholder="e.g. 280/12">
+                <input type="text" class="acc-name col-span-7 rounded-md p-2 text-sm outline-none" value="${name}" placeholder="Description">
+                <button type="button" class="ignore-btn col-span-1 flex items-center justify-center transition-colors" title="Remove">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            `;
+            div.querySelector('button').addEventListener('click', () => div.remove());
+            return div;
+        }
+
+        function addAccountRow() {
+            document.getElementById('account-rows').appendChild(createAccountRowEl());
+        }
+
+        function openAccountManager() {
+            const container = document.getElementById('account-rows');
+            container.innerHTML = '';
+            chartOfAccounts
+                .filter(a => a.id !== 'UNCODED')
+                .forEach(a => container.appendChild(createAccountRowEl(a.id, a.name)));
+            const searchBox = document.getElementById('account-manager-search');
+            searchBox.value = '';
+            document.getElementById('account-modal').classList.remove('hide');
+            searchBox.focus();
+        }
+
+        document.getElementById('account-manager-search').addEventListener('input', (e) => {
+            const q = e.target.value.trim().toLowerCase();
+            document.querySelectorAll('#account-rows .account-row').forEach(row => {
+                const code = row.querySelector('.acc-code').value.toLowerCase();
+                const name = row.querySelector('.acc-name').value.toLowerCase();
+                row.style.display = (!q || code.includes(q) || name.includes(q)) ? '' : 'none';
+            });
+        });
+
+        function closeAccountManager() {
+            document.getElementById('account-modal').classList.add('hide');
+        }
+
+        async function saveAccountChanges() {
+            const rows = document.querySelectorAll('#account-rows .account-row');
+            const newAccounts = [];
+            const seenIds = new Set();
+            const oldCategoryById = {};
+            chartOfAccounts.forEach(a => { if (a.category) oldCategoryById[a.id] = a.category; });
+
+            for (const row of rows) {
+                const id = row.querySelector('.acc-code').value.trim();
+                const name = row.querySelector('.acc-name').value.trim();
+
+                if (!id && !name) continue; // skip fully blank rows silently
+
+                if (!id || !name) {
+                    alert("Please fill in both the Account Code and Description for every row, or remove the empty row.");
+                    return;
+                }
+                if (id === 'UNCODED') {
+                    alert(`"UNCODED" is a reserved account code and can't be reused. Please choose a different code.`);
+                    return;
+                }
+                if (seenIds.has(id)) {
+                    alert(`Duplicate account code found: "${id}". Please use unique codes.`);
+                    return;
+                }
+                seenIds.add(id);
+                const account = { id, name };
+                if (oldCategoryById[id]) account.category = oldCategoryById[id];
+                newAccounts.push(account);
+            }
+
+            const sortedAccounts = sortAccounts(newAccounts);
+            chartOfAccounts = [ UNCODED_ENTRY, ...sortedAccounts ];
+            buildAccountColorMap();
+
+            try {
+                await syncToCloud();
+            } catch (err) {
+                alert("Warning: could not sync account codes to the cloud, so changes may not appear on your other devices.");
+            }
+
+            refreshAllAccountSelects();
+            closeAccountManager();
+        }
+
+        async function resetAccountCodes() {
+            if (!confirm("Reset account codes back to the original default list? Any codes you've added or edited will be lost.")) return;
+            chartOfAccounts = [ UNCODED_ENTRY, ...sortAccounts(defaultChartOfAccounts) ];
+            buildAccountColorMap();
+            await syncToCloud();
+            refreshAllAccountSelects();
+            openAccountManager(); // re-render the modal rows with the defaults
+        }
+
+        // Rebuilds every existing row's dropdown after the account list changes,
+        // preserving each row's current selection where possible.
+        function refreshAllAccountSelects() {
+            document.querySelectorAll('.account-select').forEach(select => {
+                const currentValue = select.value;
+                const stillExists = chartOfAccounts.some(a => a.id === currentValue);
+                const valueToUse = stillExists ? currentValue : 'UNCODED';
+                select.innerHTML = buildAccountOptionsHTML(valueToUse);
+                applySelectSwatch(select);
+                syncComboInputToSelection(select);
+            });
+            calculateTotals();
+        }
+
+        // --- PDF export -- builds a printable page styled like the original bank
+        // statement (separate Debit/Credit columns) plus a category summary, then
+        // hands off to the browser's print dialog so it can be saved as a PDF.
+        function togglePdfMenu() {
+            document.getElementById('pdf-menu').classList.toggle('hide');
+        }
+        document.addEventListener('click', (e) => {
+            const menu = document.getElementById('pdf-menu');
+            if (!menu || menu.classList.contains('hide')) return;
+            if (!e.target.closest('#pdf-menu') && !e.target.closest('[onclick="togglePdfMenu()"]')) {
+                menu.classList.add('hide');
+            }
+        });
+
+        function exportPDF(orientation) {
+            orientation = orientation === 'landscape' ? 'landscape' : 'portrait';
+            document.getElementById('pdf-menu').classList.add('hide');
+
+            const rows = document.querySelectorAll('.item-row');
+            if (rows.length === 0) {
+                alert("There's nothing to export yet \u2014 upload a statement or add a transaction first.");
+                return;
+            }
+
+            document.getElementById('print-account-name').textContent = statementAccountName || '\u2014';
+            document.getElementById('print-account-number').textContent = statementAccountNumber || statementCardMasked || '\u2014';
+            document.getElementById('print-period').textContent = (statementPeriodFrom && statementPeriodTo)
+                ? `${statementPeriodFrom} to ${statementPeriodTo}` : '\u2014';
+            document.getElementById('print-generated-date').textContent = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+            const body = document.getElementById('print-transaction-body');
+            body.innerHTML = '';
+            let needsReviewCount = 0;
+
+            rows.forEach(row => {
+                const date = row.querySelector('.date-input').value || '\u2014';
+                let desc = row.querySelector('.desc-input').value || '(no description)';
+                const select = row.querySelector('.account-select');
+                const accountId = select.value;
+                const isUncoded = accountId === 'UNCODED';
+                const isExcluded = accountId === 'EXCLUDED';
+                const isSplit = accountId === 'SPLIT';
+                if (isUncoded) needsReviewCount++;
+                let accountLabel;
+                if (isUncoded) accountLabel = 'NEEDS REVIEW';
+                else if (isExcluded) accountLabel = 'N/A \u2014 EXCLUDED';
+                else if (isSplit) accountLabel = 'MULTIPLE (see breakdown)';
+                else accountLabel = `${accountId} - ${select.options[select.selectedIndex].text.replace(accountId + ' - ', '')}`;
+                if (isSplit) {
+                    const breakdownText = row.querySelector('.breakdown-line').textContent;
+                    if (breakdownText) desc += `<br><span style="font-size:9px;color:#555;">${breakdownText}</span>`;
+                }
+                const amount = parseFloat(row.querySelector('.amount-input').value) || 0;
+                const debitCell = amount > 0 ? formatCurrency(amount) : '';
+                const creditCell = amount < 0 ? formatCurrency(Math.abs(amount)) : '';
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${date}</td>
+                    <td>${desc}</td>
+                    <td${isUncoded ? ' class="needs-review-cell"' : ''}>${accountLabel}</td>
+                    <td class="right">${debitCell}</td>
+                    <td class="right">${creditCell}</td>
+                `;
+                body.appendChild(tr);
+            });
+
+            const warningDiv = document.getElementById('print-review-warning');
+            if (needsReviewCount > 0) {
+                warningDiv.textContent = `\u26A0 ${needsReviewCount} transaction(s) still need an account code \u2014 see "NEEDS REVIEW" rows above.`;
+                warningDiv.classList.remove('hide');
+            } else {
+                warningDiv.classList.add('hide');
+            }
+
+            const totalsMap = {};
+            rows.forEach(row => {
+                const select = row.querySelector('.account-select');
+                const catId = select.value;
+                const amount = parseFloat(row.querySelector('.amount-input').value) || 0;
+                if (catId === 'SPLIT') {
+                    let breakdown = {};
+                    try { breakdown = JSON.parse(row.dataset.breakdown || '{}'); } catch (e) {}
+                    Object.entries(breakdown).forEach(([id, amt]) => {
+                        if (!totalsMap[id]) {
+                            const acc = chartOfAccounts.find(a => a.id === id);
+                            totalsMap[id] = { name: acc ? acc.name : id, amount: 0 };
+                        }
+                        totalsMap[id].amount += amt;
+                    });
+                } else if (catId !== 'UNCODED' && catId !== 'EXCLUDED') {
+                    if (!totalsMap[catId]) {
+                        totalsMap[catId] = { name: select.options[select.selectedIndex].text.replace(catId + ' - ', ''), amount: 0 };
+                    }
+                    totalsMap[catId].amount += amount;
+                }
+            });
+            const totalsBody = document.getElementById('print-totals-body');
+            totalsBody.innerHTML = '';
+            Object.entries(totalsMap).forEach(([id, data]) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td>${id}</td><td>${data.name}</td><td class="right">${formatCurrency(data.amount)}</td>`;
+                totalsBody.appendChild(tr);
+            });
+            if (Object.keys(totalsMap).length === 0) {
+                totalsBody.innerHTML = '<tr><td colspan="3">No coded items yet.</td></tr>';
+            }
+
+            // Set the page orientation for this export
+            let styleEl = document.getElementById('print-orientation-style');
+            if (!styleEl) {
+                styleEl = document.createElement('style');
+                styleEl.id = 'print-orientation-style';
+                document.head.appendChild(styleEl);
+            }
+            styleEl.textContent = `@media print { @page { size: ${orientation}; } }`;
+
+            window.print();
+        }
+
+        // init() is now triggered automatically once login + access are confirmed (see auth gate script above).
+    </script>
 </body>
 </html>

@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>20th Payments Console</title>
+<style>
+  :root{
+    --bg:#1b2130;
+    --bg-grid: radial-gradient(circle at 1px 1px, rgba(255,255,255,0.035) 1px, transparent 0);
+    --panel: rgba(40,47,66,0.55);
+    --panel-solid:#262c3d;
+    --border: rgba(255,255,255,0.09);
+    --border-bright: rgba(45,212,191,0.35);
+    --text: #e7edf5;
+    --muted: #7c8aa0;
+    --muted-dim:#4d5A6E;
+    --teal:#2dd4bf;
+    --teal-dim: rgba(45,212,191,0.14);
+    --amber:#f5a524;
+    --violet:#8b7cf6;
+    --violet-dim: rgba(139,124,246,0.14);
+    --rose:#fb7185;
+    --scrollbar-thumb: rgba(255,255,255,0.08);
+    --hover-weak: rgba(255,255,255,0.02);
+    --hover-strong: rgba(255,255,255,0.05);
+    --field-bg: rgba(255,255,255,0.03);
+    --row-divider: rgba(255,255,255,0.04);
+    --glow-op: 0.07;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+    --radius: 14px;
+  }
+  :root[data-theme="light"]{
+    --bg:#f6f7fb;
+    --panel: rgba(255,255,255,0.75);
+    --panel-solid:#ffffff;
+    --border: rgba(15,23,42,0.10);
+    --border-bright: rgba(13,148,136,0.45);
+    --text: #12151c;
+    --muted: #5b6472;
+    --muted-dim:#9aa4b2;
+    --scrollbar-thumb: rgba(15,23,42,0.14);
+    --hover-weak: rgba(15,23,42,0.03);
+    --hover-strong: rgba(15,23,42,0.06);
+    --field-bg: rgba(15,23,42,0.035);
+    --row-divider: rgba(15,23,42,0.07);
+    --glow-op: 0.05;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; min-height:100vh;
+    background:
+      radial-gradient(ellipse 900px 500px at 15% -10%, rgba(45,212,191,var(--glow-op)), transparent 60%),
+      radial-gradient(ellipse 800px 500px at 110% 10%, rgba(139,124,246,var(--glow-op)), transparent 60%),
+      var(--bg);
+    background-attachment: fixed;
+    color:var(--text);
+    font-family:var(--sans);
+    padding:28px 28px 60px;
+    transition: background-color .2s ease, color .2s ease;
+  }
+  ::selection{ background: var(--teal-dim); }
+
+  /* ---------- Top bar ---------- */
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between; gap:20px;
+    flex-wrap:wrap;
+    margin-bottom:22px;
+  }
+  .brand{ display:flex; align-items:center; gap:14px; }
+  .brand-mark{
+    width:38px; height:38px; border-radius:10px;
+    background:linear-gradient(135deg, var(--teal), var(--violet));
+    display:flex; align-items:center; justify-content:center;
+    font-family:var(--mono); font-weight:700; color:#04110e; font-size:15px;
+    box-shadow:0 0 24px rgba(45,212,191,0.35);
+    flex-shrink:0;
+  }
+  .brand h1{
+    font-size:17px; letter-spacing:0.06em; text-transform:uppercase; margin:0;
+    font-weight:700; color:var(--text);
+  }
+  .brand .sub{ font-size:12px; color:var(--muted); margin-top:2px; font-family:var(--mono); }
+  .month-input{
+    background:transparent; border:none; color:var(--teal); font-family:var(--mono);
+    font-size:12px; width:150px; outline:none; border-bottom:1px dashed var(--border-bright);
+    padding:1px 2px;
+  }
+
+  .stat-cluster{ display:flex; gap:10px; flex-wrap:wrap; }
+  .stat{
+    background:var(--panel); border:1px solid var(--border); border-radius:var(--radius);
+    padding:10px 18px; min-width:130px; backdrop-filter: blur(10px);
+  }
+  .stat .label{ font-size:10px; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted); }
+  .stat .value{ font-family:var(--mono); font-size:20px; font-weight:600; font-variant-numeric:tabular-nums; margin-top:2px; }
+  .stat.grand .value{ color:var(--teal); }
+
+  .theme-toggle{
+    background:var(--panel-solid); border:1px solid var(--border); color:var(--text);
+    border-radius:999px; padding:10px 16px; cursor:pointer; font-family:var(--sans);
+    font-size:12.5px; font-weight:600; display:flex; align-items:center; gap:7px;
+    align-self:stretch;
+  }
+  .theme-toggle:hover{ border-color:var(--border-bright); }
+  .theme-toggle #themeIcon{ font-size:14px; }
+
+  /* ---------- Month tabs ---------- */
+  .tabbar{
+    display:flex; gap:8px; overflow-x:auto; padding-bottom:4px; margin-bottom:16px;
+  }
+  .tabbar::-webkit-scrollbar{ height:6px; }
+  .tabbar::-webkit-scrollbar-thumb{ background:var(--scrollbar-thumb); border-radius:8px; }
+  .tab{
+    flex-shrink:0; background:var(--panel-solid); border:1px solid var(--border); color:var(--muted);
+    padding:7px 16px; border-radius:999px; font-size:12px; font-weight:600; cursor:pointer;
+    white-space:nowrap; transition:all .15s ease; font-family:var(--sans);
+  }
+  .tab:hover{ color:var(--text); }
+  .tab.active{ border-color:var(--teal); color:var(--teal); background:var(--teal-dim); }
+  .tab.archived::before{ content:'🔒 '; font-size:10px; }
+
+  .autosave-status{
+    font-family:var(--mono); font-size:11.5px; color:var(--muted-dim); margin:-6px 0 18px 2px;
+    display:flex; align-items:center; gap:6px;
+  }
+  .autosave-status .pulse{ width:6px; height:6px; border-radius:50%; background:var(--muted-dim); flex-shrink:0; }
+  .autosave-status.connected{ color:var(--teal); }
+  .autosave-status.connected .pulse{ background:var(--teal); box-shadow:0 0 6px var(--teal); animation:pulse 1.8s ease-in-out infinite; }
+  @keyframes pulse{ 0%,100%{ opacity:1; } 50%{ opacity:0.35; } }
+
+  /* ---------- Controls ---------- */
+  .controls{
+    display:flex; align-items:center; justify-content:space-between; gap:14px;
+    flex-wrap:wrap; margin-bottom:20px;
+  }
+  .seg{
+    display:inline-flex; background:var(--panel-solid); border:1px solid var(--border);
+    border-radius:999px; padding:3px; gap:2px;
+  }
+  .seg button{
+    border:none; background:transparent; color:var(--muted); font-family:var(--sans);
+    font-size:12.5px; font-weight:600; padding:8px 16px; border-radius:999px; cursor:pointer;
+    transition:all .15s ease;
+  }
+  .seg button.active{ background:var(--teal); color:#04110e; }
+  .seg button:not(.active):hover{ color:var(--text); }
+
+  .btn{
+    border:1px solid var(--border); background:var(--panel-solid); color:var(--text);
+    font-family:var(--sans); font-size:12.5px; font-weight:600; padding:9px 16px;
+    border-radius:10px; cursor:pointer; display:inline-flex; align-items:center; gap:7px;
+    transition:all .15s ease;
+  }
+  .btn:hover{ border-color:var(--border-bright); background:#171d2b; }
+  .btn.primary{ background:var(--teal); color:#04110e; border-color:var(--teal); }
+  .btn.primary:hover{ filter:brightness(1.08); }
+  .btn.ghost{ background:transparent; }
+  .btn-row{ display:flex; gap:8px; flex-wrap:wrap; }
+
+  /* ---------- Board ---------- */
+  .board{
+    display:grid; grid-template-columns: repeat(3, 1fr); gap:18px;
+    align-items:start;
+  }
+  @media (max-width: 980px){ .board{ grid-template-columns:1fr; } }
+  @media (max-width: 700px){
+    .topbar{ flex-direction:column; align-items:flex-start; gap:12px; padding:14px; }
+    .stat-cluster{ flex-wrap:wrap; gap:10px; }
+    h1{ font-size:1.2rem; }
+    .btn-row{ gap:6px; }
+  }
+
+  #authGate{
+    position:fixed; inset:0; background:#12141C; z-index:5000;
+    display:flex; align-items:center; justify-content:center;
+  }
+  #authGate .box{
+    width:100%; max-width:360px; background:#1B1E29; border:1px solid #2A2E3D;
+    border-radius:10px; padding:30px 26px; text-align:center; font-family:sans-serif;
+  }
+  #authGate h2{margin:0 0 6px; font-size:1.2rem; color:#fff;}
+  #authGate p{margin:0 0 20px; font-size:.85rem; color:#9BA0AE;}
+  #authGate input{
+    width:100%; padding:10px 12px; margin-bottom:10px; border:1px solid #2A2E3D;
+    border-radius:6px; font-size:.9rem; box-sizing:border-box; background:#12141C; color:#fff;
+  }
+  #authGate button{
+    width:100%; padding:11px; background:#3D8BFF; color:#fff; border:none;
+    border-radius:6px; font-weight:700; cursor:pointer; margin-top:4px;
+  }
+  #authGate .msg{font-size:.8rem; margin-top:12px; color:#FF6B6B;}
+  #logoutCorner{
+    position:fixed; bottom:14px; left:14px; z-index:900; font-size:11px;
+    background:#1B1E29; border:1px solid #2A2E3D; padding:5px 10px; border-radius:20px;
+    color:#9BA0AE; cursor:pointer;
+  }
+</style>
+
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyAPwS1GFwqj6KR4dQgxifykh9HS5km6OX4",
+    authDomain: "alpha-7fce5.firebaseapp.com",
+    projectId: "alpha-7fce5",
+    storageBucket: "alpha-7fce5.firebasestorage.app",
+    messagingSenderId: "10647816245",
+    appId: "1:10647816245:web:fbfb982260cf2eef97097c"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
+  const REQUIRED_TOOL_KEY = "payments";
+</script>
+<style>
+
+  .panel{
+    background:var(--panel); border:1px solid var(--border); border-radius:var(--radius);
+    backdrop-filter: blur(10px);
+    overflow:hidden;
+    display:flex; flex-direction:column;
+  }
+  .panel-head{
+    padding:14px 16px 12px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+  }
+  .panel-head h2{
+    font-size:12.5px; letter-spacing:0.04em; margin:0; font-weight:700;
+    display:flex; align-items:center; gap:8px;
+  }
+  .dot{ width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+  .panel[data-id="main"] .dot{ background:var(--teal); box-shadow:0 0 8px var(--teal); }
+  .panel[data-id="dd25"] .dot{ background:var(--violet); box-shadow:0 0 8px var(--violet); }
+  .panel[data-id="dd20"] .dot{ background:var(--amber); box-shadow:0 0 8px var(--amber); }
+
+  .sort-btn{
+    background:transparent; border:none; color:var(--muted); font-size:11px; cursor:pointer;
+    font-family:var(--mono); padding:4px 6px; border-radius:6px;
+  }
+  .sort-btn:hover{ color:var(--text); background:var(--hover-strong); }
+
+  .rows{ flex:1; max-height:520px; overflow-y:auto; }
+  .rows::-webkit-scrollbar{ width:8px; }
+  .rows::-webkit-scrollbar-thumb{ background:var(--scrollbar-thumb); border-radius:8px; }
+
+  .row{
+    display:flex; align-items:center; gap:8px;
+    padding:8px 16px; border-bottom:1px solid var(--row-divider);
+    font-size:13px;
+  }
+  .row:hover{ background:var(--hover-weak); }
+  .row .name-input{
+    flex:1; min-width:0; background:transparent; border:none; border-bottom:1px solid transparent;
+    color:var(--text); font-family:var(--sans); font-size:13px; padding:2px 2px;
+    outline:none; text-overflow:ellipsis;
+  }
+  .row.unpaid .name-input{ color:var(--muted); }
+  .row .name-input:hover{ border-bottom:1px solid var(--border); }
+  .row .name-input:focus{ border-bottom:1px solid var(--teal); color:var(--text); }
+  .row .name-input:disabled{ cursor:default; }
+  .row .amt-wrap{ display:flex; align-items:center; gap:2px; font-family:var(--mono); }
+  .row .amt-wrap .cur{ color:var(--muted-dim); font-size:12px; }
+  .row input.amount{
+    width:88px; background:transparent; border:none; border-bottom:1px solid transparent;
+    color:var(--teal); font-family:var(--mono); font-size:13px; text-align:right;
+    padding:3px 2px; outline:none; font-variant-numeric:tabular-nums;
+  }
+  .row input.amount:focus{ border-bottom:1px solid var(--teal); }
+  .row input.amount::placeholder{ color:var(--muted-dim); }
+  .row .del{
+    background:transparent; border:none; color:var(--muted-dim); cursor:pointer; font-size:15px;
+    line-height:1; padding:2px 4px; border-radius:6px; flex-shrink:0;
+  }
+  .row .del:hover{ color:var(--rose); background:rgba(251,113,133,0.1); }
+
+  .add-row{
+    display:flex; gap:8px; padding:10px 16px; border-top:1px dashed var(--border);
+  }
+  .add-row input{
+    flex:1; background:var(--field-bg); border:1px solid var(--border);
+    border-radius:8px; padding:7px 10px; color:var(--text); font-size:12.5px; outline:none;
+  }
+  .add-row input:focus{ border-color:var(--border-bright); }
+  .add-row button{
+    border:none; background:var(--teal-dim); color:var(--teal); font-weight:700;
+    border-radius:8px; padding:0 14px; cursor:pointer; font-size:16px;
+  }
+  .add-row button:hover{ background:var(--teal); color:#04110e; }
+
+  .panel-foot{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:12px 16px; border-top:1px solid var(--border);
+    font-family:var(--mono); font-size:13px;
+  }
+  .panel-foot .lbl{ color:var(--muted); font-size:10.5px; text-transform:uppercase; letter-spacing:0.06em; font-family:var(--sans); font-weight:700;}
+  .panel-foot .total{ font-weight:700; font-size:16px; font-variant-numeric:tabular-nums; }
+
+  .row.selected{
+    background: var(--teal-dim);
+    border-left: 3px solid var(--teal);
+    padding-left: 13px;
+  }
+  .empty-msg{ padding:26px 16px; text-align:center; color:var(--muted-dim); font-size:12.5px; }
+
+  footer.hint{
+    margin-top:26px; text-align:center; color:var(--muted-dim); font-size:11.5px;
+    font-family:var(--mono);
+  }
+
+  /* ---------- Read-only archived month view ---------- */
+  .board.readonly .del,
+  .board.readonly .add-row,
+  .board.readonly .sort-btn{ display:none !important; }
+  .board.readonly input.amount{ pointer-events:none; color:var(--muted); }
+  .archived-banner{
+    display:none; align-items:center; gap:8px; font-size:12px; color:var(--amber);
+    background:rgba(245,165,36,0.1); border:1px solid rgba(245,165,36,0.25);
+    padding:8px 14px; border-radius:10px; margin-bottom:16px; font-family:var(--mono);
+  }
+  .archived-banner.show{ display:flex; }
+
+  /* ---------- Payment-list (filtered) mode ---------- */
+  body.list-mode .row.unpaid{ display:none; }
+  body.list-mode .add-row{ display:none; }
+  body.list-mode .del{ display:none; }
+  body.list-mode input.amount{ pointer-events:none; }
+  body.list-mode .sort-btn{ pointer-events:auto; }
+
+  /* ---------- Print ---------- */
+  @media print{
+    @page{ size: A4 portrait; margin: 10mm; }
+    *{ box-shadow:none !important; text-shadow:none !important; background-image:none !important; }
+    body{ background:#fff !important; color:#111 !important; padding:0; filter:none; }
+    body::before{ display:none; }
+    .controls, .btn-row, .stat-cluster, .add-row, .del, .seg, .sort-btn{ display:none !important; }
+    .tabbar, .archived-banner, .autosave-status{ display:none !important; }
+    .theme-toggle{ display:none !important; }
+    .brand-mark{ display:none !important; }
+    .month-input{ color:#111 !important; border-bottom:none; }
+    .brand .sub, .brand h1{ color:#111 !important; }
+    .board{ display:block; }
+    .panel{
+      background:#fff !important; border:1px solid #999 !important; backdrop-filter:none;
+      break-inside:avoid; margin-bottom:12px;
+    }
+    .rows{ max-height:none; overflow:visible; }
+    .panel-head{ border-bottom:1px solid #999; }
+    .panel-head h2{ color:#111 !important; }
+    .dot{ background:#111 !important; box-shadow:none !important; }
+    .row{ border-bottom:1px solid #ddd; color:#111; padding:4px 12px; font-size:11px; }
+    .row.selected{ background:#fff !important; border-left:none !important; padding-left:12px !important; }
+    .row .name-input{ color:#111 !important; border-bottom:none !important; }
+    .row.unpaid{ display:none !important; }
+    .amt-wrap .cur{ color:#111 !important; }
+    input.amount{ color:#111 !important; }
+    .panel-foot{ border-top:1px solid #111; }
+    .panel-foot .lbl{ color:#111 !important; }
+    .panel-foot .total{ color:#111 !important; }
+    footer.hint{ display:none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="authGate">
+  <div class="box">
+    <h2>Sign in</h2>
+    <p>Enter your login to access 20th Payments.</p>
+    <input type="email" id="gateEmail" placeholder="Email">
+    <input type="password" id="gatePassword" placeholder="Password">
+    <button id="gateBtn">Sign in</button>
+    <div class="msg" id="gateMsg"></div>
+  </div>
+</div>
+<div id="logoutCorner" style="display:none;">Log out</div>
+<div id="appWrap" style="display:none;">
+
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-mark">₪</div>
+    <div>
+      <h1>20th Payments</h1>
+      <div class="sub">for <input class="month-input" id="monthInput" value="August 2026"> · updated <span id="stampDate"></span></div>
+    </div>
+  </div>
+  <div class="stat-cluster">
+    <div class="stat"><div class="label">Suppliers Paid</div><div class="value" id="statCount">0</div></div>
+    <div class="stat grand"><div class="label">Grand Total</div><div class="value" id="statGrand">$0.00</div></div>
+    <button class="theme-toggle" id="themeToggle" title="Switch between day and dark mode">
+      <span id="themeIcon">☾</span> <span id="themeLabel">Dark</span>
+    </button>
+  </div>
+</div>
+
+<div class="tabbar" id="tabBar"></div>
+
+<div class="controls">
+  <div class="seg" id="modeSeg">
+    <button class="active" data-mode="edit">Edit list</button>
+    <button data-mode="list">Payment list</button>
+  </div>
+  <div class="btn-row">
+    <button class="btn ghost" id="clearBtn">📁 Archive month &amp; start new</button>
+    <button class="btn" id="autosaveBtn">🔗 Connect autosave file</button>
+    <button class="btn" id="printBtn">🖨 Print / Export PDF</button>
+    <button class="btn primary" id="saveBtn">⭳ Save copy (.html)</button>
+  </div>
+</div>
+<div class="autosave-status" id="autosaveStatus"></div>
+
+<div class="archived-banner" id="archivedBanner">🔒 Viewing an archived month — read-only. Switch to the current tab to make changes.</div>
+<div class="board" id="board"></div>
+
+<footer class="hint">EDIT MODE — enter an amount to mark a supplier as paid this cycle · switch to PAYMENT LIST before printing to show only what's actually being paid</footer>
+
+<script>
+const STORAGE_KEY_NONE = true; // no browser storage used — state lives in this file only
+let state = {"month": "August 2026", "sections": [{"id": "main", "title": "20th of Month Payments", "companies": [{"name": "ALT Balancing", "amount": null}, {"name": "ALT NZ", "amount": null}, {"name": "ATL Balancing", "amount": null}, {"name": "Accurate Line Marking", "amount": null}, {"name": "Admirals Holden", "amount": null}, {"name": "Allied Autoparts", "amount": null}, {"name": "Allied Security", "amount": null}, {"name": "Apex Auto", "amount": null}, {"name": "Arpit", "amount": null}, {"name": "Automaster", "amount": null}, {"name": "Automotech", "amount": null}, {"name": "Bayteck", "amount": null}, {"name": "Bhavini", "amount": null}, {"name": "Blairs", "amount": null}, {"name": "Boot IT", "amount": null}, {"name": "Bridged IT", "amount": null}, {"name": "CarTrack", "amount": null}, {"name": "City Glass", "amount": null}, {"name": "Commtech Supplies", "amount": null}, {"name": "Competetive Couriers", "amount": null}, {"name": "Cookie Time", "amount": null}, {"name": "Coombes Johnston BMW", "amount": null}, {"name": "Crafty Weka Bar", "amount": null}, {"name": "DAM Doors Ltd", "amount": null}, {"name": "Dealer Co NZ", "amount": null}, {"name": "Dealer Co NZ 0891451-01", "amount": null}, {"name": "Drive Smart", "amount": null}, {"name": "Duncan & Ebbett", "amount": null}, {"name": "Ebbett Toyota", "amount": null}, {"name": "Ebbett Waikato", "amount": null}, {"name": "Elgas -  Bottle", "amount": null}, {"name": "Elgas - Auto", "amount": null}, {"name": "Enivor NZ", "amount": null}, {"name": "Enterprise Engineering", "amount": null}, {"name": "Envir Haz", "amount": null}, {"name": "Enviro Haz", "amount": null}, {"name": "Fargo Group", "amount": null}, {"name": "Faria Holdings", "amount": null}, {"name": "Firewatch", "amount": null}, {"name": "Fortus Safety", "amount": null}, {"name": "Full Circle", "amount": null}, {"name": "GJS Tradding (BOTO)", "amount": null}, {"name": "Get Gas", "amount": null}, {"name": "Greame Clunie", "amount": null}, {"name": "Hamilton City - Water", "amount": null}, {"name": "Herbert Morton", "amount": null}, {"name": "Holden Haven", "amount": null}, {"name": "Honda", "amount": null}, {"name": "Incafe", "amount": null}, {"name": "Ingham Motors", "amount": null}, {"name": "Inland Revenue", "amount": null}, {"name": "Jim Wright", "amount": null}, {"name": "Jimmy It UP", "amount": null}, {"name": "King Commercial", "amount": null}, {"name": "Kiwi Baloon Company", "amount": null}, {"name": "LoveGrove Autoparts", "amount": null}, {"name": "NZME", "amount": null}, {"name": "Nippon South Pacific", "amount": null}, {"name": "Northland Waste", "amount": null}, {"name": "Nothing Naughty", "amount": null}, {"name": "Oji Fibre", "amount": null}, {"name": "Patch Rubber", "amount": null}, {"name": "Pickerill", "amount": null}, {"name": "Prima Deli North", "amount": null}, {"name": "Pure Group", "amount": null}, {"name": "Reed Product", "amount": null}, {"name": "Ruka", "amount": null}, {"name": "Sam Computers", "amount": null}, {"name": "Sean Elder Garage", "amount": null}, {"name": "Shalini D Sharma (Sparky)", "amount": null}, {"name": "Stuff", "amount": null}, {"name": "Summit Hire", "amount": null}, {"name": "Supercheap Auto NZ", "amount": null}, {"name": "The Brand Makers", "amount": null}, {"name": "Titex", "amount": null}, {"name": "Toolshed Hamilton", "amount": null}, {"name": "Tyre Tracks", "amount": null}, {"name": "Tyremax", "amount": null}, {"name": "Tyres 4 U", "amount": null}, {"name": "VAMS - bluebird", "amount": null}, {"name": "Value Tyres", "amount": null}, {"name": "Waikato Auto Locksmith", "amount": null}, {"name": "Waikato Bearings", "amount": null}, {"name": "Waikato Cleaning Supplies", "amount": null}, {"name": "Waikato Commercial Spare", "amount": null}, {"name": "Waikato Kia", "amount": null}, {"name": "Wests Original", "amount": null}, {"name": "Windscreens Aotearoa", "amount": null}, {"name": "Winger Hamilton", "amount": null}]}, {"id": "dd25", "title": "Direct Debits \u2013 25th of Month", "companies": [{"name": "AL Distribution", "amount": null}, {"name": "BakeShack", "amount": null}, {"name": "Black Fern", "amount": null}, {"name": "British American Tobacco", "amount": null}, {"name": "Capricorn", "amount": null}, {"name": "Cookies Time", "amount": null}, {"name": "HCC - Rent", "amount": null}, {"name": "Imperial Tobacco", "amount": null}, {"name": "MTA", "amount": null}, {"name": "Meridian Energy", "amount": null}, {"name": "Myob", "amount": null}, {"name": "Paymark", "amount": null}, {"name": "Phillip Morris", "amount": null}, {"name": "Red Circle", "amount": null}, {"name": "Spark", "amount": null}]}, {"id": "dd20", "title": "Direct Debits \u2013 20th of Month (Auto Debit)", "companies": [{"name": "Coregas", "amount": null}, {"name": "Nalsun", "amount": null}, {"name": "Swole Foods", "amount": null}, {"name": "Worldline", "amount": null}]}], "history": [], "theme": "dark"}
+;
+let mode = 'edit';
+let viewingIndex = null; // null = current live month; otherwise index into state.history
+
+if(!state.theme) state.theme = 'dark';
+
+function applyTheme(){
+  document.documentElement.setAttribute('data-theme', state.theme);
+  document.getElementById('themeIcon').textContent = state.theme === 'light' ? '☀' : '☾';
+  document.getElementById('themeLabel').textContent = state.theme === 'light' ? 'Day' : 'Dark';
+}
+applyTheme();
+
+document.getElementById('themeToggle').addEventListener('click', ()=>{
+  state.theme = state.theme === 'light' ? 'dark' : 'light';
+  applyTheme();
+  scheduleAutosave();
+});
+
+/* ---------- Jump to supplier by letter, then browse with ↑ / ↓ ---------- */
+const jumpCycle = {};    // per panel+letter: last match index used, so repeat presses cycle through matches
+const selectedRow = {};  // per panel id: the row element currently highlighted
+
+function visibleRows(panel){
+  const listMode = document.body.classList.contains('list-mode');
+  return [...panel.querySelectorAll('.rows .row')].filter(r=>{
+    return !(listMode && r.classList.contains('unpaid')); // skip rows hidden in Payment List view
+  });
+}
+
+function selectRow(panel, row){
+  const prev = selectedRow[panel.dataset.id];
+  if(prev) prev.classList.remove('selected');
+  selectedRow[panel.dataset.id] = row || null;
+  if(row){
+    row.classList.add('selected');
+    row.scrollIntoView({ block:'center', behavior:'smooth' });
+  }
+}
+
+document.addEventListener('keydown', (e)=>{
+  const tag = document.activeElement.tagName;
+  if(tag === 'INPUT' || tag === 'TEXTAREA') return; // don't hijack typing, or number-field arrow spinners
+
+  if(/^[a-zA-Z0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey){
+    const letter = e.key.toUpperCase();
+    let jumpedAny = false;
+    document.querySelectorAll('.panel').forEach(panel=>{
+      const rows = visibleRows(panel);
+      const matches = rows.filter(r=>{
+        const inp = r.querySelector('.name-input');
+        return inp && inp.value.trim().toUpperCase().startsWith(letter);
+      });
+      if(matches.length === 0) return;
+      jumpedAny = true;
+      const key = panel.dataset.id + '|' + letter;
+      let idx = (jumpCycle[key] === undefined ? -1 : jumpCycle[key]) + 1;
+      if(idx >= matches.length) idx = 0;
+      jumpCycle[key] = idx;
+      selectRow(panel, matches[idx]);
+    });
+    if(jumpedAny) e.preventDefault();
+    return;
+  }
+
+  if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+    const dir = e.key === 'ArrowDown' ? 1 : -1;
+    let movedAny = false;
+    document.querySelectorAll('.panel').forEach(panel=>{
+      const current = selectedRow[panel.dataset.id];
+      if(!current || !panel.contains(current)) return; // nothing selected here, or it was removed by a re-render
+      const rows = visibleRows(panel);
+      const idx = rows.indexOf(current);
+      if(idx === -1) return;
+      const nextIdx = Math.min(rows.length - 1, Math.max(0, idx + dir));
+      if(nextIdx === idx) return;
+      selectRow(panel, rows[nextIdx]);
+      movedAny = true;
+    });
+    if(movedAny) e.preventDefault();
+  }
+});
+
+function fmt(n){
+  return '$' + Number(n).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+function isReadOnly(){ return viewingIndex !== null; }
+
+function activeSections(){
+  return isReadOnly() ? state.history[viewingIndex].sections : state.sections;
+}
+
+function activeMonthLabel(){
+  return isReadOnly() ? state.history[viewingIndex].month : state.month;
+}
+
+function sectionTotal(sec){
+  return sec.companies.reduce((s,c)=> s + (c.amount ? Number(c.amount) : 0), 0);
+}
+
+function grandTotal(){
+  return activeSections().reduce((s,sec)=> s + sectionTotal(sec), 0);
+}
+
+function paidCount(){
+  return activeSections().reduce((s,sec)=> s + sec.companies.filter(c=>c.amount).length, 0);
+}
+
+function renderTabs(){
+  const bar = document.getElementById('tabBar');
+  bar.innerHTML = '';
+  const mkTab = (label, idxVal, isActive, archived)=>{
+    const b = document.createElement('button');
+    b.className = 'tab' + (isActive ? ' active' : '') + (archived ? ' archived' : '');
+    b.textContent = label;
+    b.addEventListener('click', ()=>{ viewingIndex = idxVal; render(); });
+    bar.appendChild(b);
+  };
+  mkTab(state.month + ' · current', null, viewingIndex === null, false);
+  state.history.forEach((h, i)=> mkTab(h.month, i, viewingIndex === i, true));
+}
+
+function render(){
+  renderTabs();
+  const monthInput = document.getElementById('monthInput');
+  monthInput.value = activeMonthLabel();
+  monthInput.disabled = isReadOnly();
+  document.getElementById('archivedBanner').classList.toggle('show', isReadOnly());
+  document.getElementById('statGrand').textContent = fmt(grandTotal());
+  document.getElementById('statCount').textContent = paidCount();
+  document.getElementById('stampDate').textContent = new Date().toLocaleDateString();
+
+  const board = document.getElementById('board');
+  board.classList.toggle('readonly', isReadOnly());
+  board.innerHTML = '';
+
+  activeSections().forEach((sec, secIdx)=>{
+    const panel = document.createElement('div');
+    panel.className = 'panel';
+    panel.dataset.id = sec.id;
+
+    const head = document.createElement('div');
+    head.className = 'panel-head';
+    head.innerHTML = `<h2><span class="dot"></span>${sec.title}</h2>
+      <button class="sort-btn" title="Sort A→Z">A→Z ⇅</button>`;
+    head.querySelector('.sort-btn').addEventListener('click', ()=>{
+      sec.companies.sort((a,b)=> a.name.localeCompare(b.name));
+      render();
+      scheduleAutosave();
+    });
+    panel.appendChild(head);
+
+    const rows = document.createElement('div');
+    rows.className = 'rows';
+
+    if(sec.companies.length === 0){
+      rows.innerHTML = '<div class="empty-msg">No suppliers yet — add one below.</div>';
+    }
+
+    sec.companies.forEach((c, i)=>{
+      const row = document.createElement('div');
+      row.className = 'row' + (c.amount ? '' : ' unpaid');
+      row.innerHTML = `
+        <input type="text" class="name-input" spellcheck="false">
+        <span class="amt-wrap"><span class="cur">$</span></span>
+        <button class="del" title="Remove">×</button>
+      `;
+      const nameInput = row.querySelector('.name-input');
+      nameInput.value = c.name;
+      nameInput.disabled = isReadOnly();
+      nameInput.addEventListener('input', (e)=>{
+        c.name = e.target.value;
+      });
+      const commitNameEdit = ()=>{
+        c.name = c.name.trim() || c.name;
+        sec.companies.sort((a,b)=> a.name.localeCompare(b.name));
+        render();
+        scheduleAutosave();
+      };
+      nameInput.addEventListener('blur', commitNameEdit);
+      nameInput.addEventListener('keydown', (e)=>{
+        if(e.key === 'Enter'){ e.preventDefault(); nameInput.blur(); }
+      });
+      const amtWrap = row.querySelector('.amt-wrap');
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.inputMode = 'decimal';
+      input.className = 'amount';
+      input.placeholder = '0.00';
+      input.value = c.amount !== null && c.amount !== undefined ? Number(c.amount).toFixed(2) : '';
+      input.disabled = isReadOnly();
+      input.addEventListener('input', (e)=>{
+        // allow only digits and a single decimal point while typing
+        let v = e.target.value.replace(/[^0-9.]/g, '');
+        const firstDot = v.indexOf('.');
+        if(firstDot !== -1){
+          v = v.slice(0, firstDot + 1) + v.slice(firstDot + 1).replace(/\./g, '');
+        }
+        e.target.value = v;
+        c.amount = v === '' || v === '.' ? null : parseFloat(v);
+        row.classList.toggle('unpaid', !c.amount);
+        updateStatsOnly();
+        scheduleAutosave();
+      });
+      input.addEventListener('blur', (e)=>{
+        if(c.amount !== null && !isNaN(c.amount)){
+          e.target.value = Number(c.amount).toFixed(2); // e.g. 84.5 -> 84.50
+        }
+      });
+      input.addEventListener('keydown', (e)=>{
+        if(e.key === 'Enter'){ e.preventDefault(); input.blur(); }
+      });
+      amtWrap.appendChild(input);
+      row.querySelector('.del').addEventListener('click', ()=>{
+        if(confirm(`Remove "${c.name}" from this list?`)){
+          sec.companies.splice(i,1);
+          render();
+          scheduleAutosave();
+        }
+      });
+      rows.appendChild(row);
+    });
+    panel.appendChild(rows);
+
+    const addRow = document.createElement('div');
+    addRow.className = 'add-row';
+    addRow.innerHTML = `<input type="text" placeholder="+ add supplier name…"><button title="Add">+</button>`;
+    const addInput = addRow.querySelector('input');
+    const doAdd = ()=>{
+      const name = addInput.value.trim();
+      if(!name) return;
+      sec.companies.push({name, amount:null});
+      sec.companies.sort((a,b)=> a.name.localeCompare(b.name));
+      render();
+      scheduleAutosave();
+    };
+    addRow.querySelector('button').addEventListener('click', doAdd);
+    addInput.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') doAdd(); });
+    panel.appendChild(addRow);
+
+    const foot = document.createElement('div');
+    foot.className = 'panel-foot';
+    foot.innerHTML = `<span class="lbl">Subtotal</span><span class="total">${fmt(sectionTotal(sec))}</span>`;
+    panel.appendChild(foot);
+
+    board.appendChild(panel);
+  });
+}
+
+function updateStatsOnly(){
+  document.getElementById('statGrand').textContent = fmt(grandTotal());
+  document.getElementById('statCount').textContent = paidCount();
+  document.querySelectorAll('.panel').forEach((panel)=>{
+    const sec = activeSections().find(s=>s.id===panel.dataset.id);
+    panel.querySelector('.panel-foot .total').textContent = fmt(sectionTotal(sec));
+  });
+}
+
+document.getElementById('monthInput').addEventListener('input', (e)=>{
+  if(isReadOnly()) return;
+  state.month = e.target.value;
+  renderTabs();
+  scheduleAutosave();
+});
+
+document.getElementById('modeSeg').addEventListener('click', (e)=>{
+  const btn = e.target.closest('button[data-mode]');
+  if(!btn) return;
+  mode = btn.dataset.mode;
+  document.querySelectorAll('#modeSeg button').forEach(b=>b.classList.toggle('active', b===btn));
+  document.body.classList.toggle('list-mode', mode==='list');
+  document.querySelector('footer.hint').textContent = mode==='list'
+    ? 'PAYMENT LIST — showing only suppliers with an amount entered. Ready to print or save as PDF.'
+    : "EDIT MODE — enter an amount to mark a supplier as paid this cycle · switch to PAYMENT LIST before printing to show only what's actually being paid";
+});
+
+document.getElementById('clearBtn').addEventListener('click', ()=>{
+  if(isReadOnly()){
+    alert('You\'re viewing an archived month. Click the "· current" tab first, then archive from there.');
+    return;
+  }
+  if(!confirm(`Archive "${state.month}" as-is (you'll be able to view it anytime from the tabs above), then start a fresh month?`)) return;
+  const nextLabel = prompt('Name for the new month (e.g. "September 2026"):', '');
+  if(nextLabel === null) return; // cancelled — nothing archived
+  state.history.unshift({
+    month: state.month,
+    sections: JSON.parse(JSON.stringify(state.sections))
+  });
+  state.sections.forEach(sec => sec.companies.forEach(c => c.amount = null));
+  state.month = nextLabel.trim() || state.month;
+  viewingIndex = null;
+  render();
+  scheduleAutosave();
+});
+
+function serializeCurrentHtml(){
+  return '<!DOCTYPE html>\n' + document.documentElement.outerHTML
+    .replace(/let state = [\s\S]*?;\n\s*let mode/, 'let state = ' + JSON.stringify(state) + ';\n  let mode');
+}
+
+document.getElementById('printBtn').addEventListener('click', ()=>{
+  window.print();
+});
+
+document.getElementById('saveBtn').addEventListener('click', ()=>{
+  const htmlNow = serializeCurrentHtml();
+  const blob = new Blob([htmlNow], {type:'text/html'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const safeMonth = (state.month || 'payments').replace(/[^a-z0-9]+/gi,'-');
+  a.href = url;
+  a.download = `Payments-${safeMonth}.html`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+});
+
+/* ---------- Autosave to a local file (File System Access API — Chrome/Edge) ---------- */
+let fileHandle = null;
+let autosaveTimer = null;
+const autosaveSupported = 'showSaveFilePicker' in window;
+const autosaveStatusEl = document.getElementById('autosaveStatus');
+const autosaveBtn = document.getElementById('autosaveBtn');
+
+function setAutosaveStatus(text, connected){
+  autosaveStatusEl.classList.toggle('connected', !!connected);
+  autosaveStatusEl.innerHTML = `<span class="pulse"></span>${text}`;
+}
+
+if(!autosaveSupported){
+  autosaveBtn.disabled = true;
+  autosaveBtn.title = 'Autosave needs a Chromium browser (Chrome or Edge)';
+  setAutosaveStatus('Autosave needs Chrome or Edge — use "Save copy" manually in this browser.', false);
+} else {
+  setAutosaveStatus('Not connected — changes only live in this tab until you connect or save a copy.', false);
+}
+
+autosaveBtn.addEventListener('click', async ()=>{
+  if(!autosaveSupported) return;
+  try{
+    fileHandle = await window.showSaveFilePicker({
+      suggestedName: `Payments-${(state.month||'dashboard').replace(/[^a-z0-9]+/gi,'-')}.html`,
+      types: [{ description: 'HTML File', accept: {'text/html': ['.html']} }]
+    });
+    await writeToFile();
+    setAutosaveStatus(`Autosaving to "${fileHandle.name}" — every change is written to this file.`, true);
+  } catch(e){
+    if(e.name !== 'AbortError') alert('Could not connect to a file: ' + e.message);
+  }
+});
+
+async function writeToFile(){
+  if(!fileHandle) return;
+  try{
+    const writable = await fileHandle.createWritable();
+    await writable.write(serializeCurrentHtml());
+    await writable.close();
+    setAutosaveStatus(`Autosaving to "${fileHandle.name}" — last saved ${new Date().toLocaleTimeString()}.`, true);
+  } catch(e){
+    setAutosaveStatus('Autosave failed — reconnect the file.', false);
+    console.error('Autosave write failed:', e);
+  }
+}
+
+function scheduleAutosave(){
+  if(!fileHandle) return;
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(writeToFile, 800);
+}
+</script>
+
+</div><!-- /#appWrap -->
+<script>
+  const gateEmail = document.getElementById('gateEmail');
+  const gatePassword = document.getElementById('gatePassword');
+  const gateMsg = document.getElementById('gateMsg');
+  const authGate = document.getElementById('authGate');
+  const logoutCorner = document.getElementById('logoutCorner');
+  const appWrap = document.getElementById('appWrap');
+
+  document.getElementById('gateBtn').addEventListener('click', async () => {
+    gateMsg.textContent = '';
+    try {
+      await auth.signInWithEmailAndPassword(gateEmail.value.trim(), gatePassword.value);
+    } catch (e) {
+      gateMsg.textContent = 'Incorrect email or password.';
+    }
+  });
+  logoutCorner.addEventListener('click', () => auth.signOut());
+
+  let appHasStarted = false;
+  auth.onAuthStateChanged(async (user) => {
+    if (!user) {
+      authGate.style.display = 'flex';
+      logoutCorner.style.display = 'none';
+      appWrap.style.display = 'none';
+      return;
+    }
+    let allowed = false;
+    try {
+      const snap = await db.collection('users').doc(user.uid).get();
+      if (snap.exists) {
+        const data = snap.data();
+        allowed = data.role === 'admin' || (data.tools || []).includes(REQUIRED_TOOL_KEY);
+      }
+    } catch (e) { console.error(e); }
+
+    if (!allowed) {
+      gateMsg.textContent = "You don't have access to this tool.";
+      auth.signOut();
+      return;
+    }
+
+    authGate.style.display = 'none';
+    logoutCorner.style.display = 'block';
+    appWrap.style.display = 'block';
+    if (!appHasStarted) { appHasStarted = true; render(); }
+  });
+</script>
+</body>
+</html>
