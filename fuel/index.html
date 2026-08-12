@@ -251,12 +251,13 @@
     body:has(#sidebar.collapsed) #sidebarBackdrop{
       display: block;
     }
-    #sidebarCloseBtn{
-      display: none; align-items: center; justify-content: center;
-      width: 30px; height: 30px; border-radius: 8px; background: var(--card-raised);
-      color: var(--text); cursor: pointer; margin-left: auto; flex-shrink: 0;
+    #sidebarCloseFab{
+      display: none; position: fixed; top: 14px; right: 14px; z-index: 9999;
+      width: 42px; height: 42px; border-radius: 50%; background: var(--card, #16181D);
+      border: 1px solid var(--border, #262A33); color: var(--text, #fff);
+      align-items: center; justify-content: center; cursor: pointer;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.35);
     }
-    #sidebar.collapsed #sidebarCloseBtn{ display: flex; }
     #main-col { width: 100%; }
   }
   @media (max-width: 1024px) and (min-width: 861px) {
@@ -326,6 +327,7 @@
   </div>
 </div>
 <div id="logoutCorner" style="display:none;">Log out</div>
+<div id="sidebarCloseFab">✕</div>
 <div id="appWrap" style="display:none;">
 <div id="shell">
   <div id="sidebar"></div>
@@ -593,11 +595,15 @@ function anyAlert() {
 function renderSidebar() {
   const el = document.getElementById("sidebar");
   el.className = state.sidebarCollapsed ? "collapsed" : "";
+  const fab = document.getElementById("sidebarCloseFab");
+  if (fab) {
+    const isMobile = window.innerWidth <= 860;
+    fab.style.display = (isMobile && state.sidebarCollapsed) ? "flex" : "none";
+  }
   el.innerHTML = `
     <div class="sb-brand">
       <div class="mark">${iconSVG('drop', 16)}</div>
       <div class="name">${esc(state.config.companyName || "Fuel Reconciliation Suite")}</div>
-      <div id="sidebarCloseBtn">${iconSVG('x',16)}</div>
     </div>
     <div class="nav-scroll" id="navScroll">
       ${NAV.map(n => `
@@ -624,9 +630,9 @@ function renderSidebar() {
     await storageAdapter.set(SIDEBAR_KEY, state.sidebarCollapsed ? "1" : "0", false);
     renderSidebar();
   };
-  const closeBtn = document.getElementById("sidebarCloseBtn");
-  if (closeBtn) {
-    closeBtn.onclick = async () => {
+  const closeFab = document.getElementById("sidebarCloseFab");
+  if (closeFab) {
+    closeFab.onclick = async () => {
       state.sidebarCollapsed = false;
       await storageAdapter.set(SIDEBAR_KEY, "0", false);
       renderSidebar();
