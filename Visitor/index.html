@@ -38,10 +38,12 @@ body { font-family: var(--font); background: var(--cn-bg); color: var(--cn-ink);
 .cn-logo { width: 44px; height: 44px; border-radius: 10px; background: var(--cn-red); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 15px; flex-shrink: 0; }
 .cn-brand-name { font-weight: 700; font-size: 17px; letter-spacing: -0.01em; }
 .cn-brand-sub { font-size: 12px; color: var(--cn-ink-muted); margin-top: 1px; }
-.cn-nav { display: flex; gap: 8px; }
-.cn-nav button { font-family: var(--font); text-decoration: none; background: none; border: none; cursor: pointer; color: var(--cn-ink-muted); font-size: 14px; font-weight: 600; padding: 9px 14px; border-radius: 999px; transition: background 0.15s ease, color 0.15s ease; }
+.cn-nav { display: flex; gap: 8px; align-items: center; }
+.cn-nav button { font-family: var(--font); background: none; border: none; cursor: pointer; color: var(--cn-ink-muted); font-size: 14px; font-weight: 600; padding: 9px 14px; border-radius: 999px; transition: background 0.15s ease, color 0.15s ease; }
 .cn-nav button:hover { background: var(--cn-bg); color: var(--cn-ink); }
 .cn-nav button.active { background: var(--cn-red-tint); color: var(--cn-red-dark); }
+.cn-live-dot { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--cn-ink-muted); margin-left: 6px; }
+.cn-live-dot::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--cn-success); }
 
 .cn-main { flex: 1; display: flex; justify-content: center; padding: clamp(24px, 5vw, 64px) 20px; }
 .cn-container { width: 100%; max-width: 640px; }
@@ -70,9 +72,10 @@ body { font-family: var(--font); background: var(--cn-bg); color: var(--cn-ink);
 
 .cn-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-family: var(--font); font-weight: 700; font-size: 15px; border-radius: var(--radius-sm); border: 1.5px solid transparent; padding: 14px 22px; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, transform 0.05s ease, opacity 0.15s ease; min-height: 48px; }
 .cn-btn:active { transform: translateY(1px); }
+.cn-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .cn-btn-primary { background: var(--cn-red); color: #fff; width: 100%; }
 .cn-btn-primary:hover:not(:disabled) { background: var(--cn-red-dark); }
-.cn-btn-primary:disabled { background: #e6a9b1; cursor: not-allowed; }
+.cn-btn-primary:disabled { background: #e6a9b1; }
 .cn-btn-secondary { background: var(--cn-white); color: var(--cn-ink); border-color: var(--cn-border-strong); width: 100%; }
 .cn-btn-secondary:hover { border-color: var(--cn-ink-muted); }
 .cn-btn-text { background: transparent; color: var(--cn-ink-muted); padding: 8px 10px; min-height: auto; font-size: 13px; width: auto; }
@@ -198,12 +201,13 @@ table.cn-table { width: 100%; border-collapse: collapse; font-size: 14px; min-wi
     <!-- ===================== TAB: SIGN OUT ===================== -->
     <div class="cn-container" data-view="signout" hidden>
       <section id="list-view">
-        <p class="cn-eyebrow">Sign Out</p>
+        <p class="cn-eyebrow">Sign Out <span class="cn-live-dot">Live</span></p>
         <h1 class="cn-title">Who are you?</h1>
         <p class="cn-subtitle">Select your name from the list of visitors currently onsite.</p>
         <div class="cn-field"><input id="search-input" class="cn-input" type="text" placeholder="Search by name or company…" /></div>
         <div id="visitor-list" class="cn-visitor-list"></div>
-        <div id="list-empty" class="cn-state"><div class="cn-state-icon">🪪</div><p>No visitors are currently signed in.</p></div>
+        <div id="list-empty" class="cn-state" hidden><div class="cn-state-icon">🪪</div><p>No visitors are currently signed in.</p></div>
+        <div id="list-loading" class="cn-state"><p>Loading visitors…</p></div>
       </section>
 
       <section id="confirm-view" class="cn-card" hidden>
@@ -236,21 +240,31 @@ table.cn-table { width: 100%; border-collapse: collapse; font-size: 14px; min-wi
     <div class="cn-container wide" data-view="admin" hidden>
       <section id="gate-view" class="cn-card cn-passcode-card">
         <p class="cn-eyebrow">Administration</p>
-        <h1 class="cn-title" style="font-size:24px;">Enter admin passcode</h1>
+        <h1 class="cn-title" style="font-size:24px;">Admin sign in</h1>
         <p class="cn-subtitle" style="font-size:14px;">Visitor records are restricted to authorised staff.</p>
         <form id="gate-form">
           <div class="cn-field">
-            <label for="passcode">Passcode</label>
-            <input id="passcode" class="cn-input" type="password" autocomplete="current-password" required />
+            <label for="admin-email">Email</label>
+            <input id="admin-email" class="cn-input" type="email" autocomplete="username" required />
           </div>
-          <button type="submit" class="cn-btn cn-btn-primary">Unlock</button>
+          <div class="cn-field">
+            <label for="admin-password">Password</label>
+            <input id="admin-password" class="cn-input" type="password" autocomplete="current-password" required />
+          </div>
+          <button type="submit" class="cn-btn cn-btn-primary">Sign In</button>
+          <p id="gate-error" class="cn-error-text" hidden></p>
         </form>
       </section>
 
       <section id="records-view" hidden>
-        <p class="cn-eyebrow">Administration</p>
-        <h1 class="cn-title">Visitor Records</h1>
-        <p class="cn-subtitle">Search and filter visitor sign-in history.</p>
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:20px;">
+          <div>
+            <p class="cn-eyebrow">Administration</p>
+            <h1 class="cn-title">Visitor Records</h1>
+            <p class="cn-subtitle">Search and filter visitor sign-in history.</p>
+          </div>
+          <button id="admin-logout" class="cn-btn cn-btn-text">Sign out</button>
+        </div>
         <div class="cn-filters">
           <input id="filter-name" class="cn-input" type="text" placeholder="Visitor name" />
           <input id="filter-company" class="cn-input" type="text" placeholder="Company" />
@@ -269,415 +283,487 @@ table.cn-table { width: 100%; border-collapse: collapse; font-size: 14px; min-wi
           </table>
         </div>
         <div id="records-empty" class="cn-state" hidden><div class="cn-state-icon">📋</div><p>No visitor records match these filters.</p></div>
+        <div id="records-loading" class="cn-state"><p>Loading records…</p></div>
       </section>
     </div>
 
   </main>
 </div>
 
+<!-- ============================================================
+     Firebase config — fill in the values from your Firebase
+     project settings (Project settings > General > Your apps).
+     ============================================================ -->
 <script>
-(function () {
-  "use strict";
+  window.firebaseConfig = {
+    apiKey: "AIzaSyAPwS1GFwqj6KR4dQgxifykh9HS5km6OX4",
+    authDomain: "alpha-7fce5.firebaseapp.com",
+    projectId: "alpha-7fce5",
+    storageBucket: "alpha-7fce5.firebasestorage.app",
+    messagingSenderId: "10647816245",
+    appId: "1:10647816245:web:fbfb982260cf2eef97097c"
+  };
+</script>
+<script type="module">
+// app.js — Challenge Naylor Street visitor system, backed by Firebase.
+//
+// Uses Firestore for real-time, cross-device data and Firebase Auth for
+// admin login. Fill in window.firebaseConfig in index.html before use.
 
-  // ============================================================
-  // Storage — everything lives in this browser's localStorage.
-  // Change ADMIN_PASSCODE below to your real passcode before use.
-  // ============================================================
-  var ADMIN_PASSCODE = "changeme123";
-  var STORAGE_KEY = "cnVisitors";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getFirestore, collection, addDoc, doc, updateDoc, getDocs, getDoc,
+  query, where, orderBy, onSnapshot, serverTimestamp, Timestamp
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {
+  getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
-  function loadVisitors() {
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); }
-    catch (e) { return []; }
-  }
-  function saveVisitors(list) { localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); }
-  function genId() { return "v_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8); }
+const app = initializeApp(window.firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+const visitorsCol = collection(db, "visitors");
 
-  // ============================================================
-  // Date / time helpers
-  // ============================================================
-  function todayDateValue() { return new Date().toISOString().slice(0, 10); }
+// ============================================================
+// Helpers
+// ============================================================
+function pad(n) { return String(n).padStart(2, "0"); }
+function todayDateValue() { return new Date().toISOString().slice(0, 10); }
 
-  function generateTimeOptions(startHour, endHour, intervalMinutes) {
-    var options = [];
-    for (var mins = startHour * 60; mins <= endHour * 60; mins += intervalMinutes) {
-      var h24 = Math.floor(mins / 60), m = mins % 60;
-      options.push({ value: pad(h24) + ":" + pad(m), label: formatHourMinute(h24, m) });
-    }
-    return options;
+function generateTimeOptions(startHour, endHour, intervalMinutes) {
+  const options = [];
+  for (let mins = startHour * 60; mins <= endHour * 60; mins += intervalMinutes) {
+    const h24 = Math.floor(mins / 60), m = mins % 60;
+    options.push({ value: pad(h24) + ":" + pad(m), label: formatHourMinute(h24, m) });
   }
-  function pad(n) { return String(n).padStart(2, "0"); }
-  function formatHourMinute(h24, m) {
-    var period = h24 >= 12 ? "PM" : "AM";
-    var h12 = h24 % 12; if (h12 === 0) h12 = 12;
-    return h12 + ":" + pad(m) + " " + period;
+  return options;
+}
+function formatHourMinute(h24, m) {
+  const period = h24 >= 12 ? "PM" : "AM";
+  let h12 = h24 % 12; if (h12 === 0) h12 = 12;
+  return h12 + ":" + pad(m) + " " + period;
+}
+function nearestTimeValue(intervalMinutes) {
+  const now = new Date();
+  let mins = now.getHours() * 60 + now.getMinutes();
+  mins = Math.round(mins / intervalMinutes) * intervalMinutes;
+  const h24 = Math.floor(mins / 60) % 24, m = mins % 60;
+  return pad(h24) + ":" + pad(m);
+}
+function toJsDate(dateValue, timeValue) {
+  const [y, mo, d] = dateValue.split("-").map(Number);
+  const [h, mi] = timeValue.split(":").map(Number);
+  return new Date(y, mo - 1, d, h, mi, 0, 0);
+}
+function formatClockTime(tsOrDate) {
+  const d = tsOrDate instanceof Timestamp ? tsOrDate.toDate() : new Date(tsOrDate);
+  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+function formatDuration(totalMinutes) {
+  const mins = Math.max(0, Math.round(totalMinutes));
+  const hours = Math.floor(mins / 60), remaining = mins % 60;
+  return hours + " " + (hours === 1 ? "hour" : "hours") + " " + remaining + " " + (remaining === 1 ? "minute" : "minutes");
+}
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+function toast(message, isError) {
+  let el = document.getElementById("cn-toast");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "cn-toast";
+    el.className = "cn-toast";
+    document.body.appendChild(el);
   }
-  function nearestTimeValue(intervalMinutes) {
-    var now = new Date();
-    var mins = now.getHours() * 60 + now.getMinutes();
-    mins = Math.round(mins / intervalMinutes) * intervalMinutes;
-    var h24 = Math.floor(mins / 60) % 24, m = mins % 60;
-    return pad(h24) + ":" + pad(m);
-  }
-  function toIsoTimestamp(dateValue, timeValue) {
-    var dp = dateValue.split("-").map(Number), tp = timeValue.split(":").map(Number);
-    return new Date(dp[0], dp[1] - 1, dp[2], tp[0], tp[1], 0, 0).toISOString();
-  }
-  function formatClockTime(iso) {
-    return new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  }
-  function formatDuration(totalMinutes) {
-    var mins = Math.max(0, Math.round(totalMinutes));
-    var hours = Math.floor(mins / 60), remaining = mins % 60;
-    return hours + " " + (hours === 1 ? "hour" : "hours") + " " + remaining + " " + (remaining === 1 ? "minute" : "minutes");
-  }
+  el.textContent = message;
+  el.classList.toggle("cn-toast-error", !!isError);
+  el.classList.add("cn-toast-visible");
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove("cn-toast-visible"), 3200);
+}
 
-  // ============================================================
-  // Toast
-  // ============================================================
-  function toast(message, isError) {
-    var el = document.getElementById("cn-toast");
-    if (!el) {
-      el = document.createElement("div");
-      el.id = "cn-toast";
-      el.className = "cn-toast";
-      document.body.appendChild(el);
-    }
-    el.textContent = message;
-    el.classList.toggle("cn-toast-error", !!isError);
-    el.classList.add("cn-toast-visible");
-    clearTimeout(el._t);
-    el._t = setTimeout(function () { el.classList.remove("cn-toast-visible"); }, 3200);
-  }
-
-  function escapeHtml(str) {
-    var div = document.createElement("div");
-    div.textContent = str;
-    return div.innerHTML;
-  }
-
-  // ============================================================
-  // Signature pad
-  // ============================================================
-  function SignaturePad(canvas, onChange) {
+// ============================================================
+// Signature pad
+// ============================================================
+class SignaturePad {
+  constructor(canvas, onChange) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
-    this.onChange = onChange || function () {};
+    this.onChange = onChange || (() => {});
     this.isDrawing = false;
     this.hasSignature = false;
 
-    var self = this;
-    window.addEventListener("resize", function () { self._resize(); });
+    window.addEventListener("resize", () => this._resize());
     this._resize();
 
-    canvas.addEventListener("pointerdown", function (e) { self._down(e); });
-    canvas.addEventListener("pointermove", function (e) { self._move(e); });
-    window.addEventListener("pointerup", function () { self.isDrawing = false; });
-    window.addEventListener("pointercancel", function () { self.isDrawing = false; });
+    canvas.addEventListener("pointerdown", (e) => this._down(e));
+    canvas.addEventListener("pointermove", (e) => this._move(e));
+    window.addEventListener("pointerup", () => { this.isDrawing = false; });
+    window.addEventListener("pointercancel", () => { this.isDrawing = false; });
   }
-  SignaturePad.prototype._resize = function () {
-    var ratio = window.devicePixelRatio || 1;
-    var rect = this.canvas.getBoundingClientRect();
+  _resize() {
+    const ratio = window.devicePixelRatio || 1;
+    const rect = this.canvas.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
-    var prev = this.hasSignature ? this.canvas.toDataURL() : null;
+    const prev = this.hasSignature ? this.canvas.toDataURL() : null;
     this.canvas.width = rect.width * ratio;
     this.canvas.height = rect.height * ratio;
     this.ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     this.ctx.lineCap = "round"; this.ctx.lineJoin = "round";
     this.ctx.lineWidth = 2.4; this.ctx.strokeStyle = "#17181a";
     if (prev) {
-      var img = new Image();
-      var ctx = this.ctx, w = rect.width, h = rect.height;
-      img.onload = function () { ctx.drawImage(img, 0, 0, w, h); };
+      const img = new Image();
+      img.onload = () => this.ctx.drawImage(img, 0, 0, rect.width, rect.height);
       img.src = prev;
     }
-  };
-  SignaturePad.prototype._pos = function (e) {
-    var rect = this.canvas.getBoundingClientRect();
+  }
+  _pos(e) {
+    const rect = this.canvas.getBoundingClientRect();
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  };
-  SignaturePad.prototype._down = function (e) {
+  }
+  _down(e) {
     e.preventDefault();
     this.isDrawing = true;
     this.canvas.setPointerCapture(e.pointerId);
-    var p = this._pos(e);
+    const p = this._pos(e);
     this.ctx.beginPath(); this.ctx.moveTo(p.x, p.y);
-  };
-  SignaturePad.prototype._move = function (e) {
+  }
+  _move(e) {
     if (!this.isDrawing) return;
-    var p = this._pos(e);
+    const p = this._pos(e);
     this.ctx.lineTo(p.x, p.y); this.ctx.stroke();
     if (!this.hasSignature) { this.hasSignature = true; this.onChange(); }
-  };
-  SignaturePad.prototype.clear = function () {
-    var rect = this.canvas.getBoundingClientRect();
+  }
+  clear() {
+    const rect = this.canvas.getBoundingClientRect();
     this.ctx.clearRect(0, 0, rect.width, rect.height);
     this.hasSignature = false; this.onChange();
-  };
-  SignaturePad.prototype.isEmpty = function () { return !this.hasSignature; };
-  SignaturePad.prototype.toDataUrl = function () {
-    var rect = this.canvas.getBoundingClientRect();
-    var out = document.createElement("canvas");
+  }
+  isEmpty() { return !this.hasSignature; }
+  toDataUrl() {
+    const rect = this.canvas.getBoundingClientRect();
+    const out = document.createElement("canvas");
     out.width = rect.width; out.height = rect.height;
-    var octx = out.getContext("2d");
+    const octx = out.getContext("2d");
     octx.fillStyle = "#ffffff"; octx.fillRect(0, 0, rect.width, rect.height);
     octx.drawImage(this.canvas, 0, 0, rect.width, rect.height);
     return out.toDataURL("image/png");
-  };
-
-  // ============================================================
-  // Tab navigation
-  // ============================================================
-  var navButtons = document.querySelectorAll(".cn-nav button");
-  var views = document.querySelectorAll("[data-view]");
-  navButtons.forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      navButtons.forEach(function (b) { b.classList.remove("active"); });
-      btn.classList.add("active");
-      views.forEach(function (v) { v.hidden = v.getAttribute("data-view") !== btn.dataset.tab; });
-      if (btn.dataset.tab === "signout") renderActiveList();
-      if (btn.dataset.tab === "admin" && !document.getElementById("records-view").hidden) renderRecords();
-    });
-  });
-
-  // ============================================================
-  // SIGN IN
-  // ============================================================
-  var signinForm = document.getElementById("signin-form");
-  var dateSelect = document.getElementById("date");
-  var timeSelect = document.getElementById("sign-in-time");
-  var nameInput = document.getElementById("visitor-name");
-  var companyInput = document.getElementById("company");
-  var submitBtn = document.getElementById("submit-btn");
-  var signatureError = document.getElementById("signature-error");
-  var canvas = document.getElementById("signature-canvas");
-  var signinView = document.getElementById("signin-view");
-  var confirmationView = document.getElementById("confirmation-view");
-
-  function populateDates() {
-    dateSelect.innerHTML = "";
-    var today = new Date();
-    for (var i = 0; i < 7; i++) {
-      var d = new Date(today); d.setDate(today.getDate() + i);
-      var value = d.toISOString().slice(0, 10);
-      var label = (i === 0 ? "Today — " : "") + d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
-      var opt = document.createElement("option");
-      opt.value = value; opt.textContent = label;
-      dateSelect.appendChild(opt);
-    }
-    dateSelect.value = todayDateValue();
   }
-  function populateTimes() {
-    timeSelect.innerHTML = "";
-    generateTimeOptions(6, 22, 15).forEach(function (o) {
-      var el = document.createElement("option");
-      el.value = o.value; el.textContent = o.label;
-      timeSelect.appendChild(el);
-    });
-    var nearest = nearestTimeValue(15);
-    if (Array.prototype.some.call(timeSelect.options, function (o) { return o.value === nearest; })) {
-      timeSelect.value = nearest;
-    }
-  }
-  populateDates(); populateTimes();
+}
 
-  var sigPad = new SignaturePad(canvas, updateSubmitState);
-  document.getElementById("clear-signature").addEventListener("click", function () {
-    sigPad.clear(); signatureError.hidden = true;
+// ============================================================
+// Tab navigation
+// ============================================================
+const navButtons = document.querySelectorAll(".cn-nav button");
+const views = document.querySelectorAll("[data-view]");
+navButtons.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    navButtons.forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    views.forEach((v) => { v.hidden = v.getAttribute("data-view") !== btn.dataset.tab; });
   });
-  function updateSubmitState() {
-    submitBtn.disabled = !(nameInput.value.trim() && companyInput.value.trim() && dateSelect.value && timeSelect.value && !sigPad.isEmpty());
+});
+
+// ============================================================
+// SIGN IN
+// ============================================================
+const signinForm = document.getElementById("signin-form");
+const dateSelect = document.getElementById("date");
+const timeSelect = document.getElementById("sign-in-time");
+const nameInput = document.getElementById("visitor-name");
+const companyInput = document.getElementById("company");
+const submitBtn = document.getElementById("submit-btn");
+const signatureError = document.getElementById("signature-error");
+const canvas = document.getElementById("signature-canvas");
+const signinView = document.getElementById("signin-view");
+const confirmationView = document.getElementById("confirmation-view");
+
+function populateDates() {
+  dateSelect.innerHTML = "";
+  const today = new Date();
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(today); d.setDate(today.getDate() + i);
+    const value = d.toISOString().slice(0, 10);
+    const label = (i === 0 ? "Today — " : "") + d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+    const opt = document.createElement("option");
+    opt.value = value; opt.textContent = label;
+    dateSelect.appendChild(opt);
   }
-  [nameInput, companyInput, dateSelect, timeSelect].forEach(function (el) {
-    el.addEventListener("input", updateSubmitState);
+  dateSelect.value = todayDateValue();
+}
+function populateTimes() {
+  timeSelect.innerHTML = "";
+  generateTimeOptions(6, 22, 15).forEach((o) => {
+    const el = document.createElement("option");
+    el.value = o.value; el.textContent = o.label;
+    timeSelect.appendChild(el);
   });
+  const nearest = nearestTimeValue(15);
+  if ([...timeSelect.options].some((o) => o.value === nearest)) timeSelect.value = nearest;
+}
+populateDates(); populateTimes();
 
-  signinForm.addEventListener("submit", function (e) {
-    e.preventDefault();
-    if (sigPad.isEmpty()) { signatureError.hidden = false; return; }
-    signatureError.hidden = true;
+const sigPad = new SignaturePad(canvas, updateSubmitState);
+document.getElementById("clear-signature").addEventListener("click", () => {
+  sigPad.clear(); signatureError.hidden = true;
+});
+function updateSubmitState() {
+  submitBtn.disabled = !(nameInput.value.trim() && companyInput.value.trim() && dateSelect.value && timeSelect.value && !sigPad.isEmpty());
+}
+[nameInput, companyInput, dateSelect, timeSelect].forEach((el) => el.addEventListener("input", updateSubmitState));
 
-    if (!nameInput.value.trim() || !companyInput.value.trim() || !dateSelect.value || !timeSelect.value) {
-      toast("Please fill in all required fields.", true);
-      return;
-    }
+signinForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (sigPad.isEmpty()) { signatureError.hidden = false; return; }
+  signatureError.hidden = true;
 
-    var visitor = {
-      visitor_id: genId(),
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Signing in…";
+
+  try {
+    const signInDate = toJsDate(dateSelect.value, timeSelect.value);
+    const docRef = await addDoc(visitorsCol, {
       date: dateSelect.value,
       visitor_name: nameInput.value.trim(),
       company: companyInput.value.trim(),
-      sign_in_time: toIsoTimestamp(dateSelect.value, timeSelect.value),
+      sign_in_time: Timestamp.fromDate(signInDate),
       sign_out_time: null,
       total_time_minutes: null,
       digital_signature: sigPad.toDataUrl(),
       status: "onsite",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp(),
+    });
 
-    var all = loadVisitors();
-    all.push(visitor);
-    saveVisitors(all);
-
-    document.getElementById("confirm-name").textContent = visitor.visitor_name;
-    document.getElementById("confirm-company").textContent = visitor.company;
-    document.getElementById("confirm-time").textContent = formatClockTime(visitor.sign_in_time);
+    document.getElementById("confirm-name").textContent = nameInput.value.trim();
+    document.getElementById("confirm-company").textContent = companyInput.value.trim();
+    document.getElementById("confirm-time").textContent = formatClockTime(signInDate);
     signinView.hidden = true; confirmationView.hidden = false;
+  } catch (err) {
+    console.error(err);
+    toast("Could not sign in. Please try again.", true);
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Sign In";
+  }
+});
+
+document.getElementById("new-signin-btn").addEventListener("click", () => {
+  signinForm.reset(); sigPad.clear(); populateDates(); populateTimes();
+  submitBtn.disabled = true; submitBtn.textContent = "Sign In";
+  confirmationView.hidden = true; signinView.hidden = false;
+});
+
+// ============================================================
+// SIGN OUT — live, real-time across every device via onSnapshot
+// ============================================================
+const listView = document.getElementById("list-view");
+const confirmView = document.getElementById("confirm-view");
+const doneView = document.getElementById("done-view");
+const listEl = document.getElementById("visitor-list");
+const emptyEl = document.getElementById("list-empty");
+const loadingEl = document.getElementById("list-loading");
+const searchInput = document.getElementById("search-input");
+
+let activeVisitors = [];
+let selectedVisitorId = null;
+
+const activeQuery = query(visitorsCol, where("status", "==", "onsite"), orderBy("sign_in_time", "desc"));
+onSnapshot(activeQuery, (snap) => {
+  activeVisitors = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  loadingEl.hidden = true;
+  renderActiveList();
+}, (err) => {
+  console.error(err);
+  loadingEl.hidden = true;
+  toast("Could not load visitors — check your Firebase config and Firestore rules.", true);
+});
+
+function renderActiveList() {
+  const q = searchInput.value.trim().toLowerCase();
+  const filtered = activeVisitors.filter(
+    (v) => !q || v.visitor_name.toLowerCase().includes(q) || v.company.toLowerCase().includes(q)
+  );
+
+  listEl.innerHTML = "";
+  emptyEl.hidden = filtered.length !== 0;
+
+  filtered.forEach((v) => {
+    const row = document.createElement("button");
+    row.type = "button"; row.className = "cn-visitor-row";
+    row.innerHTML =
+      `<div><div class="cn-visitor-row-name">${escapeHtml(v.visitor_name)}</div>` +
+      `<div class="cn-visitor-row-meta">${escapeHtml(v.company)} · Signed in ${formatClockTime(v.sign_in_time)}</div></div>` +
+      `<span class="cn-badge cn-badge-onsite">Onsite</span>`;
+    row.addEventListener("click", () => selectVisitor(v.id));
+    listEl.appendChild(row);
   });
+}
+searchInput.addEventListener("input", renderActiveList);
 
-  document.getElementById("new-signin-btn").addEventListener("click", function () {
-    signinForm.reset(); sigPad.clear(); populateDates(); populateTimes();
-    submitBtn.disabled = true; submitBtn.textContent = "Sign In";
-    confirmationView.hidden = true; signinView.hidden = false;
-  });
+function selectVisitor(id) {
+  const v = activeVisitors.find((x) => x.id === id);
+  if (!v) return;
+  selectedVisitorId = id;
+  document.getElementById("confirm-visitor-name").textContent = v.visitor_name;
+  document.getElementById("confirm-visitor-company").textContent = v.company;
+  document.getElementById("confirm-signin-time").textContent = formatClockTime(v.sign_in_time);
+  listView.hidden = true; confirmView.hidden = false;
+}
 
-  // ============================================================
-  // SIGN OUT
-  // ============================================================
-  var listView = document.getElementById("list-view");
-  var confirmView = document.getElementById("confirm-view");
-  var doneView = document.getElementById("done-view");
-  var listEl = document.getElementById("visitor-list");
-  var emptyEl = document.getElementById("list-empty");
-  var searchInput = document.getElementById("search-input");
-  var selectedVisitorId = null;
+document.getElementById("back-btn").addEventListener("click", () => {
+  confirmView.hidden = true; listView.hidden = false;
+});
 
-  function renderActiveList() {
-    var q = searchInput.value.trim().toLowerCase();
-    var active = loadVisitors().filter(function (v) { return v.status === "onsite"; })
-      .filter(function (v) { return !q || v.visitor_name.toLowerCase().indexOf(q) !== -1 || v.company.toLowerCase().indexOf(q) !== -1; })
-      .sort(function (a, b) { return new Date(b.sign_in_time) - new Date(a.sign_in_time); });
+document.getElementById("signout-btn").addEventListener("click", async (e) => {
+  if (!selectedVisitorId) return;
+  const btn = e.currentTarget;
+  btn.disabled = true; btn.textContent = "Signing out…";
 
-    listEl.innerHTML = "";
-    emptyEl.hidden = active.length !== 0;
+  try {
+    const visitorRef = doc(db, "visitors", selectedVisitorId);
+    const snap = await getDoc(visitorRef);
+    if (!snap.exists()) throw new Error("Visitor record not found.");
+    const v = snap.data();
+    if (v.status === "signed_out") throw new Error("This visitor is already signed out.");
 
-    active.forEach(function (v) {
-      var row = document.createElement("button");
-      row.type = "button"; row.className = "cn-visitor-row";
-      row.innerHTML =
-        '<div><div class="cn-visitor-row-name">' + escapeHtml(v.visitor_name) + '</div>' +
-        '<div class="cn-visitor-row-meta">' + escapeHtml(v.company) + ' · Signed in ' + formatClockTime(v.sign_in_time) + '</div></div>' +
-        '<span class="cn-badge cn-badge-onsite">Onsite</span>';
-      row.addEventListener("click", function () { selectVisitor(v.visitor_id); });
-      listEl.appendChild(row);
+    const signOutDate = new Date();
+    const signInDate = v.sign_in_time.toDate();
+    const totalMinutes = Math.max(0, Math.round((signOutDate - signInDate) / 60000));
+
+    await updateDoc(visitorRef, {
+      sign_out_time: Timestamp.fromDate(signOutDate),
+      total_time_minutes: totalMinutes,
+      status: "signed_out",
+      updated_at: serverTimestamp(),
     });
-  }
-  searchInput.addEventListener("input", renderActiveList);
 
-  function selectVisitor(id) {
-    var v = loadVisitors().find(function (x) { return x.visitor_id === id; });
-    if (!v) return;
-    selectedVisitorId = id;
-    document.getElementById("confirm-visitor-name").textContent = v.visitor_name;
-    document.getElementById("confirm-visitor-company").textContent = v.company;
-    document.getElementById("confirm-signin-time").textContent = formatClockTime(v.sign_in_time);
-    listView.hidden = true; confirmView.hidden = false;
-  }
-
-  document.getElementById("back-btn").addEventListener("click", function () {
-    confirmView.hidden = true; listView.hidden = false;
-  });
-
-  document.getElementById("signout-btn").addEventListener("click", function () {
-    if (!selectedVisitorId) return;
-    var all = loadVisitors();
-    var idx = all.findIndex(function (x) { return x.visitor_id === selectedVisitorId; });
-    if (idx === -1) return;
-    if (all[idx].status === "signed_out") { toast("This visitor is already signed out.", true); return; }
-
-    var signOutIso = new Date().toISOString();
-    var minutes = Math.max(0, Math.round((new Date(signOutIso) - new Date(all[idx].sign_in_time)) / 60000));
-    all[idx].sign_out_time = signOutIso;
-    all[idx].total_time_minutes = minutes;
-    all[idx].status = "signed_out";
-    all[idx].updated_at = signOutIso;
-    saveVisitors(all);
-
-    var v = all[idx];
-    document.getElementById("done-name").textContent = v.visitor_name + " · " + v.company;
-    document.getElementById("done-signin").textContent = formatClockTime(v.sign_in_time);
-    document.getElementById("done-signout").textContent = formatClockTime(v.sign_out_time);
-    document.getElementById("done-total").textContent = formatDuration(v.total_time_minutes);
+    document.getElementById("done-name").textContent = `${v.visitor_name} · ${v.company}`;
+    document.getElementById("done-signin").textContent = formatClockTime(signInDate);
+    document.getElementById("done-signout").textContent = formatClockTime(signOutDate);
+    document.getElementById("done-total").textContent = formatDuration(totalMinutes);
     confirmView.hidden = true; doneView.hidden = false;
-  });
+  } catch (err) {
+    console.error(err);
+    toast(err.message || "Could not sign out. Please try again.", true);
+  } finally {
+    btn.disabled = false; btn.textContent = "Sign Out";
+  }
+});
 
-  document.getElementById("done-btn").addEventListener("click", function () {
-    selectedVisitorId = null; searchInput.value = "";
-    doneView.hidden = true; listView.hidden = false; renderActiveList();
-  });
+document.getElementById("done-btn").addEventListener("click", () => {
+  selectedVisitorId = null; searchInput.value = "";
+  doneView.hidden = true; listView.hidden = false;
+});
 
-  // ============================================================
-  // ADMIN
-  // ============================================================
-  var gateView = document.getElementById("gate-view");
-  var recordsView = document.getElementById("records-view");
-  var gateForm = document.getElementById("gate-form");
-  var passcodeInput = document.getElementById("passcode");
-  var tbody = document.getElementById("records-tbody");
-  var recordsEmpty = document.getElementById("records-empty");
-  var filterName = document.getElementById("filter-name");
-  var filterCompany = document.getElementById("filter-company");
-  var filterDate = document.getElementById("filter-date");
-  var filterStatus = document.getElementById("filter-status");
+// ============================================================
+// ADMIN — Firebase Auth gated
+// ============================================================
+const gateView = document.getElementById("gate-view");
+const recordsView = document.getElementById("records-view");
+const gateForm = document.getElementById("gate-form");
+const gateError = document.getElementById("gate-error");
+const tbody = document.getElementById("records-tbody");
+const recordsEmpty = document.getElementById("records-empty");
+const recordsLoading = document.getElementById("records-loading");
+const filterName = document.getElementById("filter-name");
+const filterCompany = document.getElementById("filter-company");
+const filterDate = document.getElementById("filter-date");
+const filterStatus = document.getElementById("filter-status");
 
-  gateForm.addEventListener("submit", function (e) {
-    e.preventDefault();
-    if (passcodeInput.value === ADMIN_PASSCODE) {
-      sessionStorage.setItem("cnAdminUnlocked", "1");
-      gateView.hidden = true; recordsView.hidden = false;
-      renderRecords();
-    } else {
-      toast("Incorrect passcode.", true);
-    }
-  });
-  if (sessionStorage.getItem("cnAdminUnlocked") === "1") {
+onAuthStateChanged(auth, (user) => {
+  if (user) {
     gateView.hidden = true; recordsView.hidden = false;
+    loadRecords();
+  } else {
+    gateView.hidden = false; recordsView.hidden = true;
   }
+});
 
-  function renderRecords() {
-    var all = loadVisitors();
-    var name = filterName.value.trim().toLowerCase();
-    var company = filterCompany.value.trim().toLowerCase();
-    var date = filterDate.value;
-    var status = filterStatus.value;
-
-    var filtered = all.filter(function (v) {
-      if (name && v.visitor_name.toLowerCase().indexOf(name) === -1) return false;
-      if (company && v.company.toLowerCase().indexOf(company) === -1) return false;
-      if (date && v.date !== date) return false;
-      if (status && v.status !== status) return false;
-      return true;
-    }).sort(function (a, b) { return new Date(b.sign_in_time) - new Date(a.sign_in_time); });
-
-    tbody.innerHTML = "";
-    recordsEmpty.hidden = filtered.length !== 0;
-
-    filtered.forEach(function (v) {
-      var tr = document.createElement("tr");
-      var badge = v.status === "onsite"
-        ? '<span class="cn-badge cn-badge-onsite">Currently Onsite</span>'
-        : '<span class="cn-badge cn-badge-out">Signed Out</span>';
-      tr.innerHTML =
-        "<td>" + escapeHtml(v.date) + "</td>" +
-        "<td>" + escapeHtml(v.visitor_name) + "</td>" +
-        "<td>" + escapeHtml(v.company) + "</td>" +
-        "<td>" + formatClockTime(v.sign_in_time) + "</td>" +
-        "<td>" + (v.sign_out_time ? formatClockTime(v.sign_out_time) : "—") + "</td>" +
-        "<td>" + (v.total_time_minutes != null ? formatDuration(v.total_time_minutes) : "—") + "</td>" +
-        '<td><img class="cn-sig-thumb" src="' + v.digital_signature + '" alt="Signature of ' + escapeHtml(v.visitor_name) + '" /></td>' +
-        "<td>" + badge + "</td>";
-      tbody.appendChild(tr);
-    });
+gateForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  gateError.hidden = true;
+  const email = document.getElementById("admin-email").value.trim();
+  const password = document.getElementById("admin-password").value;
+  try {
+    await signInWithEmailAndPassword(auth, email, password);
+  } catch (err) {
+    gateError.textContent = "Incorrect email or password.";
+    gateError.hidden = false;
   }
-  [filterName, filterCompany, filterDate, filterStatus].forEach(function (el) {
-    el.addEventListener("input", renderRecords);
+});
+
+document.getElementById("admin-logout").addEventListener("click", () => signOut(auth));
+
+async function loadRecords() {
+  recordsLoading.hidden = false;
+  recordsEmpty.hidden = true;
+  tbody.innerHTML = "";
+
+  try {
+    // Firestore composite filtering is limited from the client without
+    // pre-built indexes, so: fetch (optionally date/status filtered) then
+    // apply name/company filtering client-side.
+    const clauses = [];
+    if (filterDate.value) clauses.push(where("date", "==", filterDate.value));
+    if (filterStatus.value) clauses.push(where("status", "==", filterStatus.value));
+
+    const q = clauses.length
+      ? query(visitorsCol, ...clauses, orderBy("sign_in_time", "desc"))
+      : query(visitorsCol, orderBy("sign_in_time", "desc"));
+
+    const snap = await getDocs(q);
+    let visitors = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+    const name = filterName.value.trim().toLowerCase();
+    const company = filterCompany.value.trim().toLowerCase();
+    if (name) visitors = visitors.filter((v) => v.visitor_name.toLowerCase().includes(name));
+    if (company) visitors = visitors.filter((v) => v.company.toLowerCase().includes(company));
+
+    renderRecords(visitors);
+  } catch (err) {
+    console.error(err);
+    toast("Could not load records. If this is the first time filtering this way, Firestore may need a composite index — check the browser console for a link.", true);
+  } finally {
+    recordsLoading.hidden = true;
+  }
+}
+
+function renderRecords(visitors) {
+  tbody.innerHTML = "";
+  recordsEmpty.hidden = visitors.length !== 0;
+
+  visitors.forEach((v) => {
+    const tr = document.createElement("tr");
+    const badge = v.status === "onsite"
+      ? `<span class="cn-badge cn-badge-onsite">Currently Onsite</span>`
+      : `<span class="cn-badge cn-badge-out">Signed Out</span>`;
+    tr.innerHTML =
+      `<td>${escapeHtml(v.date)}</td>` +
+      `<td>${escapeHtml(v.visitor_name)}</td>` +
+      `<td>${escapeHtml(v.company)}</td>` +
+      `<td>${formatClockTime(v.sign_in_time)}</td>` +
+      `<td>${v.sign_out_time ? formatClockTime(v.sign_out_time) : "—"}</td>` +
+      `<td>${v.total_time_minutes != null ? formatDuration(v.total_time_minutes) : "—"}</td>` +
+      `<td><img class="cn-sig-thumb" src="${v.digital_signature}" alt="Signature of ${escapeHtml(v.visitor_name)}" /></td>` +
+      `<td>${badge}</td>`;
+    tbody.appendChild(tr);
   });
-  document.getElementById("filter-clear").addEventListener("click", function () {
-    filterName.value = ""; filterCompany.value = ""; filterDate.value = ""; filterStatus.value = "";
-    renderRecords();
-  });
-})();
+}
+
+let debounceTimer;
+function debouncedReload() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(loadRecords, 300);
+}
+[filterName, filterCompany, filterDate, filterStatus].forEach((el) => el.addEventListener("input", debouncedReload));
+document.getElementById("filter-clear").addEventListener("click", () => {
+  filterName.value = ""; filterCompany.value = ""; filterDate.value = ""; filterStatus.value = "";
+  loadRecords();
+});
+
 </script>
 </body>
 </html>
