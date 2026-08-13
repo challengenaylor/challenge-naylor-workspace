@@ -160,15 +160,10 @@ table.cn-table { width: 100%; border-collapse: collapse; font-size: 14px; min-wi
               <input id="company" class="cn-input" type="text" placeholder="ABC Company" required autocomplete="organization" />
             </div>
           </div>
-          <div class="cn-row">
-            <div class="cn-field">
-              <label for="date">Date<span class="cn-required">*</span></label>
-              <select id="date" class="cn-select" required></select>
-            </div>
-            <div class="cn-field">
-              <label for="sign-in-time">Sign In Time<span class="cn-required">*</span></label>
-              <select id="sign-in-time" class="cn-select" required></select>
-            </div>
+          <div class="cn-field">
+            <label>Date &amp; Time</label>
+            <div class="cn-input" style="background:var(--cn-bg); color:var(--cn-ink-muted); cursor:default;" id="auto-datetime">—</div>
+            <p class="cn-hint" style="font-size:12.5px;color:var(--cn-ink-muted);margin-top:6px;">Recorded automatically when you sign in.</p>
           </div>
           <div class="cn-field">
             <label>Digital Signature<span class="cn-required">*</span></label>
@@ -194,7 +189,26 @@ table.cn-table { width: 100%; border-collapse: collapse; font-size: 14px; min-wi
           <div class="cn-confirm-detail-row"><span>Company</span><span id="confirm-company">—</span></div>
           <div class="cn-confirm-detail-row"><span>Signed in</span><span id="confirm-time">—</span></div>
         </div>
-        <button id="new-signin-btn" class="cn-btn cn-btn-secondary" style="margin-top:28px;">Sign In Next Visitor</button>
+
+        <div id="edit-details-form" hidden style="text-align:left; margin-top:22px; border-top:1px solid var(--cn-border); padding-top:20px;">
+          <div class="cn-field">
+            <label for="edit-name">Full Name</label>
+            <input id="edit-name" class="cn-input" type="text" />
+          </div>
+          <div class="cn-field" style="margin-bottom:0;">
+            <label for="edit-company">Company / Organisation</label>
+            <input id="edit-company" class="cn-input" type="text" />
+          </div>
+          <div style="display:flex; gap:12px; margin-top:18px;">
+            <button type="button" id="cancel-edit-btn" class="cn-btn cn-btn-secondary" style="flex:1;">Cancel</button>
+            <button type="button" id="save-edit-btn" class="cn-btn cn-btn-primary" style="flex:1;">Save</button>
+          </div>
+        </div>
+
+        <div id="confirm-actions" style="display:flex; gap:12px; margin-top:28px;">
+          <button id="edit-details-btn" class="cn-btn cn-btn-secondary" style="flex:1;">Fix a Typo</button>
+          <button id="new-signin-btn" class="cn-btn cn-btn-secondary" style="flex:1;">Sign In Next Visitor</button>
+        </div>
       </section>
     </div>
 
@@ -278,7 +292,7 @@ table.cn-table { width: 100%; border-collapse: collapse; font-size: 14px; min-wi
         </div>
         <div class="cn-table-wrap">
           <table class="cn-table">
-            <thead><tr><th>Date</th><th>Visitor Name</th><th>Company</th><th>Sign-In</th><th>Sign-Out</th><th>Total Time</th><th>Signature</th><th>Status</th></tr></thead>
+            <thead><tr><th>Date</th><th>Visitor Name</th><th>Company</th><th>Sign-In</th><th>Sign-Out</th><th>Total Time</th><th>Signature</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody id="records-tbody"></tbody>
           </table>
         </div>
@@ -312,7 +326,7 @@ table.cn-table { width: 100%; border-collapse: collapse; font-size: 14px; min-wi
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getFirestore, collection, addDoc, doc, updateDoc, getDocs, getDoc,
+  getFirestore, collection, addDoc, doc, updateDoc, deleteDoc, getDocs, getDoc,
   query, where, orderBy, onSnapshot, serverTimestamp, Timestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import {
@@ -470,8 +484,6 @@ navButtons.forEach((btn) => {
 // SIGN IN
 // ============================================================
 const signinForm = document.getElementById("signin-form");
-const dateSelect = document.getElementById("date");
-const timeSelect = document.getElementById("sign-in-time");
 const nameInput = document.getElementById("visitor-name");
 const companyInput = document.getElementById("company");
 const submitBtn = document.getElementById("submit-btn");
@@ -479,40 +491,27 @@ const signatureError = document.getElementById("signature-error");
 const canvas = document.getElementById("signature-canvas");
 const signinView = document.getElementById("signin-view");
 const confirmationView = document.getElementById("confirmation-view");
+const autoDatetimeEl = document.getElementById("auto-datetime");
 
-function populateDates() {
-  dateSelect.innerHTML = "";
-  const today = new Date();
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(today); d.setDate(today.getDate() + i);
-    const value = d.toISOString().slice(0, 10);
-    const label = (i === 0 ? "Today — " : "") + d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
-    const opt = document.createElement("option");
-    opt.value = value; opt.textContent = label;
-    dateSelect.appendChild(opt);
-  }
-  dateSelect.value = todayDateValue();
+let lastSignedInId = null;
+
+// Date & time are captured automatically — no manual entry. This live
+// display just shows the visitor what will be recorded, updating each minute.
+function renderAutoDatetime() {
+  const now = new Date();
+  autoDatetimeEl.textContent = now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }) + " · " + formatClockTime(now);
 }
-function populateTimes() {
-  timeSelect.innerHTML = "";
-  generateTimeOptions(6, 22, 15).forEach((o) => {
-    const el = document.createElement("option");
-    el.value = o.value; el.textContent = o.label;
-    timeSelect.appendChild(el);
-  });
-  const nearest = nearestTimeValue(15);
-  if ([...timeSelect.options].some((o) => o.value === nearest)) timeSelect.value = nearest;
-}
-populateDates(); populateTimes();
+renderAutoDatetime();
+setInterval(renderAutoDatetime, 30000);
 
 const sigPad = new SignaturePad(canvas, updateSubmitState);
 document.getElementById("clear-signature").addEventListener("click", () => {
   sigPad.clear(); signatureError.hidden = true;
 });
 function updateSubmitState() {
-  submitBtn.disabled = !(nameInput.value.trim() && companyInput.value.trim() && dateSelect.value && timeSelect.value && !sigPad.isEmpty());
+  submitBtn.disabled = !(nameInput.value.trim() && companyInput.value.trim() && !sigPad.isEmpty());
 }
-[nameInput, companyInput, dateSelect, timeSelect].forEach((el) => el.addEventListener("input", updateSubmitState));
+[nameInput, companyInput].forEach((el) => el.addEventListener("input", updateSubmitState));
 
 signinForm.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -523,9 +522,9 @@ signinForm.addEventListener("submit", async (e) => {
   submitBtn.textContent = "Signing in…";
 
   try {
-    const signInDate = toJsDate(dateSelect.value, timeSelect.value);
+    const signInDate = new Date(); // captured automatically at the moment of submission
     const docRef = await addDoc(visitorsCol, {
-      date: dateSelect.value,
+      date: todayDateValue(),
       visitor_name: nameInput.value.trim(),
       company: companyInput.value.trim(),
       sign_in_time: Timestamp.fromDate(signInDate),
@@ -537,6 +536,7 @@ signinForm.addEventListener("submit", async (e) => {
       updated_at: serverTimestamp(),
     });
 
+    lastSignedInId = docRef.id;
     document.getElementById("confirm-name").textContent = nameInput.value.trim();
     document.getElementById("confirm-company").textContent = companyInput.value.trim();
     document.getElementById("confirm-time").textContent = formatClockTime(signInDate);
@@ -551,9 +551,59 @@ signinForm.addEventListener("submit", async (e) => {
 });
 
 document.getElementById("new-signin-btn").addEventListener("click", () => {
-  signinForm.reset(); sigPad.clear(); populateDates(); populateTimes();
+  signinForm.reset(); sigPad.clear();
   submitBtn.disabled = true; submitBtn.textContent = "Sign In";
+  lastSignedInId = null;
+  document.getElementById("edit-details-form").hidden = true;
+  document.getElementById("confirm-actions").hidden = false;
   confirmationView.hidden = true; signinView.hidden = false;
+});
+
+// ---- "Fix a Typo" — lets a visitor correct their own name/company
+// right after signing in, in case they made a mistake. ----
+const editDetailsBtn = document.getElementById("edit-details-btn");
+const editDetailsForm = document.getElementById("edit-details-form");
+const confirmActions = document.getElementById("confirm-actions");
+const editNameInput = document.getElementById("edit-name");
+const editCompanyInput = document.getElementById("edit-company");
+
+editDetailsBtn.addEventListener("click", () => {
+  editNameInput.value = document.getElementById("confirm-name").textContent;
+  editCompanyInput.value = document.getElementById("confirm-company").textContent;
+  editDetailsForm.hidden = false;
+  confirmActions.hidden = true;
+});
+
+document.getElementById("cancel-edit-btn").addEventListener("click", () => {
+  editDetailsForm.hidden = true;
+  confirmActions.hidden = false;
+});
+
+document.getElementById("save-edit-btn").addEventListener("click", async () => {
+  if (!lastSignedInId) return;
+  const newName = editNameInput.value.trim();
+  const newCompany = editCompanyInput.value.trim();
+  if (!newName || !newCompany) { toast("Name and company can't be empty.", true); return; }
+
+  const saveBtn = document.getElementById("save-edit-btn");
+  saveBtn.disabled = true; saveBtn.textContent = "Saving…";
+  try {
+    await updateDoc(doc(db, "visitors", lastSignedInId), {
+      visitor_name: newName,
+      company: newCompany,
+      updated_at: serverTimestamp(),
+    });
+    document.getElementById("confirm-name").textContent = newName;
+    document.getElementById("confirm-company").textContent = newCompany;
+    editDetailsForm.hidden = true;
+    confirmActions.hidden = false;
+    toast("Details updated.");
+  } catch (err) {
+    console.error(err);
+    toast("Could not save changes. Please try again.", true);
+  } finally {
+    saveBtn.disabled = false; saveBtn.textContent = "Save";
+  }
 });
 
 // ============================================================
@@ -748,8 +798,26 @@ function renderRecords(visitors) {
       `<td>${v.sign_out_time ? formatClockTime(v.sign_out_time) : "—"}</td>` +
       `<td>${v.total_time_minutes != null ? formatDuration(v.total_time_minutes) : "—"}</td>` +
       `<td><img class="cn-sig-thumb" src="${v.digital_signature}" alt="Signature of ${escapeHtml(v.visitor_name)}" /></td>` +
-      `<td>${badge}</td>`;
+      `<td>${badge}</td>` +
+      `<td><button type="button" class="cn-btn cn-btn-text delete-visitor-btn" data-id="${v.id}" style="color:var(--cn-red-dark);">Delete</button></td>`;
     tbody.appendChild(tr);
+  });
+
+  tbody.querySelectorAll(".delete-visitor-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.id;
+      if (!confirm("Delete this visitor record? This can't be undone.")) return;
+      btn.disabled = true; btn.textContent = "Deleting…";
+      try {
+        await deleteDoc(doc(db, "visitors", id));
+        toast("Visitor record deleted.");
+        loadRecords();
+      } catch (err) {
+        console.error(err);
+        toast("Could not delete this record.", true);
+        btn.disabled = false; btn.textContent = "Delete";
+      }
+    });
   });
 }
 
