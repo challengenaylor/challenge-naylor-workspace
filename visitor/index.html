@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Challenge Naylor Street — Visitor Management</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+:root {
+  --cn-red: #c8102e;
+  --cn-red-dark: #9c0c22;
+  --cn-red-tint: #fdecee;
+  --cn-white: #ffffff;
+  --cn-bg: #fafafa;
+  --cn-ink: #17181a;
+  --cn-ink-muted: #6b7280;
+  --cn-border: #e7e7e9;
+  --cn-border-strong: #d7d7db;
+  --cn-success: #16794f;
+  --cn-success-tint: #e9f7f0;
+  --radius-lg: 20px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
+  --shadow-card: 0 1px 2px rgba(20,20,20,0.04), 0 10px 30px -12px rgba(20,20,20,0.12);
+  --shadow-elevated: 0 2px 4px rgba(20,20,20,0.06), 0 24px 48px -16px rgba(20,20,20,0.18);
+  --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body { font-family: var(--font); background: var(--cn-bg); color: var(--cn-ink); -webkit-font-smoothing: antialiased; line-height: 1.5; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+[hidden] { display: none !important; }
+
+.cn-shell { min-height: 100vh; display: flex; flex-direction: column; }
+.cn-header { display: flex; align-items: center; justify-content: space-between; padding: 20px clamp(20px, 4vw, 56px); border-bottom: 1px solid var(--cn-border); background: var(--cn-white); }
+.cn-brand { display: flex; align-items: center; gap: 14px; }
+.cn-logo { width: 44px; height: 44px; border-radius: 10px; background: var(--cn-red); display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 15px; flex-shrink: 0; }
+.cn-brand-name { font-weight: 700; font-size: 17px; letter-spacing: -0.01em; }
+.cn-brand-sub { font-size: 12px; color: var(--cn-ink-muted); margin-top: 1px; }
+.cn-nav { display: flex; gap: 8px; align-items: center; }
+.cn-nav button { font-family: var(--font); background: none; border: none; cursor: pointer; color: var(--cn-ink-muted); font-size: 14px; font-weight: 600; padding: 9px 14px; border-radius: 999px; transition: background 0.15s ease, color 0.15s ease; }
+.cn-nav button:hover { background: var(--cn-bg); color: var(--cn-ink); }
+.cn-nav button.active { background: var(--cn-red-tint); color: var(--cn-red-dark); }
+.cn-live-dot { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--cn-ink-muted); margin-left: 6px; }
+.cn-live-dot::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--cn-success); }
+
+.cn-main { flex: 1; display: flex; justify-content: center; padding: clamp(24px, 5vw, 64px) 20px; }
+.cn-container { width: 100%; max-width: 640px; }
+.cn-container.wide { max-width: 1080px; }
+
+.cn-eyebrow { text-transform: uppercase; letter-spacing: 0.12em; font-size: 12px; font-weight: 700; color: var(--cn-red); margin: 0 0 10px; }
+.cn-title { font-size: clamp(28px, 4vw, 36px); font-weight: 700; letter-spacing: -0.02em; margin: 0 0 8px; }
+.cn-subtitle { color: var(--cn-ink-muted); font-size: 16px; margin: 0 0 32px; }
+
+.cn-card { background: var(--cn-white); border: 1px solid var(--cn-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); padding: clamp(24px, 4vw, 40px); }
+
+.cn-field { margin-bottom: 22px; }
+.cn-field label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.cn-required { color: var(--cn-red); margin-left: 2px; }
+.cn-input, .cn-select { width: 100%; font-family: var(--font); font-size: 16px; padding: 14px 16px; border: 1.5px solid var(--cn-border-strong); border-radius: var(--radius-sm); background: var(--cn-white); color: var(--cn-ink); transition: border-color 0.15s ease, box-shadow 0.15s ease; appearance: none; }
+.cn-select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9' fill='none'%3E%3Cpath d='M1 1L7 7L13 1' stroke='%236B7280' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 16px center; padding-right: 42px; }
+.cn-input:focus, .cn-select:focus { outline: none; border-color: var(--cn-red); box-shadow: 0 0 0 4px var(--cn-red-tint); }
+.cn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 560px) { .cn-row { grid-template-columns: 1fr; } }
+.cn-error-text { font-size: 12.5px; color: var(--cn-red-dark); margin-top: 6px; }
+
+.cn-sig-wrap { border: 1.5px dashed var(--cn-border-strong); border-radius: var(--radius-md); padding: 12px; background: var(--cn-bg); }
+.cn-sig-canvas { width: 100%; height: 200px; display: block; background: var(--cn-white); border-radius: var(--radius-sm); border: 1px solid var(--cn-border); touch-action: none; cursor: crosshair; }
+.cn-sig-baseline { text-align: center; font-size: 12.5px; color: var(--cn-ink-muted); margin-top: 10px; }
+.cn-sig-actions { display: flex; justify-content: flex-end; margin-top: 10px; }
+
+.cn-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-family: var(--font); font-weight: 700; font-size: 15px; border-radius: var(--radius-sm); border: 1.5px solid transparent; padding: 14px 22px; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease, transform 0.05s ease, opacity 0.15s ease; min-height: 48px; }
+.cn-btn:active { transform: translateY(1px); }
+.cn-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.cn-btn-primary { background: var(--cn-red); color: #fff; width: 100%; }
+.cn-btn-primary:hover:not(:disabled) { background: var(--cn-red-dark); }
+.cn-btn-primary:disabled { background: #e6a9b1; }
+.cn-btn-secondary { background: var(--cn-white); color: var(--cn-ink); border-color: var(--cn-border-strong); width: 100%; }
+.cn-btn-secondary:hover { border-color: var(--cn-ink-muted); }
+.cn-btn-text { background: transparent; color: var(--cn-ink-muted); padding: 8px 10px; min-height: auto; font-size: 13px; width: auto; }
+.cn-btn-text:hover { color: var(--cn-red-dark); }
+
+.cn-confirm { text-align: center; padding: clamp(20px, 4vw, 30px) 0 4px; }
+.cn-confirm-icon { width: 64px; height: 64px; border-radius: 50%; background: var(--cn-success-tint); color: var(--cn-success); display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; }
+.cn-confirm-detail-list { margin: 24px auto 0; max-width: 320px; text-align: left; border-top: 1px solid var(--cn-border); padding-top: 20px; }
+.cn-confirm-detail-row { display: flex; justify-content: space-between; font-size: 14.5px; padding: 7px 0; }
+.cn-confirm-detail-row span:first-child { color: var(--cn-ink-muted); }
+.cn-confirm-detail-row span:last-child { font-weight: 600; }
+.cn-total-time { margin-top: 22px; padding: 18px; border-radius: var(--radius-md); background: var(--cn-red-tint); color: var(--cn-red-dark); font-size: 22px; font-weight: 700; }
+.cn-total-time-label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--cn-red-dark); opacity: 0.75; margin-bottom: 4px; }
+
+.cn-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; padding: 5px 11px; border-radius: 999px; white-space: nowrap; }
+.cn-badge-onsite { background: var(--cn-red-tint); color: var(--cn-red-dark); }
+.cn-badge-onsite::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--cn-red); }
+.cn-badge-out { background: #f1f2f4; color: var(--cn-ink-muted); }
+
+.cn-visitor-list { display: flex; flex-direction: column; gap: 12px; }
+.cn-visitor-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; width: 100%; text-align: left; padding: 16px 18px; border: 1px solid var(--cn-border); border-radius: var(--radius-md); background: var(--cn-white); cursor: pointer; font: inherit; color: inherit; transition: border-color 0.15s ease; }
+.cn-visitor-row:hover { border-color: var(--cn-border-strong); }
+.cn-visitor-row-name { font-weight: 700; font-size: 15.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cn-visitor-row-meta { font-size: 13px; color: var(--cn-ink-muted); margin-top: 2px; }
+
+.cn-table-wrap { overflow-x: auto; border: 1px solid var(--cn-border); border-radius: var(--radius-md); background: var(--cn-white); }
+table.cn-table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 820px; }
+.cn-table th { text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--cn-ink-muted); font-weight: 700; padding: 14px 16px; border-bottom: 1px solid var(--cn-border); background: var(--cn-bg); white-space: nowrap; }
+.cn-table td { padding: 14px 16px; border-bottom: 1px solid var(--cn-border); vertical-align: middle; white-space: nowrap; }
+.cn-table tr:last-child td { border-bottom: none; }
+.cn-sig-thumb { height: 28px; border: 1px solid var(--cn-border); border-radius: 6px; background: #fff; }
+
+.cn-filters { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+.cn-filters .cn-input, .cn-filters .cn-select { width: auto; min-width: 160px; padding: 10px 14px; font-size: 14px; }
+
+.cn-state { text-align: center; padding: 48px 20px; color: var(--cn-ink-muted); }
+.cn-state-icon { font-size: 28px; margin-bottom: 10px; }
+
+.cn-toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--cn-ink); color: #fff; padding: 13px 20px; border-radius: 999px; font-size: 14px; font-weight: 600; box-shadow: var(--shadow-elevated); z-index: 50; opacity: 0; pointer-events: none; transition: opacity 0.2s ease, transform 0.2s ease; }
+.cn-toast.cn-toast-visible { opacity: 1; transform: translateX(-50%) translateY(-4px); }
+.cn-toast.cn-toast-error { background: var(--cn-red-dark); }
+
+.cn-passcode-card { max-width: 380px; margin: 0 auto; }
+</style>
+</head>
+<body>
+<div class="cn-shell">
+
+  <header class="cn-header">
+    <div class="cn-brand">
+      <!-- Replace this div with <img src="logo.png" alt="Challenge Naylor Street" class="cn-logo" style="background:none;object-fit:contain;"> once you have the real logo -->
+      <div class="cn-logo">CN</div>
+      <div>
+        <div class="cn-brand-name">Challenge Naylor Street</div>
+        <div class="cn-brand-sub">Visitor Management</div>
+      </div>
+    </div>
+    <nav class="cn-nav">
+      <button data-tab="signin" class="active">Sign In</button>
+      <button data-tab="signout">Sign Out</button>
+      <button data-tab="admin">Records</button>
+    </nav>
+  </header>
+
+  <main class="cn-main">
+
+    <!-- ===================== TAB: SIGN IN ===================== -->
+    <div class="cn-container" data-view="signin">
+      <section id="signin-view">
+        <p class="cn-eyebrow">Welcome</p>
+        <h1 class="cn-title">Please sign in below</h1>
+        <p class="cn-subtitle">It only takes a minute. Fill in your details and sign to check in.</p>
+
+        <form id="signin-form" class="cn-card" novalidate>
+          <div class="cn-row">
+            <div class="cn-field">
+              <label for="visitor-name">Full Name<span class="cn-required">*</span></label>
+              <input id="visitor-name" class="cn-input" type="text" placeholder="Jane Smith" required autocomplete="name" />
+            </div>
+            <div class="cn-field">
+              <label for="company">Company / Organisation<span class="cn-required">*</span></label>
+              <input id="company" class="cn-input" type="text" placeholder="ABC Company" required autocomplete="organization" />
+            </div>
+          </div>
+          <div class="cn-row">
+            <div class="cn-field">
+              <label for="date">Date<span class="cn-required">*</span></label>
+              <select id="date" class="cn-select" required></select>
+            </div>
+            <div class="cn-field">
+              <label for="sign-in-time">Sign In Time<span class="cn-required">*</span></label>
+              <select id="sign-in-time" class="cn-select" required></select>
+            </div>
+          </div>
+          <div class="cn-field">
+            <label>Digital Signature<span class="cn-required">*</span></label>
+            <div class="cn-sig-wrap">
+              <canvas id="signature-canvas" class="cn-sig-canvas" aria-label="Signature area"></canvas>
+              <div class="cn-sig-baseline">Please sign above</div>
+              <div class="cn-sig-actions">
+                <button type="button" id="clear-signature" class="cn-btn cn-btn-text">Clear Signature</button>
+              </div>
+            </div>
+            <p id="signature-error" class="cn-error-text" hidden>A signature is required before you can sign in.</p>
+          </div>
+          <button type="submit" id="submit-btn" class="cn-btn cn-btn-primary" disabled>Sign In</button>
+        </form>
+      </section>
+
+      <section id="confirmation-view" class="cn-card cn-confirm" hidden>
+        <div class="cn-confirm-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <h1 class="cn-title" style="margin-bottom:4px;">You're signed in</h1>
+        <p class="cn-subtitle" style="margin-bottom:0;">Welcome to Challenge Naylor Street</p>
+        <div class="cn-confirm-detail-list">
+          <div class="cn-confirm-detail-row"><span>Visitor</span><span id="confirm-name">—</span></div>
+          <div class="cn-confirm-detail-row"><span>Company</span><span id="confirm-company">—</span></div>
+          <div class="cn-confirm-detail-row"><span>Signed in</span><span id="confirm-time">—</span></div>
+        </div>
+        <button id="new-signin-btn" class="cn-btn cn-btn-secondary" style="margin-top:28px;">Sign In Next Visitor</button>
+      </section>
+    </div>
+
+    <!-- ===================== TAB: SIGN OUT ===================== -->
+    <div class="cn-container" data-view="signout" hidden>
+      <section id="list-view">
+        <p class="cn-eyebrow">Sign Out <span class="cn-live-dot">Live</span></p>
+        <h1 class="cn-title">Who are you?</h1>
+        <p class="cn-subtitle">Select your name from the list of visitors currently onsite.</p>
+        <div class="cn-field"><input id="search-input" class="cn-input" type="text" placeholder="Search by name or company…" /></div>
+        <div id="visitor-list" class="cn-visitor-list"></div>
+        <div id="list-empty" class="cn-state" hidden><div class="cn-state-icon">🪪</div><p>No visitors are currently signed in.</p></div>
+        <div id="list-loading" class="cn-state"><p>Loading visitors…</p></div>
+      </section>
+
+      <section id="confirm-view" class="cn-card" hidden>
+        <p class="cn-eyebrow">Confirm</p>
+        <h1 class="cn-title" id="confirm-visitor-name">—</h1>
+        <p class="cn-subtitle" id="confirm-visitor-company">—</p>
+        <div class="cn-confirm-detail-list" style="margin-top:0;">
+          <div class="cn-confirm-detail-row"><span>Signed in</span><span id="confirm-signin-time">—</span></div>
+        </div>
+        <div style="display:flex; gap:12px; margin-top:28px;">
+          <button id="back-btn" class="cn-btn cn-btn-secondary" style="flex:1;">Back</button>
+          <button id="signout-btn" class="cn-btn cn-btn-primary" style="flex:2;">Sign Out</button>
+        </div>
+      </section>
+
+      <section id="done-view" class="cn-card cn-confirm" hidden>
+        <div class="cn-confirm-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <h1 class="cn-title" style="margin-bottom:4px;">You're signed out</h1>
+        <p class="cn-subtitle" id="done-name" style="margin-bottom:0;">—</p>
+        <div class="cn-confirm-detail-list">
+          <div class="cn-confirm-detail-row"><span>Sign In</span><span id="done-signin">—</span></div>
+          <div class="cn-confirm-detail-row"><span>Sign Out</span><span id="done-signout">—</span></div>
+        </div>
+        <div class="cn-total-time"><div class="cn-total-time-label">Total Time Spent</div><div id="done-total">—</div></div>
+        <button id="done-btn" class="cn-btn cn-btn-secondary" style="margin-top:24px;">Done</button>
+      </section>
+    </div>
+
+    <!-- ===================== TAB: ADMIN ===================== -->
+    <div class="cn-container wide" data-view="admin" hidden>
+      <section id="gate-view" class="cn-card cn-passcode-card">
+        <p class="cn-eyebrow">Administration</p>
+        <h1 class="cn-title" style="font-size:24px;">Admin sign in</h1>
+        <p class="cn-subtitle" style="font-size:14px;">Visitor records are restricted to authorised staff.</p>
+        <form id="gate-form">
+          <div class="cn-field">
+            <label for="admin-email">Email</label>
+            <input id="admin-email" class="cn-input" type="email" autocomplete="username" required />
+          </div>
+          <div class="cn-field">
+            <label for="admin-password">Password</label>
+            <input id="admin-password" class="cn-input" type="password" autocomplete="current-password" required />
+          </div>
+          <button type="submit" class="cn-btn cn-btn-primary">Sign In</button>
+          <p id="gate-error" class="cn-error-text" hidden></p>
+        </form>
+      </section>
+
+      <section id="records-view" hidden>
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:20px;">
+          <div>
+            <p class="cn-eyebrow">Administration</p>
+            <h1 class="cn-title">Visitor Records</h1>
+            <p class="cn-subtitle">Search and filter visitor sign-in history.</p>
+          </div>
+          <button id="admin-logout" class="cn-btn cn-btn-text">Sign out</button>
+        </div>
+        <div class="cn-filters">
+          <input id="filter-name" class="cn-input" type="text" placeholder="Visitor name" />
+          <input id="filter-company" class="cn-input" type="text" placeholder="Company" />
+          <input id="filter-date" class="cn-input" type="date" />
+          <select id="filter-status" class="cn-select">
+            <option value="">All statuses</option>
+            <option value="onsite">Currently onsite</option>
+            <option value="signed_out">Signed out</option>
+          </select>
+          <button id="filter-clear" class="cn-btn cn-btn-secondary" style="width:auto;">Clear filters</button>
+        </div>
+        <div class="cn-table-wrap">
+          <table class="cn-table">
+            <thead><tr><th>Date</th><th>Visitor Name</th><th>Company</th><th>Sign-In</th><th>Sign-Out</th><th>Total Time</th><th>Signature</th><th>Status</th></tr></thead>
+            <tbody id="records-tbody"></tbody>
+          </table>
+        </div>
+        <div id="records-empty" class="cn-state" hidden><div class="cn-state-icon">📋</div><p>No visitor records match these filters.</p></div>
+        <div id="records-loading" class="cn-state"><p>Loading records…</p></div>
+      </section>
+    </div>
+
+  </main>
+</div>
+
+<!-- ============================================================
+     Firebase config — fill in the values from your Firebase
+     project settings (Project settings > General > Your apps).
+     ============================================================ -->
+<script>
+  window.firebaseConfig = {
+    apiKey: "AIzaSyAPwS1GFwqj6KR4dQgxifykh9HS5km6OX4",
+    authDomain: "alpha-7fce5.firebaseapp.com",
+    projectId: "alpha-7fce5",
+    storageBucket: "alpha-7fce5.firebasestorage.app",
+    messagingSenderId: "10647816245",
+    appId: "1:10647816245:web:fbfb982260cf2eef97097c"
+  };
+</script>
+<script type="module">
+// app.js — Challenge Naylor Street visitor system, backed by Firebase.
+//
+// Uses Firestore for real-time, cross-device data and Firebase Auth for
+// admin login. Fill in window.firebaseConfig in index.html before use.
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getFirestore, collection, addDoc, doc, updateDoc, getDocs, getDoc,
+  query, where, orderBy, onSnapshot, serverTimestamp, Timestamp
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {
+  getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+const app = initializeApp(window.firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+const visitorsCol = collection(db, "visitors");
+
+// ============================================================
+// Helpers
+// ============================================================
+function pad(n) { return String(n).padStart(2, "0"); }
+function todayDateValue() { return new Date().toISOString().slice(0, 10); }
+
+function generateTimeOptions(startHour, endHour, intervalMinutes) {
+  const options = [];
+  for (let mins = startHour * 60; mins <= endHour * 60; mins += intervalMinutes) {
+    const h24 = Math.floor(mins / 60), m = mins % 60;
+    options.push({ value: pad(h24) + ":" + pad(m), label: formatHourMinute(h24, m) });
+  }
+  return options;
+}
+function formatHourMinute(h24, m) {
+  const period = h24 >= 12 ? "PM" : "AM";
+  let h12 = h24 % 12; if (h12 === 0) h12 = 12;
+  return h12 + ":" + pad(m) + " " + period;
+}
+function nearestTimeValue(intervalMinutes) {
+  const now = new Date();
+  let mins = now.getHours() * 60 + now.getMinutes();
+  mins = Math.round(mins / intervalMinutes) * intervalMinutes;
+  const h24 = Math.floor(mins / 60) % 24, m = mins % 60;
+  return pad(h24) + ":" + pad(m);
+}
+function toJsDate(dateValue, timeValue) {
+  const [y, mo, d] = dateValue.split("-").map(Number);
+  const [h, mi] = timeValue.split(":").map(Number);
+  return new Date(y, mo - 1, d, h, mi, 0, 0);
+}
+function formatClockTime(tsOrDate) {
+  const d = tsOrDate instanceof Timestamp ? tsOrDate.toDate() : new Date(tsOrDate);
+  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+function formatDuration(totalMinutes) {
+  const mins = Math.max(0, Math.round(totalMinutes));
+  const hours = Math.floor(mins / 60), remaining = mins % 60;
+  return hours + " " + (hours === 1 ? "hour" : "hours") + " " + remaining + " " + (remaining === 1 ? "minute" : "minutes");
+}
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+function toast(message, isError) {
+  let el = document.getElementById("cn-toast");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "cn-toast";
+    el.className = "cn-toast";
+    document.body.appendChild(el);
+  }
+  el.textContent = message;
+  el.classList.toggle("cn-toast-error", !!isError);
+  el.classList.add("cn-toast-visible");
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove("cn-toast-visible"), 3200);
+}
+
+// ============================================================
+// Signature pad
+// ============================================================
+class SignaturePad {
+  constructor(canvas, onChange) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext("2d");
+    this.onChange = onChange || (() => {});
+    this.isDrawing = false;
+    this.hasSignature = false;
+
+    window.addEventListener("resize", () => this._resize());
+    this._resize();
+
+    canvas.addEventListener("pointerdown", (e) => this._down(e));
+    canvas.addEventListener("pointermove", (e) => this._move(e));
+    window.addEventListener("pointerup", () => { this.isDrawing = false; });
+    window.addEventListener("pointercancel", () => { this.isDrawing = false; });
+  }
+  _resize() {
+    const ratio = window.devicePixelRatio || 1;
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+    const prev = this.hasSignature ? this.canvas.toDataURL() : null;
+    this.canvas.width = rect.width * ratio;
+    this.canvas.height = rect.height * ratio;
+    this.ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    this.ctx.lineCap = "round"; this.ctx.lineJoin = "round";
+    this.ctx.lineWidth = 2.4; this.ctx.strokeStyle = "#17181a";
+    if (prev) {
+      const img = new Image();
+      img.onload = () => this.ctx.drawImage(img, 0, 0, rect.width, rect.height);
+      img.src = prev;
+    }
+  }
+  _pos(e) {
+    const rect = this.canvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+  _down(e) {
+    e.preventDefault();
+    this.isDrawing = true;
+    this.canvas.setPointerCapture(e.pointerId);
+    const p = this._pos(e);
+    this.ctx.beginPath(); this.ctx.moveTo(p.x, p.y);
+  }
+  _move(e) {
+    if (!this.isDrawing) return;
+    const p = this._pos(e);
+    this.ctx.lineTo(p.x, p.y); this.ctx.stroke();
+    if (!this.hasSignature) { this.hasSignature = true; this.onChange(); }
+  }
+  clear() {
+    const rect = this.canvas.getBoundingClientRect();
+    this.ctx.clearRect(0, 0, rect.width, rect.height);
+    this.hasSignature = false; this.onChange();
+  }
+  isEmpty() { return !this.hasSignature; }
+  toDataUrl() {
+    const rect = this.canvas.getBoundingClientRect();
+    const out = document.createElement("canvas");
+    out.width = rect.width; out.height = rect.height;
+    const octx = out.getContext("2d");
+    octx.fillStyle = "#ffffff"; octx.fillRect(0, 0, rect.width, rect.height);
+    octx.drawImage(this.canvas, 0, 0, rect.width, rect.height);
+    return out.toDataURL("image/png");
+  }
+}
+
+// ============================================================
+// Tab navigation
+// ============================================================
+const navButtons = document.querySelectorAll(".cn-nav button");
+const views = document.querySelectorAll("[data-view]");
+navButtons.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    navButtons.forEach((b) => b.classList.remove("active"));
+    btn.classList.add("active");
+    views.forEach((v) => { v.hidden = v.getAttribute("data-view") !== btn.dataset.tab; });
+  });
+});
+
+// ============================================================
+// SIGN IN
+// ============================================================
+const signinForm = document.getElementById("signin-form");
+const dateSelect = document.getElementById("date");
+const timeSelect = document.getElementById("sign-in-time");
+const nameInput = document.getElementById("visitor-name");
+const companyInput = document.getElementById("company");
+const submitBtn = document.getElementById("submit-btn");
+const signatureError = document.getElementById("signature-error");
+const canvas = document.getElementById("signature-canvas");
+const signinView = document.getElementById("signin-view");
+const confirmationView = document.getElementById("confirmation-view");
+
+function populateDates() {
+  dateSelect.innerHTML = "";
+  const today = new Date();
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(today); d.setDate(today.getDate() + i);
+    const value = d.toISOString().slice(0, 10);
+    const label = (i === 0 ? "Today — " : "") + d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+    const opt = document.createElement("option");
+    opt.value = value; opt.textContent = label;
+    dateSelect.appendChild(opt);
+  }
+  dateSelect.value = todayDateValue();
+}
+function populateTimes() {
+  timeSelect.innerHTML = "";
+  generateTimeOptions(6, 22, 15).forEach((o) => {
+    const el = document.createElement("option");
+    el.value = o.value; el.textContent = o.label;
+    timeSelect.appendChild(el);
+  });
+  const nearest = nearestTimeValue(15);
+  if ([...timeSelect.options].some((o) => o.value === nearest)) timeSelect.value = nearest;
+}
+populateDates(); populateTimes();
+
+const sigPad = new SignaturePad(canvas, updateSubmitState);
+document.getElementById("clear-signature").addEventListener("click", () => {
+  sigPad.clear(); signatureError.hidden = true;
+});
+function updateSubmitState() {
+  submitBtn.disabled = !(nameInput.value.trim() && companyInput.value.trim() && dateSelect.value && timeSelect.value && !sigPad.isEmpty());
+}
+[nameInput, companyInput, dateSelect, timeSelect].forEach((el) => el.addEventListener("input", updateSubmitState));
+
+signinForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (sigPad.isEmpty()) { signatureError.hidden = false; return; }
+  signatureError.hidden = true;
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Signing in…";
+
+  try {
+    const signInDate = toJsDate(dateSelect.value, timeSelect.value);
+    const docRef = await addDoc(visitorsCol, {
+      date: dateSelect.value,
+      visitor_name: nameInput.value.trim(),
+      company: companyInput.value.trim(),
+      sign_in_time: Timestamp.fromDate(signInDate),
+      sign_out_time: null,
+      total_time_minutes: null,
+      digital_signature: sigPad.toDataUrl(),
+      status: "onsite",
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp(),
+    });
+
+    document.getElementById("confirm-name").textContent = nameInput.value.trim();
+    document.getElementById("confirm-company").textContent = companyInput.value.trim();
+    document.getElementById("confirm-time").textContent = formatClockTime(signInDate);
+    signinView.hidden = true; confirmationView.hidden = false;
+  } catch (err) {
+    console.error(err);
+    toast("Could not sign in. Please try again.", true);
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Sign In";
+  }
+});
+
+document.getElementById("new-signin-btn").addEventListener("click", () => {
+  signinForm.reset(); sigPad.clear(); populateDates(); populateTimes();
+  submitBtn.disabled = true; submitBtn.textContent = "Sign In";
+  confirmationView.hidden = true; signinView.hidden = false;
+});
+
+// ============================================================
+// SIGN OUT — live, real-time across every device via onSnapshot
+// ============================================================
+const listView = document.getElementById("list-view");
+const confirmView = document.getElementById("confirm-view");
+const doneView = document.getElementById("done-view");
+const listEl = document.getElementById("visitor-list");
+const emptyEl = document.getElementById("list-empty");
+const loadingEl = document.getElementById("list-loading");
+const searchInput = document.getElementById("search-input");
+
+let activeVisitors = [];
+let selectedVisitorId = null;
+
+const activeQuery = query(visitorsCol, where("status", "==", "onsite"), orderBy("sign_in_time", "desc"));
+onSnapshot(activeQuery, (snap) => {
+  activeVisitors = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  loadingEl.hidden = true;
+  renderActiveList();
+}, (err) => {
+  console.error(err);
+  loadingEl.hidden = true;
+  toast("Could not load visitors — check your Firebase config and Firestore rules.", true);
+});
+
+function renderActiveList() {
+  const q = searchInput.value.trim().toLowerCase();
+  const filtered = activeVisitors.filter(
+    (v) => !q || v.visitor_name.toLowerCase().includes(q) || v.company.toLowerCase().includes(q)
+  );
+
+  listEl.innerHTML = "";
+  emptyEl.hidden = filtered.length !== 0;
+
+  filtered.forEach((v) => {
+    const row = document.createElement("button");
+    row.type = "button"; row.className = "cn-visitor-row";
+    row.innerHTML =
+      `<div><div class="cn-visitor-row-name">${escapeHtml(v.visitor_name)}</div>` +
+      `<div class="cn-visitor-row-meta">${escapeHtml(v.company)} · Signed in ${formatClockTime(v.sign_in_time)}</div></div>` +
+      `<span class="cn-badge cn-badge-onsite">Onsite</span>`;
+    row.addEventListener("click", () => selectVisitor(v.id));
+    listEl.appendChild(row);
+  });
+}
+searchInput.addEventListener("input", renderActiveList);
+
+function selectVisitor(id) {
+  const v = activeVisitors.find((x) => x.id === id);
+  if (!v) return;
+  selectedVisitorId = id;
+  document.getElementById("confirm-visitor-name").textContent = v.visitor_name;
+  document.getElementById("confirm-visitor-company").textContent = v.company;
+  document.getElementById("confirm-signin-time").textContent = formatClockTime(v.sign_in_time);
+  listView.hidden = true; confirmView.hidden = false;
+}
+
+document.getElementById("back-btn").addEventListener("click", () => {
+  confirmView.hidden = true; listView.hidden = false;
+});
+
+document.getElementById("signout-btn").addEventListener("click", async (e) => {
+  if (!selectedVisitorId) return;
+  const btn = e.currentTarget;
+  btn.disabled = true; btn.textContent = "Signing out…";
+
+  try {
+    const visitorRef = doc(db, "visitors", selectedVisitorId);
+    const snap = await getDoc(visitorRef);
+    if (!snap.exists()) throw new Error("Visitor record not found.");
+    const v = snap.data();
+    if (v.status === "signed_out") throw new Error("This visitor is already signed out.");
+
+    const signOutDate = new Date();
+    const signInDate = v.sign_in_time.toDate();
+    const totalMinutes = Math.max(0, Math.round((signOutDate - signInDate) / 60000));
+
+    await updateDoc(visitorRef, {
+      sign_out_time: Timestamp.fromDate(signOutDate),
+      total_time_minutes: totalMinutes,
+      status: "signed_out",
+      updated_at: serverTimestamp(),
+    });
+
+    document.getElementById("done-name").textContent = `${v.visitor_name} · ${v.company}`;
+    document.getElementById("done-signin").textContent = formatClockTime(signInDate);
+    document.getElementById("done-signout").textContent = formatClockTime(signOutDate);
+    document.getElementById("done-total").textContent = formatDuration(totalMinutes);
+    confirmView.hidden = true; doneView.hidden = false;
+  } catch (err) {
+    console.error(err);
+    toast(err.message || "Could not sign out. Please try again.", true);
+  } finally {
+    btn.disabled = false; btn.textContent = "Sign Out";
+  }
+});
+
+document.getElementById("done-btn").addEventListener("click", () => {
+  selectedVisitorId = null; searchInput.value = "";
+  doneView.hidden = true; listView.hidden = false;
+});
+
+// ============================================================
+// ADMIN — Firebase Auth gated
+// ============================================================
+const gateView = document.getElementById("gate-view");
+const recordsView = document.getElementById("records-view");
+const gateForm = document.getElementById("gate-form");
+const gateError = document.getElementById("gate-error");
+const tbody = document.getElementById("records-tbody");
+const recordsEmpty = document.getElementById("records-empty");
+const recordsLoading = document.getElementById("records-loading");
+const filterName = document.getElementById("filter-name");
+const filterCompany = document.getElementById("filter-company");
+const filterDate = document.getElementById("filter-date");
+const filterStatus = document.getElementById("filter-status");
+
+onAuthStateChanged(auth, (user) => {
+  if (user) {
+    gateView.hidden = true; recordsView.hidden = false;
+    loadRecords();
+  } else {
+    gateView.hidden = false; recordsView.hidden = true;
+  }
+});
+
+gateForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  gateError.hidden = true;
+  const email = document.getElementById("admin-email").value.trim();
+  const password = document.getElementById("admin-password").value;
+  try {
+    await signInWithEmailAndPassword(auth, email, password);
+  } catch (err) {
+    gateError.textContent = "Incorrect email or password.";
+    gateError.hidden = false;
+  }
+});
+
+document.getElementById("admin-logout").addEventListener("click", () => signOut(auth));
+
+async function loadRecords() {
+  recordsLoading.hidden = false;
+  recordsEmpty.hidden = true;
+  tbody.innerHTML = "";
+
+  try {
+    // Firestore composite filtering is limited from the client without
+    // pre-built indexes, so: fetch (optionally date/status filtered) then
+    // apply name/company filtering client-side.
+    const clauses = [];
+    if (filterDate.value) clauses.push(where("date", "==", filterDate.value));
+    if (filterStatus.value) clauses.push(where("status", "==", filterStatus.value));
+
+    const q = clauses.length
+      ? query(visitorsCol, ...clauses, orderBy("sign_in_time", "desc"))
+      : query(visitorsCol, orderBy("sign_in_time", "desc"));
+
+    const snap = await getDocs(q);
+    let visitors = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+    const name = filterName.value.trim().toLowerCase();
+    const company = filterCompany.value.trim().toLowerCase();
+    if (name) visitors = visitors.filter((v) => v.visitor_name.toLowerCase().includes(name));
+    if (company) visitors = visitors.filter((v) => v.company.toLowerCase().includes(company));
+
+    renderRecords(visitors);
+  } catch (err) {
+    console.error(err);
+    toast("Could not load records. If this is the first time filtering this way, Firestore may need a composite index — check the browser console for a link.", true);
+  } finally {
+    recordsLoading.hidden = true;
+  }
+}
+
+function renderRecords(visitors) {
+  tbody.innerHTML = "";
+  recordsEmpty.hidden = visitors.length !== 0;
+
+  visitors.forEach((v) => {
+    const tr = document.createElement("tr");
+    const badge = v.status === "onsite"
+      ? `<span class="cn-badge cn-badge-onsite">Currently Onsite</span>`
+      : `<span class="cn-badge cn-badge-out">Signed Out</span>`;
+    tr.innerHTML =
+      `<td>${escapeHtml(v.date)}</td>` +
+      `<td>${escapeHtml(v.visitor_name)}</td>` +
+      `<td>${escapeHtml(v.company)}</td>` +
+      `<td>${formatClockTime(v.sign_in_time)}</td>` +
+      `<td>${v.sign_out_time ? formatClockTime(v.sign_out_time) : "—"}</td>` +
+      `<td>${v.total_time_minutes != null ? formatDuration(v.total_time_minutes) : "—"}</td>` +
+      `<td><img class="cn-sig-thumb" src="${v.digital_signature}" alt="Signature of ${escapeHtml(v.visitor_name)}" /></td>` +
+      `<td>${badge}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+let debounceTimer;
+function debouncedReload() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(loadRecords, 300);
+}
+[filterName, filterCompany, filterDate, filterStatus].forEach((el) => el.addEventListener("input", debouncedReload));
+document.getElementById("filter-clear").addEventListener("click", () => {
+  filterName.value = ""; filterCompany.value = ""; filterDate.value = ""; filterStatus.value = "";
+  loadRecords();
+});
+
+</script>
+</body>
+</html>
