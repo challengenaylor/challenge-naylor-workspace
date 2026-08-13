@@ -227,87 +227,8 @@
   @media (max-width: 860px) {
     #app-content { padding: 20px 16px 28px; }
     .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
-    body { overflow-x: hidden; }
-    #sidebar {
-      position: fixed; z-index: 60; height: 100vh; top: 0; left: 0;
-      width: var(--sidebar-w) !important;
-      transform: translateX(-100%);
-      box-shadow: 0 12px 40px rgba(0,0,0,0.28);
-    }
-    /* On mobile, the hamburger's "collapsed" toggle is repurposed to mean
-       "drawer open" instead of "narrow icon strip" (which is the desktop meaning). */
-    #sidebar.collapsed {
-      transform: translateX(0);
-      width: var(--sidebar-w) !important;
-    }
-    #sidebar.collapsed .sb-brand .name,
-    #sidebar.collapsed .nav-label {
-      display: block !important;
-    }
-    #sidebarBackdrop{
-      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.42); z-index: 55;
-    }
-    #sidebar.collapsed ~ #sidebarBackdrop,
-    body:has(#sidebar.collapsed) #sidebarBackdrop{
-      display: block;
-    }
-    #sidebarCloseFab{
-      display: none; position: fixed; top: 14px; right: 14px; z-index: 9999;
-      width: 42px; height: 42px; border-radius: 50%; background: var(--card, #16181D);
-      border: 1px solid var(--border, #262A33); color: var(--text, #fff);
-      align-items: center; justify-content: center; cursor: pointer;
-      box-shadow: 0 6px 20px rgba(0,0,0,0.35);
-    }
-    #main-col { width: 100%; }
+    #sidebar { position: fixed; z-index: 60; height: 100vh; }
   }
-  @media (max-width: 1024px) and (min-width: 861px) {
-    /* iPad / tablet portrait tuning */
-    #app-content { padding: 22px 20px 30px; }
-    .kpi-grid { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
-  }
-  #authGate{
-    position:fixed; inset:0; background:var(--bg, #0B0C10); z-index:5000;
-    display:flex; align-items:center; justify-content:center;
-  }
-  #authGate .box{
-    width:100%; max-width:360px; background:var(--card, #16181D); border:1px solid var(--border, #262A33);
-    border-radius:10px; padding:30px 26px; text-align:center; font-family:sans-serif;
-  }
-  #authGate h2{margin:0 0 6px; font-size:1.2rem; color:var(--text, #fff);}
-  #authGate p{margin:0 0 20px; font-size:.85rem; color:var(--text-dim, #9BA0AE);}
-  #authGate input{
-    width:100%; padding:10px 12px; margin-bottom:10px; border:1px solid var(--border, #262A33);
-    border-radius:6px; font-size:.9rem; box-sizing:border-box; background:var(--bg, #0B0C10); color:var(--text, #fff);
-  }
-  #authGate button{
-    width:100%; padding:11px; background:#3D8BFF; color:#fff; border:none;
-    border-radius:6px; font-weight:700; cursor:pointer; margin-top:4px;
-  }
-  #authGate .msg{font-size:.8rem; margin-top:12px; color:#FF6B6B;}
-  #logoutCorner{
-    position:fixed; bottom:14px; left:14px; z-index:900; font-size:11px;
-    background:var(--card, #16181D); border:1px solid var(--border, #262A33); padding:5px 10px; border-radius:20px;
-    color:var(--text-dim, #9BA0AE); cursor:pointer;
-  }
-</style>
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
-<script>
-  const firebaseConfig = {
-    apiKey: "AIzaSyAPwS1GFwqj6KR4dQgxifykh9HS5km6OX4",
-    authDomain: "alpha-7fce5.firebaseapp.com",
-    projectId: "alpha-7fce5",
-    storageBucket: "alpha-7fce5.firebasestorage.app",
-    messagingSenderId: "10647816245",
-    appId: "1:10647816245:web:fbfb982260cf2eef97097c"
-  };
-  firebase.initializeApp(firebaseConfig);
-  const auth = firebase.auth();
-  const dbFS = firebase.firestore();
-  const REQUIRED_TOOL_KEY = "fuel";
-</script>
-<style>
   @media print {
     #sidebar, #app-header, #status-bar, .toast-wrap, #paletteOverlay { display: none !important; }
     #app-content { padding: 0; overflow: visible; }
@@ -316,22 +237,8 @@
 </style>
 </head>
 <body>
-<div id="authGate">
-  <div class="box">
-    <h2>Sign in</h2>
-    <p>Enter your login to access Fuel Reconciliation.</p>
-    <input type="email" id="gateEmail" placeholder="Email">
-    <input type="password" id="gatePassword" placeholder="Password">
-    <button id="gateBtn">Sign in</button>
-    <div class="msg" id="gateMsg"></div>
-  </div>
-</div>
-<div id="logoutCorner" style="display:none;">Log out</div>
-<div id="sidebarCloseFab">✕</div>
-<div id="appWrap" style="display:none;">
 <div id="shell">
   <div id="sidebar"></div>
-  <div id="sidebarBackdrop"></div>
   <div id="main-col">
     <div id="app-header"></div>
     <div id="app-content"></div>
@@ -458,30 +365,13 @@ function computePumpStats(fuelKey, config, days) {
 const STORAGE_KEY = "fuel-rec-v1";
 const THEME_KEY = "fuel-rec-theme-pref";
 const SIDEBAR_KEY = "fuel-rec-sidebar-pref";
-const usingClaudeStorage = false;
-const fuelDocRef = dbFS.collection("fuelApp").doc("main");
-let fuelDataCache = null;
-async function loadFuelDoc(){
-  if (fuelDataCache) return fuelDataCache;
-  const snap = await fuelDocRef.get();
-  fuelDataCache = snap.exists ? snap.data() : {};
-  return fuelDataCache;
-}
-const storageAdapter = {
-  async get(key) {
-    try {
-      const data = await loadFuelDoc();
-      return (key in data) ? data[key] : null;
-    } catch(e) { return null; }
-  },
-  async set(key, value) {
-    try {
-      const data = await loadFuelDoc();
-      data[key] = value;
-      await fuelDocRef.set({ [key]: value }, { merge: true });
-      return true;
-    } catch(e) { return false; }
-  },
+const usingClaudeStorage = (typeof window.storage !== "undefined");
+const storageAdapter = usingClaudeStorage ? {
+  async get(key, shared) { try { const r = await window.storage.get(key, shared); return r?r.value:null; } catch(e){ return null; } },
+  async set(key, value, shared) { try { await window.storage.set(key, value, shared); return true; } catch(e){ return false; } },
+} : {
+  async get(key) { try { return localStorage.getItem(key); } catch(e){ return null; } },
+  async set(key, value) { try { localStorage.setItem(key, value); return true; } catch(e){ return false; } },
 };
 function defaultConfig() {
   return { siteName: "Naylor Street Autos", monthLabel: "January 2026", tolerancePct: 0.4,
@@ -493,10 +383,11 @@ function defaultConfig() {
    STATE
 ================================================================= */
 const state = {
-  config: defaultConfig(), days: {}, activity: [],
+  config: defaultConfig(), days: {}, activity: [], deliveryLog: [],
   mode: "dark", sidebarCollapsed: false,
   activeDay: 1, page: "dashboard", entryFuel: "p95",
   saveStatus: "saved", lastBackup: null,
+  deliverySort: { col: "day", dir: "desc" }, deliveryFilter: "",
 };
 let saveTimer = null;
 function pushActivity(type, message) {
@@ -509,7 +400,7 @@ function scheduleSave(activityMsg) {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
     if (activityMsg) pushActivity("save", activityMsg);
-    await storageAdapter.set(STORAGE_KEY, JSON.stringify({ config: state.config, days: state.days, activity: state.activity }), true);
+    await storageAdapter.set(STORAGE_KEY, JSON.stringify({ config: state.config, days: state.days, activity: state.activity, deliveryLog: state.deliveryLog }), true);
     state.saveStatus = "saved";
     updateStatusBarSaveState();
   }, 600);
@@ -517,6 +408,8 @@ function scheduleSave(activityMsg) {
 function updateStatusBarSaveState() {
   const el = document.getElementById("statusSave");
   if (el) el.textContent = state.saveStatus === "saving" ? "Saving…" : "Auto-saved";
+  const el2 = document.getElementById("entrySaveStatus");
+  if (el2) el2.textContent = state.saveStatus === "saving" ? "Saving…" : "Saved";
 }
 function toast(msg, kind) {
   const wrap = document.getElementById("toastWrap");
@@ -552,7 +445,6 @@ function iconSVG(name, size) {
     chevronleft: '<path d="M15 18l-6-6 6-6"/>', chevronright: '<path d="M9 18l6-6-6-6"/>',
     chevronsright: '<path d="M6 17l5-5-5-5M13 17l5-5-5-5"/>',
     plus: '<path d="M12 5v14M5 12h14"/>', minus: '<path d="M5 12h14"/>',
-    x: '<path d="M18 6L6 18M6 6l12 12"/>',
     alert: '<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><path d="M12 9v4M12 17h.01"/>',
     check: '<path d="M20 6L9 17l-5-5"/>',
     trophy: '<path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 01-10 0V4z"/><path d="M17 5h3a1 1 0 011 1 4 4 0 01-4 4M7 5H4a1 1 0 00-1 1 4 4 0 004 4"/>',
@@ -583,7 +475,7 @@ const NAV = [
   { id: "settings", label: "Settings", icon: "settings" },
   { id: "help", label: "Help", icon: "help" },
 ];
-const PHASE2_PAGES = { deliveries: true, inventory: true, analytics: true };
+const PHASE2_PAGES = { analytics: true };
 
 function anyAlert() {
   return state.config.fuels.some(f => computeMonthSummary(f.key, state.days, state.config, state.config.tolerancePct||0.4).alert);
@@ -595,11 +487,6 @@ function anyAlert() {
 function renderSidebar() {
   const el = document.getElementById("sidebar");
   el.className = state.sidebarCollapsed ? "collapsed" : "";
-  const fab = document.getElementById("sidebarCloseFab");
-  if (fab) {
-    const isMobile = window.innerWidth <= 860;
-    fab.style.display = (isMobile && state.sidebarCollapsed) ? "flex" : "none";
-  }
   el.innerHTML = `
     <div class="sb-brand">
       <div class="mark">${iconSVG('drop', 16)}</div>
@@ -619,33 +506,13 @@ function renderSidebar() {
       </div>
     </div>`;
   document.querySelectorAll("#navScroll .nav-item").forEach(item => {
-    item.onclick = () => {
-      state.page = item.dataset.nav;
-      if (window.innerWidth <= 860) state.sidebarCollapsed = false;
-      render();
-    };
+    item.onclick = () => { state.page = item.dataset.nav; render(); };
   });
   document.getElementById("sidebarToggle").onclick = async () => {
     state.sidebarCollapsed = !state.sidebarCollapsed;
     await storageAdapter.set(SIDEBAR_KEY, state.sidebarCollapsed ? "1" : "0", false);
     renderSidebar();
   };
-  const closeFab = document.getElementById("sidebarCloseFab");
-  if (closeFab) {
-    closeFab.onclick = async () => {
-      state.sidebarCollapsed = false;
-      await storageAdapter.set(SIDEBAR_KEY, "0", false);
-      renderSidebar();
-    };
-  }
-  const backdrop = document.getElementById("sidebarBackdrop");
-  if (backdrop) {
-    backdrop.onclick = async () => {
-      state.sidebarCollapsed = false;
-      await storageAdapter.set(SIDEBAR_KEY, "0", false);
-      renderSidebar();
-    };
-  }
 }
 
 function renderHeader() {
@@ -741,7 +608,7 @@ document.getElementById("paletteInput").addEventListener("keydown", (e) => {
    BACKUP
 ================================================================= */
 function downloadBackup() {
-  const blob = new Blob([JSON.stringify({ config: state.config, days: state.days, activity: state.activity }, null, 2)], { type: "application/json" });
+  const blob = new Blob([JSON.stringify({ config: state.config, days: state.days, activity: state.activity, deliveryLog: state.deliveryLog }, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url; a.download = `fuel-reconciliation-backup-${Date.now()}.json`;
@@ -933,9 +800,9 @@ function renderEntryPage() {
         <td>Pump ${i+1}</td>
         <td class="cell-readonly">${prevVal===null?'—':fmt(prevVal)}</td>
         <td><input class="cell-input cell-editable grid-cell" data-nav-row="${i}" data-nav-col="0" data-role="meter" data-fuel="${fuel.key}" data-day="${dayNum}" data-idx="${i}" value="${esc(closingVal||'')}" placeholder="0"/></td>
-        <td class="cell-calculated">${sales===null?'—':fmt(sales)}</td>
-        <td>${share===null?'—':fmt(share,1)+'%'}</td>
-        <td><span class="status-pill ${rowStatus}">${rowStatus==='ok'?'OK':'Check'}</span></td>
+        <td class="cell-calculated" id="pumpSales-${i}">${sales===null?'—':fmt(sales)}</td>
+        <td id="pumpShare-${i}">${share===null?'—':fmt(share,1)+'%'}</td>
+        <td><span class="status-pill ${rowStatus}" id="pumpStatus-${i}">${rowStatus==='ok'?'OK':'Check'}</span></td>
       </tr>`;
   }).join("");
 
@@ -983,7 +850,7 @@ function renderEntryPage() {
       <span id="entrySaveStatus" style="font-size:12px;color:var(--text-muted);margin-left:6px;">${state.saveStatus==='saving'?'Saving…':'Saved'}</span>
     </div>
 
-    ${calc.meterError ? `<div class="panel" style="padding:10px 14px;margin-bottom:14px;color:var(--danger);background:var(--danger-bg);border-color:var(--danger);font-size:12.5px;display:flex;align-items:center;gap:8px;">${iconSVG('alert',15)} Opening meter total is higher than today's closing total for ${esc(fuel.name)} — check readings before continuing.</div>` : ""}
+    ${calc.meterError ? `<div class="panel" id="entryMeterErrorBanner" style="padding:10px 14px;margin-bottom:14px;color:var(--danger);background:var(--danger-bg);border-color:var(--danger);font-size:12.5px;display:flex;align-items:center;gap:8px;">${iconSVG('alert',15)} Opening meter total is higher than today's closing total for ${esc(fuel.name)} — check readings before continuing.</div>` : `<div class="panel" id="entryMeterErrorBanner" style="padding:10px 14px;margin-bottom:14px;color:var(--danger);background:var(--danger-bg);border-color:var(--danger);font-size:12.5px;display:none;align-items:center;gap:8px;">${iconSVG('alert',15)} Opening meter total is higher than today's closing total for ${esc(fuel.name)} — check readings before continuing.</div>`}
 
     <div class="panel" style="padding:18px;margin-bottom:16px;">
       <div class="section-title">Pump readings — ${esc(fuel.name)}, Day ${dayNum}</div>
@@ -995,9 +862,9 @@ function renderEntryPage() {
         </table>
       </div>
       <div style="display:flex;gap:24px;margin-top:12px;font-size:13px;">
-        <div><span style="color:var(--text-muted);">Total opening: </span><b>${fmt(calc.meterOpening)}</b></div>
-        <div><span style="color:var(--text-muted);">Total closing: </span><b>${fmt(calc.meterClosing)}</b></div>
-        <div><span style="color:var(--text-muted);">Meter sales: </span><b>${calc.meterSales===null?'—':fmt(calc.meterSales)}</b></div>
+        <div><span style="color:var(--text-muted);">Total opening: </span><b id="totalOpening">${fmt(calc.meterOpening)}</b></div>
+        <div><span style="color:var(--text-muted);">Total closing: </span><b id="totalClosing">${fmt(calc.meterClosing)}</b></div>
+        <div><span style="color:var(--text-muted);">Meter sales: </span><b id="totalMeterSales">${calc.meterSales===null?'—':fmt(calc.meterSales)}</b></div>
       </div>
     </div>
 
@@ -1020,14 +887,14 @@ function renderEntryPage() {
       <table class="datagrid">
         <thead><tr><th>Opening</th><th>Delivery</th><th>Meter test</th><th>Closing</th><th>Calc. stock</th><th>Tank sales</th><th>Gain / (loss)</th><th>Status</th></tr></thead>
         <tbody><tr>
-          <td class="cell-readonly">${fmt(calc.tankOpening)}</td>
-          <td class="cell-readonly">${fmt(calc.deliveries)}</td>
-          <td class="cell-readonly">${fmt(calc.meterTest)}</td>
-          <td class="cell-readonly">${fmt(calc.tankClosing)}</td>
-          <td class="cell-calculated">${fmt(calc.tankStock)}</td>
-          <td class="cell-calculated">${calc.tankSales===null?'—':fmt(calc.tankSales)}</td>
-          <td class="${calc.gainLoss!==null && calc.gainLoss<0 ? 'cell-error':'cell-calculated'}">${calc.gainLoss===null?'—':fmtSigned(calc.gainLoss)}</td>
-          <td><span class="status-pill ${fuelStatus}">${fuelStatus==='ok'?'OK':'Check'}</span></td>
+          <td class="cell-readonly" id="fsOpening">${fmt(calc.tankOpening)}</td>
+          <td class="cell-readonly" id="fsDelivery">${fmt(calc.deliveries)}</td>
+          <td class="cell-readonly" id="fsMeterTest">${fmt(calc.meterTest)}</td>
+          <td class="cell-readonly" id="fsClosing">${fmt(calc.tankClosing)}</td>
+          <td class="cell-calculated" id="fsStock">${fmt(calc.tankStock)}</td>
+          <td class="cell-calculated" id="fsTankSales">${calc.tankSales===null?'—':fmt(calc.tankSales)}</td>
+          <td class="${calc.gainLoss!==null && calc.gainLoss<0 ? 'cell-error':'cell-calculated'}" id="fsGainLoss">${calc.gainLoss===null?'—':fmtSigned(calc.gainLoss)}</td>
+          <td><span class="status-pill ${fuelStatus}" id="fsStatus">${fuelStatus==='ok'?'OK':'Check'}</span></td>
         </tr></tbody>
       </table>
     </div>
@@ -1035,9 +902,59 @@ function renderEntryPage() {
 }
 
 function updateEntryComputedOnly() {
-  // full recompute is cheap enough here; re-render just the content area
+  // structural change (day/fuel switch) — full rebuild is correct here, inputs are all new anyway
   document.getElementById("app-content").innerHTML = renderEntryPage();
   wireEntryPageEvents(true);
+}
+
+function setText(id, txt) { const el = document.getElementById(id); if (el) el.textContent = txt; }
+
+function refreshEntryComputed() {
+  // keystroke-level update — touches ONLY computed/read-only nodes, never the inputs themselves,
+  // so focus and cursor position are never disturbed while typing
+  const fuel = state.config.fuels.find(f => f.key === state.entryFuel) || state.config.fuels[0];
+  const dayNum = state.activeDay;
+  const dayData = (state.days[dayNum] && state.days[dayNum][fuel.key]) || emptyDayFuel(fuel.meters, fuel.tanks);
+  const calc = computeDay(fuel.key, dayNum, state.days, state.config);
+
+  for (let i = 0; i < fuel.meters; i++) {
+    let prevVal = null;
+    for (let p = dayNum-1; p>=1; p--) {
+      const pv = state.days[p] && state.days[p][fuel.key] && state.days[p][fuel.key].meters && state.days[p][fuel.key].meters[i];
+      if (pv !== "" && pv !== undefined && pv !== null) { prevVal = num(pv); break; }
+    }
+    const closingVal = dayData.meters[i];
+    const closingNum = num(closingVal);
+    const sales = (prevVal !== null && closingVal !== "" && closingVal !== undefined) ? closingNum - prevVal : null;
+    const rowStatus = (sales !== null && sales < 0) ? "check" : "ok";
+    const totalSales = calc.meterSales || 0;
+    const share = (sales !== null && totalSales > 0) ? (sales/totalSales*100) : null;
+    setText(`pumpSales-${i}`, sales===null?'—':fmt(sales));
+    setText(`pumpShare-${i}`, share===null?'—':fmt(share,1)+'%');
+    const statusEl = document.getElementById(`pumpStatus-${i}`);
+    if (statusEl) { statusEl.className = `status-pill ${rowStatus}`; statusEl.textContent = rowStatus==='ok'?'OK':'Check'; }
+  }
+
+  setText('totalOpening', fmt(calc.meterOpening));
+  setText('totalClosing', fmt(calc.meterClosing));
+  setText('totalMeterSales', calc.meterSales===null?'—':fmt(calc.meterSales));
+
+  setText('fsOpening', fmt(calc.tankOpening));
+  setText('fsDelivery', fmt(calc.deliveries));
+  setText('fsMeterTest', fmt(calc.meterTest));
+  setText('fsClosing', fmt(calc.tankClosing));
+  setText('fsStock', fmt(calc.tankStock));
+  setText('fsTankSales', calc.tankSales===null?'—':fmt(calc.tankSales));
+  setText('fsGainLoss', calc.gainLoss===null?'—':fmtSigned(calc.gainLoss));
+  const glCell = document.getElementById('fsGainLoss');
+  if (glCell) glCell.className = (calc.gainLoss!==null && calc.gainLoss<0) ? 'cell-error' : 'cell-calculated';
+
+  const fuelStatus = calc.gainLoss === null ? "ok" : (computeMonthSummary(fuel.key, state.days, state.config, state.config.tolerancePct||0.4).alert ? "check" : "ok");
+  const fsStatusEl = document.getElementById('fsStatus');
+  if (fsStatusEl) { fsStatusEl.className = `status-pill ${fuelStatus}`; fsStatusEl.textContent = fuelStatus==='ok'?'OK':'Check'; }
+
+  const banner = document.getElementById('entryMeterErrorBanner');
+  if (banner) banner.style.display = calc.meterError ? 'flex' : 'none';
 }
 
 /* =================================================================
@@ -1199,26 +1116,207 @@ function renderSettingsPage() {
         <label class="btn btn-secondary" style="cursor:pointer;">${iconSVG('database',14)} Restore from file<input type="file" id="restoreFile" accept="application/json" style="display:none;"/></label>
       </div>
       <div style="font-size:11.5px;color:var(--text-muted);margin-top:10px;">
-        Your data auto-saves and syncs across all your devices. Still worth downloading a backup occasionally as extra insurance.
+        ${usingClaudeStorage ? "Your data also auto-saves to this artifact's shared storage in Claude." : "Your data auto-saves to this browser only. Download a backup regularly if this is your only copy."}
       </div>
     </div>
   `;
 }
 
 /* =================================================================
-   PAGE: DELIVERIES / INVENTORY / ANALYTICS (phase 2 placeholders)
+   PAGE: DELIVERIES
+================================================================= */
+function getFilteredSortedDeliveries() {
+  const q = (state.deliveryFilter || "").toLowerCase();
+  let rows = state.deliveryLog.filter(r => {
+    if (!q) return true;
+    const fuelName = (state.config.fuels.find(f => f.key === r.fuel) || {}).name || r.fuel;
+    return [String(r.day), fuelName, r.supplier, r.driver, r.invoice, r.notes].some(v => (v || "").toLowerCase().includes(q));
+  });
+  const { col, dir } = state.deliverySort;
+  rows = rows.slice().sort((a, b) => {
+    let av, bv;
+    if (col === "fuel") { av = (state.config.fuels.find(f => f.key === a.fuel) || {}).name || ""; bv = (state.config.fuels.find(f => f.key === b.fuel) || {}).name || ""; }
+    else if (col === "volume" || col === "day") { av = num(a[col]); bv = num(b[col]); }
+    else { av = (a[col] || "").toLowerCase(); bv = (b[col] || "").toLowerCase(); }
+    if (av < bv) return dir === "asc" ? -1 : 1;
+    if (av > bv) return dir === "asc" ? 1 : -1;
+    return 0;
+  });
+  return rows;
+}
+function deliveryTableInnerHTML() {
+  const rows = getFilteredSortedDeliveries();
+  if (!rows.length) {
+    return `<div class="empty-state"><div class="icon-wrap">${iconSVG('truck',22)}</div>
+      <div style="font-weight:600;font-size:14px;color:var(--text);margin-bottom:6px;">${state.deliveryLog.length?'No deliveries match your search':'No deliveries logged yet'}</div>
+      <div style="font-size:12.5px;">${state.deliveryLog.length?'Try a different search term.':'Use the form above to log your first delivery.'}</div></div>`;
+  }
+  const arrow = (col) => state.deliverySort.col===col ? (state.deliverySort.dir==='asc'?' ▲':' ▼') : '';
+  const rowsHTML = rows.map(r => {
+    const fuelName = (state.config.fuels.find(f => f.key === r.fuel) || {}).name || r.fuel;
+    return `<tr>
+      <td>Day ${esc(r.day)}</td>
+      <td>${esc(fuelName)}</td>
+      <td>${fmt(num(r.volume))} L</td>
+      <td>${esc(r.supplier||'—')}</td>
+      <td>${esc(r.driver||'—')}</td>
+      <td>${esc(r.invoice||'—')}</td>
+      <td style="color:var(--text-muted);">${esc(r.notes||'—')}</td>
+      <td><button class="icon-btn" data-del-id="${r.id}" title="Delete this delivery" style="width:28px;height:28px;">${iconSVG('x',13)}</button></td>
+    </tr>`;
+  }).join("");
+  return `<table class="datagrid">
+    <thead><tr>
+      <th data-sort="day" style="cursor:pointer;">Day${arrow('day')}</th>
+      <th data-sort="fuel" style="cursor:pointer;">Fuel${arrow('fuel')}</th>
+      <th data-sort="volume" style="cursor:pointer;">Volume${arrow('volume')}</th>
+      <th data-sort="supplier" style="cursor:pointer;">Supplier${arrow('supplier')}</th>
+      <th data-sort="driver" style="cursor:pointer;">Driver${arrow('driver')}</th>
+      <th data-sort="invoice" style="cursor:pointer;">Invoice${arrow('invoice')}</th>
+      <th>Notes</th><th></th>
+    </tr></thead>
+    <tbody>${rowsHTML}</tbody>
+  </table>`;
+}
+function refreshDeliveryTable() {
+  const wrap = document.getElementById('deliveryTableWrap');
+  if (wrap) wrap.innerHTML = deliveryTableInnerHTML();
+  setText('deliveryCount', `${getFilteredSortedDeliveries().length} of ${state.deliveryLog.length} deliveries`);
+  document.querySelectorAll('#deliveryTableWrap th[data-sort]').forEach(th => {
+    th.onclick = () => {
+      const col = th.dataset.sort;
+      if (state.deliverySort.col === col) state.deliverySort.dir = state.deliverySort.dir === 'asc' ? 'desc' : 'asc';
+      else state.deliverySort = { col, dir: 'asc' };
+      refreshDeliveryTable();
+    };
+  });
+  document.querySelectorAll('#deliveryTableWrap button[data-del-id]').forEach(btn => {
+    btn.onclick = () => {
+      const id = btn.dataset.delId;
+      const rec = state.deliveryLog.find(r => r.id === id);
+      if (!rec) return;
+      if (state.days[rec.day] && state.days[rec.day][rec.fuel]) {
+        const cur = num(state.days[rec.day][rec.fuel].deliveries);
+        const next = Math.max(0, cur - num(rec.volume));
+        state.days[rec.day][rec.fuel].deliveries = next === 0 ? "" : String(next);
+      }
+      state.deliveryLog = state.deliveryLog.filter(r => r.id !== id);
+      const fuelName = (state.config.fuels.find(f => f.key === rec.fuel) || {}).name || rec.fuel;
+      pushActivity("delivery", `Delivery removed (${fuelName}, Day ${rec.day})`);
+      scheduleSave("Delivery removed");
+      toast("Delivery removed");
+      refreshDeliveryTable();
+    };
+  });
+}
+function renderDeliveriesPage() {
+  const fuelOptions = state.config.fuels.map(f => `<option value="${f.key}">${esc(f.name)}</option>`).join("");
+  return `
+    <div class="panel" style="padding:18px;margin-bottom:16px;">
+      <div class="section-title">Log a new delivery</div>
+      <div style="display:grid;grid-template-columns:70px 150px 110px 1fr 1fr 1fr 1.3fr auto;gap:10px;align-items:end;">
+        <div><div class="field-label">Day</div><input class="numbox" id="newDelDay" value="${state.activeDay}" placeholder="1-31"/></div>
+        <div><div class="field-label">Fuel</div><select class="numbox" id="newDelFuel">${fuelOptions}</select></div>
+        <div><div class="field-label">Volume (L)</div><input class="numbox" id="newDelVolume" placeholder="0"/></div>
+        <div><div class="field-label">Supplier</div><input class="textbox" id="newDelSupplier" placeholder="—"/></div>
+        <div><div class="field-label">Driver</div><input class="textbox" id="newDelDriver" placeholder="—"/></div>
+        <div><div class="field-label">Invoice #</div><input class="textbox" id="newDelInvoice" placeholder="—"/></div>
+        <div><div class="field-label">Notes</div><input class="textbox" id="newDelNotes" placeholder="—"/></div>
+        <button class="btn btn-primary" id="addDeliveryBtn">${iconSVG('plus',14)} Add</button>
+      </div>
+      <div style="font-size:11.5px;color:var(--text-muted);margin-top:10px;">Adding a delivery here also adds its volume to that day's "Deliveries" figure in Daily Entry, so your reconciliation numbers stay in sync automatically.</div>
+    </div>
+    <div class="panel" style="padding:18px;">
+      <div class="grid-toolbar">
+        <input class="textbox" id="deliverySearch" placeholder="Search suppliers, drivers, invoices…" style="max-width:280px;" value="${esc(state.deliveryFilter)}"/>
+        <div style="flex:1;"></div>
+        <span id="deliveryCount" style="font-size:12px;color:var(--text-muted);">${getFilteredSortedDeliveries().length} of ${state.deliveryLog.length} deliveries</span>
+      </div>
+      <div id="deliveryTableWrap">${deliveryTableInnerHTML()}</div>
+    </div>`;
+}
+function wireDeliveriesPageEvents() {
+  document.getElementById('addDeliveryBtn').onclick = () => {
+    const day = Math.max(1, Math.min(DAYS_IN_MONTH, parseInt(document.getElementById('newDelDay').value, 10) || state.activeDay));
+    const fuelKey = document.getElementById('newDelFuel').value;
+    const volumeRaw = document.getElementById('newDelVolume').value;
+    const volume = num(volumeRaw);
+    if (!volumeRaw || volume <= 0) { toast('Enter a delivery volume greater than 0', 'danger'); return; }
+    const fuelCfg = state.config.fuels.find(f => f.key === fuelKey);
+    const supplier = document.getElementById('newDelSupplier').value;
+    const driver = document.getElementById('newDelDriver').value;
+    const invoice = document.getElementById('newDelInvoice').value;
+    const notes = document.getElementById('newDelNotes').value;
+    const rec = { id: 'd'+Date.now()+Math.random().toString(36).slice(2,7), day, fuel: fuelKey, volume: String(volume), supplier, driver, invoice, notes, ts: Date.now() };
+    state.deliveryLog.push(rec);
+    if (!state.days[day]) state.days[day] = {};
+    if (!state.days[day][fuelKey]) state.days[day][fuelKey] = emptyDayFuel(fuelCfg.meters, fuelCfg.tanks);
+    const cur = num(state.days[day][fuelKey].deliveries);
+    state.days[day][fuelKey].deliveries = String(cur + volume);
+    pushActivity('delivery', `${fuelCfg.name} delivery logged: ${fmt(volume)} L (Day ${day})${supplier?' from '+supplier:''}`);
+    scheduleSave('Delivery added');
+    toast('Delivery added');
+    ['newDelVolume','newDelSupplier','newDelDriver','newDelInvoice','newDelNotes'].forEach(id => { document.getElementById(id).value = ''; });
+    refreshDeliveryTable();
+  };
+  document.getElementById('deliverySearch').addEventListener('input', (e) => {
+    state.deliveryFilter = e.target.value;
+    refreshDeliveryTable();
+  });
+  refreshDeliveryTable();
+}
+
+/* =================================================================
+   PAGE: INVENTORY
+================================================================= */
+function renderInventoryPage() {
+  const cards = state.config.fuels.map(f => {
+    const ld = lastEnteredDay(f.key);
+    const level = ld ? computeDay(f.key, ld, state.days, state.config).tankClosing : 0;
+    const cap = f.capacityLitres;
+    const s = computeMonthSummary(f.key, state.days, state.config, state.config.tolerancePct || 0.4);
+    const daysSpan = (s.lastDayNum && s.firstDayNum) ? (s.lastDayNum - s.firstDayNum + 1) : 0;
+    const avgUsage = daysSpan > 0 ? (s.meterThroughput / daysSpan) : 0;
+    const daysRemaining = (avgUsage > 0) ? (level / avgUsage) : null;
+    let pct = null, color = 'var(--text-muted)', statusLabel = 'Set capacity to track';
+    if (cap && cap > 0) {
+      pct = Math.max(0, Math.min(100, (level/cap)*100));
+      color = pct > 40 ? 'var(--success)' : pct > 15 ? 'var(--warning)' : 'var(--danger)';
+      statusLabel = pct > 40 ? 'Healthy' : pct > 15 ? 'Watch' : 'Reorder soon';
+    }
+    return `
+      <div class="panel" style="padding:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="width:15px;height:15px;color:var(--accent);">${iconSVG('drop',15)}</span>
+            <span class="display" style="font-weight:700;font-size:15px;">${esc(f.name)}</span>
+          </div>
+          ${cap ? `<span class="status-pill ${pct>40?'ok':'check'}">${statusLabel}</span>` : ''}
+        </div>
+        <div style="font-size:27px;font-weight:700;">${fmt(level)} <span style="font-size:14px;color:var(--text-muted);font-weight:500;">L</span></div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:16px;">Current stock${cap?' · '+fmt(cap)+' L capacity':''}</div>
+        ${cap ? `<div class="tank-bar-track" style="margin-bottom:16px;"><div class="tank-bar-fill" style="width:${pct}%;background:${color};"></div></div>`
+              : `<div class="placeholder-box" style="margin-bottom:16px;">Set a tank capacity in Settings to see fill %, colour-coded status, and a days-remaining estimate.</div>`}
+        <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;"><span style="color:var(--text-muted);">Average daily usage</span><b>${avgUsage>0?fmt(avgUsage)+' L':'—'}</b></div>
+        <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:13px;"><span style="color:var(--text-muted);">Estimated days remaining</span><b style="${daysRemaining!==null && daysRemaining<3 ? 'color:var(--danger);':''}">${daysRemaining!==null?fmt(daysRemaining,1)+' days':'—'}</b></div>
+      </div>`;
+  }).join("");
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;">${cards}</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-top:16px;">Days-remaining is estimated from this month's average daily meter sales — it doesn't account for weekends, seasonal swings, or deliveries you haven't logged yet.</div>`;
+}
+
+/* =================================================================
+   PAGE: ANALYTICS (still phase 2)
 ================================================================= */
 function renderPhase2Placeholder(pageId) {
   const meta = {
-    deliveries: { icon: "truck", title: "Deliveries log", body: "A searchable, sortable delivery log (date, supplier, fuel, volume, driver, invoice, notes) is planned for phase 2 — it'll sit alongside the delivery figures you already enter in Daily Entry." },
-    inventory: { icon: "box", title: "Inventory overview", body: "Per-fuel cards showing capacity, current stock, days remaining, and estimated reorder date are planned for phase 2, once tank capacities are set in Settings." },
-    analytics: { icon: "barchart", title: "Analytics", body: "Deeper charts — fuel consumption trends, tank variance history, and top/slowest pump comparisons over time — are planned for phase 2, building on the data you're already entering." },
+    analytics: { icon: "barchart", title: "Analytics", body: "Deeper charts — fuel consumption trends, tank variance history, and top/slowest pump comparisons over time — are planned next, building on the data you're already entering." },
   }[pageId];
   return `
     <div class="panel">
       <div class="empty-state">
         <div class="icon-wrap">${iconSVG(meta.icon,24)}</div>
-        <div style="font-weight:600;font-size:15px;color:var(--text);margin-bottom:6px;">${meta.title} — coming in phase 2</div>
+        <div style="font-weight:600;font-size:15px;color:var(--text);margin-bottom:6px;">${meta.title} — coming next</div>
         <div style="font-size:13px;max-width:420px;">${meta.body}</div>
       </div>
     </div>`;
@@ -1253,6 +1351,8 @@ function renderHelpPage() {
 function renderPageContent() {
   if (state.page === "dashboard") return renderDashboard();
   if (state.page === "entry") return renderEntryPage();
+  if (state.page === "deliveries") return renderDeliveriesPage();
+  if (state.page === "inventory") return renderInventoryPage();
   if (state.page === "pumps") return renderPumpsPage();
   if (state.page === "reports") return renderReportsPage();
   if (state.page === "settings") return renderSettingsPage();
@@ -1282,7 +1382,7 @@ function wireEntryPageEvents() {
   });
 
   document.querySelectorAll('input[data-role]').forEach(input => {
-    input.addEventListener("focus", () => { input.dataset.raw = input.value; });
+    input.addEventListener("focus", () => { const raw = input.value.replace(/,/g, ""); input.dataset.raw = raw; input.value = raw; });
     input.addEventListener("input", () => {
       const { role, fuel, idx } = input.dataset;
       const dayNum = parseInt(input.dataset.day, 10);
@@ -1296,14 +1396,22 @@ function wireEntryPageEvents() {
       else if (role === "tank") { while (d.tanks.length <= idx) d.tanks.push(""); d.tanks[idx] = v; }
       else if (role === "openingMeter") { d.openingMeters = d.openingMeters||[]; while (d.openingMeters.length <= idx) d.openingMeters.push(""); d.openingMeters[idx] = v; }
       else if (role === "openingTank") { d.openingTanks = d.openingTanks||[]; while (d.openingTanks.length <= idx) d.openingTanks.push(""); d.openingTanks[idx] = v; }
-      else if (role === "deliveries") { d.deliveries = v; if (v !== "") pushActivity("delivery", `${fuelCfg.name} delivery logged: ${v} L (Day ${dayNum})`); }
-      else if (role === "meterTest") { d.meterTest = v; if (v !== "") pushActivity("meter-test", `${fuelCfg.name} meter test logged: ${v} L (Day ${dayNum})`); }
+      else if (role === "deliveries") { d.deliveries = v; }
+      else if (role === "meterTest") { d.meterTest = v; }
       scheduleSave("Reading saved");
-      updateEntryComputedOnly();
-      const wasAlert = anyAlert();
-      if (wasAlert) pushActivity("variance", `${fuelCfg.name} is over tolerance this month`);
+      refreshEntryComputed();
     });
-    input.addEventListener("blur", () => formatOnBlur(input));
+    input.addEventListener("blur", () => {
+      formatOnBlur(input);
+      const { role, fuel } = input.dataset;
+      const dayNum = parseInt(input.dataset.day, 10);
+      const fuelCfg = state.config.fuels.find(f => f.key === fuel);
+      const raw = (input.dataset.raw || "").replace(/,/g, "");
+      const now = (input.value || "").replace(/,/g, "");
+      if (role === "deliveries" && now !== "" && now !== raw) pushActivity("delivery", `${fuelCfg.name} delivery logged: ${now} L (Day ${dayNum})`);
+      else if (role === "meterTest" && now !== "" && now !== raw) pushActivity("meter-test", `${fuelCfg.name} meter test logged: ${now} L (Day ${dayNum})`);
+      if ((role === "deliveries" || role === "meterTest") && anyAlert()) pushActivity("variance", `${fuelCfg.name} is over tolerance this month`);
+    });
     input.addEventListener("keydown", (e) => {
       if (!input.classList.contains("grid-cell")) return;
       const row = parseInt(input.dataset.navRow, 10), col = input.dataset.navCol;
@@ -1343,6 +1451,7 @@ function wireSettingsPageEvents() {
         if (parsed.config) state.config = parsed.config;
         if (parsed.days) state.days = parsed.days;
         if (parsed.activity) state.activity = parsed.activity;
+        if (parsed.deliveryLog) state.deliveryLog = parsed.deliveryLog;
         scheduleSave("Backup restored");
         toast("Backup restored");
         render();
@@ -1364,12 +1473,13 @@ function wirePageEvents() {
   if (state.page === "entry") wireEntryPageEvents();
   else if (state.page === "settings") wireSettingsPageEvents();
   else if (state.page === "reports") wireReportsPageEvents();
+  else if (state.page === "deliveries") wireDeliveriesPageEvents();
 }
 
 /* =================================================================
    INIT
 ================================================================= */
-async function startApp() {
+(async function init() {
   try {
     const raw = await storageAdapter.get(STORAGE_KEY, true);
     if (raw) {
@@ -1377,62 +1487,14 @@ async function startApp() {
       if (parsed.config) state.config = Object.assign(defaultConfig(), parsed.config);
       if (parsed.days) state.days = parsed.days;
       if (parsed.activity) state.activity = parsed.activity;
+      if (parsed.deliveryLog) state.deliveryLog = parsed.deliveryLog;
     }
   } catch (e) {}
   try { const t = await storageAdapter.get(THEME_KEY, false); if (t==="light"||t==="dark") state.mode = t; } catch(e) {}
   try { const s = await storageAdapter.get(SIDEBAR_KEY, false); if (s==="1") state.sidebarCollapsed = true; } catch(e) {}
   if (!state.activity.length) pushActivity("save", "Session started");
   render();
-}
-</script>
-
-</div><!-- /#appWrap -->
-<script>
-  const gateEmail = document.getElementById('gateEmail');
-  const gatePassword = document.getElementById('gatePassword');
-  const gateMsg = document.getElementById('gateMsg');
-  const authGate = document.getElementById('authGate');
-  const logoutCorner = document.getElementById('logoutCorner');
-  const appWrap = document.getElementById('appWrap');
-
-  document.getElementById('gateBtn').addEventListener('click', async () => {
-    gateMsg.textContent = '';
-    try {
-      await auth.signInWithEmailAndPassword(gateEmail.value.trim(), gatePassword.value);
-    } catch (e) {
-      gateMsg.textContent = 'Incorrect email or password.';
-    }
-  });
-  logoutCorner.addEventListener('click', () => auth.signOut());
-
-  let appHasStarted = false;
-  auth.onAuthStateChanged(async (user) => {
-    if (!user) {
-      authGate.style.display = 'flex';
-      logoutCorner.style.display = 'none';
-      appWrap.style.display = 'none';
-      return;
-    }
-    let allowed = false;
-    try {
-      const snap = await dbFS.collection('users').doc(user.uid).get();
-      if (snap.exists) {
-        const data = snap.data();
-        allowed = data.role === 'admin' || (data.tools || []).includes(REQUIRED_TOOL_KEY);
-      }
-    } catch (e) { console.error(e); }
-
-    if (!allowed) {
-      gateMsg.textContent = "You don't have access to this tool.";
-      auth.signOut();
-      return;
-    }
-
-    authGate.style.display = 'none';
-    logoutCorner.style.display = 'block';
-    appWrap.style.display = 'block';
-    if (!appHasStarted) { appHasStarted = true; startApp(); }
-  });
+})();
 </script>
 </body>
 </html>
