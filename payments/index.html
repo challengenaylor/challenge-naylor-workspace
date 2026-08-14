@@ -786,9 +786,42 @@ async function writeToFile(){
 }
 
 function scheduleAutosave(){
-  if(!fileHandle) return;
   clearTimeout(autosaveTimer);
-  autosaveTimer = setTimeout(writeToFile, 800);
+  autosaveTimer = setTimeout(() => {
+    if (fileHandle) writeToFile();
+    saveToCloud();
+  }, 800);
+}
+
+/* -----------------------------------------------------------------
+   CLOUD SYNC — this is what makes the dashboard's data persistent
+   and shared across every device, independent of the optional
+   local-file autosave above.
+----------------------------------------------------------------- */
+const paymentsDocRef = db.collection("paymentsApp").doc("main");
+let cloudSaveInFlight = false;
+
+async function loadFromCloud(){
+  try {
+    const snap = await paymentsDocRef.get();
+    if (snap.exists && snap.data().state) {
+      state = snap.data().state;
+    }
+  } catch (e) {
+    console.error("Could not load saved data from the cloud, starting fresh (offline).", e);
+  }
+}
+
+async function saveToCloud(){
+  if (cloudSaveInFlight) return;
+  cloudSaveInFlight = true;
+  try {
+    await paymentsDocRef.set({ state: state });
+  } catch (e) {
+    console.error("Could not sync to the cloud — check your internet connection.", e);
+  } finally {
+    cloudSaveInFlight = false;
+  }
 }
 </script>
 
@@ -837,7 +870,11 @@ function scheduleAutosave(){
     authGate.style.display = 'none';
     logoutCorner.style.display = 'block';
     appWrap.style.display = 'block';
-    if (!appHasStarted) { appHasStarted = true; render(); }
+    if (!appHasStarted) {
+      appHasStarted = true;
+      await loadFromCloud();
+      render();
+    }
   });
 </script>
 </body>
