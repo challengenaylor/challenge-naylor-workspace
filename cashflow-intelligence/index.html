@@ -4825,7 +4825,7 @@ function Forecast_renderExplain(){
           loadingMsg.textContent = "Loading your data…";
           await App.init(); // fetches everything from the live database before the app becomes visible
           document.getElementById("loginGate").style.display = "none";
-          document.getElementById("app").style.display = "";
+          document.getElementById("app").style.display = "flex";
         } else {
           loadingMsg.style.display = "none";
           loginBox.style.display = "block";
