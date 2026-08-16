@@ -4821,7 +4821,7 @@ function Forecast_renderExplain(){
       try{
         const doc = await fbDb.collection("users").doc(user.uid).get();
         const role = doc.exists ? doc.data().role : null;
-        if(role === "admin" || role === "manager"){
+        if(role === "admin"){
           loadingMsg.textContent = "Loading your data…";
           await App.init(); // fetches everything from the live database before the app becomes visible
           document.getElementById("loginGate").style.display = "none";
@@ -4829,7 +4829,7 @@ function Forecast_renderExplain(){
         } else {
           loadingMsg.style.display = "none";
           loginBox.style.display = "block";
-          document.getElementById("loginError").textContent = "This account doesn't have Admin or Manager access to Cash Flow.";
+          document.getElementById("loginError").textContent = "This account doesn't have Admin access to Cash Flow.";
           fbAuth.signOut();
         }
       } catch(e){
