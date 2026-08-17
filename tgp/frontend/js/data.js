@@ -43,6 +43,9 @@
   const REGIONS = [
     { id: 'AUCKLAND_WIRI', label: 'Auckland — Wiri', active: true },
     { id: 'MOUNT_MAUNGANUI', label: 'Mount Maunganui', active: true },
+    // Real terminals your suppliers publish but that aren't part of the
+    // day-to-day view — selectable from the Terminal dropdown, just not
+    // shown by default.
     { id: 'MARSDEN_POINT', label: 'Marsden Point', active: false },
     { id: 'WELLINGTON', label: 'Wellington', active: false },
     { id: 'CHRISTCHURCH', label: 'Christchurch', active: false },
@@ -51,6 +54,7 @@
     { id: 'NEW_PLYMOUTH', label: 'New Plymouth', active: false },
     { id: 'TIMARU', label: 'Timaru', active: false },
     { id: 'NELSON', label: 'Nelson', active: false },
+    { id: 'BLUFF', label: 'Bluff', active: false },
   ];
   const SUPPLIERS = [
     { id: 'GULL', name: 'Gull New Zealand', sourceType: 'PDF', color: '#0f6659' },
@@ -68,12 +72,17 @@
    * the field names the existing UI code expects (currentValue, regionId,
    * etc.) — this is the one translation layer between "what the tested
    * backend produces" and "what the already-built UI reads". */
-  function mapPriceRecord(doc) {
+  function mapPriceRecord(doc, previous) {
     const terminalId = doc.terminalId || '';
     const regionId = terminalId.split('__')[1] || null; // e.g. "Z__AUCKLAND_WIRI__WOSL" -> "AUCKLAND_WIRI"
     const region = regionById[regionId];
     const supplier = supplierById[doc.supplierId];
     const product = productById[doc.productId];
+
+    const previousValue = previous ? previous.priceCentsPerLitre : null;
+    const change = typeof previousValue === 'number' ? +(doc.priceCentsPerLitre - previousValue).toFixed(2) : null;
+    const changePct = (typeof change === 'number' && previousValue) ? +((change / previousValue) * 100).toFixed(2) : null;
+    const direction = change === null ? 'NEW' : change > 0 ? 'UP' : change < 0 ? 'DOWN' : 'FLAT';
 
     return {
       recordId: terminalId + '|' + doc.productId,
@@ -86,10 +95,11 @@
       productName: product ? product.label : doc.productId,
       productShort: product ? product.shortLabel : doc.productId,
       currentValue: doc.priceCentsPerLitre,
-      previousValue: null, // history lookup would be a second query; current-only for the overview table
-      change: null,
-      changePct: null,
-      direction: 'NEW',
+      previousValue: previousValue,
+      previousEffectiveDate: previous ? previous.effectiveDate : null,
+      change: change,
+      changePct: changePct,
+      direction: direction,
       gstStatus: (doc.gstStatus || '').toLowerCase().includes('included') ? 'included'
         : (doc.gstStatus || '').toLowerCase().includes('excluded') ? 'excluded' : 'not_stated',
       effectiveDate: doc.effectiveDate,
@@ -102,8 +112,22 @@
   }
 
   async function loadCurrentPrices() {
-    const snap = await db.collection('tgpApp').doc('prices').collection('current').get();
-    return snap.docs.map((d) => mapPriceRecord(d.data()));
+    const [currentSnap, historySnap] = await Promise.all([
+      db.collection('tgpApp').doc('prices').collection('current').get(),
+      db.collection('tgpApp').doc('prices').collection('history').get(),
+    ]);
+
+    // Group history by the same _key current records use, keep only the
+    // most recent prior observation per key — that's "last week" (or
+    // whichever the previous captured price was).
+    const latestPriorByKey = {};
+    historySnap.docs.forEach((d) => {
+      const h = d.data();
+      const existing = latestPriorByKey[h._key];
+      if (!existing || h.effectiveDate > existing.effectiveDate) latestPriorByKey[h._key] = h;
+    });
+
+    return currentSnap.docs.map((d) => mapPriceRecord(d.data(), latestPriorByKey[d.data()._key]));
   }
 
   async function loadDocuments() {

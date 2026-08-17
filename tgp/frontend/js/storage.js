@@ -20,7 +20,8 @@
     const record = {
       regionId: entry.regionId,
       productId: entry.productId,
-      finalPrice: entry.finalPrice,
+      preGstPrice: entry.preGstPrice,  // reference — the figure you actually entered, before GST
+      finalPrice: entry.finalPrice,     // GST-inclusive — used for competitor comparisons
       effectiveDate: entry.effectiveDate,
       notes: entry.notes || '',
       source: 'MANUAL_ADMIN_ENTRY',
@@ -30,7 +31,7 @@
     return Object.assign({ id: ref.id }, record);
   }
 
-  async function correctChallengePrice(originalId, correctedValue, reason) {
+  async function correctChallengePrice(originalId, correctedFinalValue, reason, correctedPreGstValue) {
     if (!reason || !reason.trim()) throw new Error('A correction requires a reason.');
     const originalDoc = await col().doc(originalId).get();
     if (!originalDoc.exists) throw new Error('Cannot correct a Challenge price that does not exist.');
@@ -39,7 +40,8 @@
     const record = {
       regionId: original.regionId,
       productId: original.productId,
-      finalPrice: correctedValue,
+      preGstPrice: correctedPreGstValue,
+      finalPrice: correctedFinalValue,
       effectiveDate: original.effectiveDate,
       notes: original.notes,
       source: 'MANUAL_ADMIN_ENTRY',

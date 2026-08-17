@@ -26,6 +26,10 @@
     return new Date(iso).toLocaleString('en-NZ', { timeZone: 'Pacific/Auckland', dateStyle: 'medium', timeStyle: 'short' });
   }
   function cpl(v) { return typeof v === 'number' ? v.toFixed(2) : '—'; }
+  // Dollars-per-litre display — what you asked for: $2.9310 instead of
+  // 293.10. Converts the underlying cents-per-litre value; nothing about
+  // how prices are stored or calculated changes, only how they're shown.
+  function dpl(v) { return typeof v === 'number' ? '$' + (v / 100).toFixed(4) : '—'; }
   function pct(v) { return typeof v === 'number' ? (v > 0 ? '+' : '') + v.toFixed(2) + '%' : '—'; }
   function el(sel, root) { return (root || document).querySelector(sel); }
   function els(sel, root) { return Array.from((root || document).querySelectorAll(sel)); }
@@ -49,7 +53,12 @@
 
   // ============================================================== OVERVIEW
   function populateOverviewFilters() {
-    fillOptions(el('#f-region'), activeRegions, { value: (r) => r.id, label: (r) => r.label, includeAll: true, allLabel: 'All active terminals' });
+    const select = el('#f-region');
+    const inactiveRegions = config.regions.filter((r) => !r.active);
+    select.innerHTML = `<option value="">Active terminals (Wiri, Mount Maunganui)</option>`
+      + `<option value="__ALL__">All terminals</option>`
+      + `<optgroup label="Active">` + activeRegions.map((r) => `<option value="${esc(r.id)}">${esc(r.label)}</option>`).join('') + `</optgroup>`
+      + `<optgroup label="Other terminals suppliers publish">` + inactiveRegions.map((r) => `<option value="${esc(r.id)}">${esc(r.label)}</option>`).join('') + `</optgroup>`;
     fillOptions(el('#f-product'), config.products, { value: (p) => p.id, label: (p) => p.label, includeAll: true, allLabel: 'All products' });
     fillOptions(el('#f-supplier'), config.suppliers, { value: (s) => s.id, label: (s) => s.name, includeAll: true, allLabel: 'All suppliers' });
   }
@@ -63,7 +72,18 @@
   }
 
   function renderOverview() {
-    const rows = calc.filterRecords(data.currentPrices, overviewFilters())
+    const f = overviewFilters();
+    // "" (the default) means active-terminals-only; "__ALL__" means no
+    // region restriction at all; anything else is one specific terminal.
+    let base = data.currentPrices;
+    if (f.regionId === '') {
+      const activeIds = new Set(activeRegions.map((r) => r.id));
+      base = base.filter((r) => activeIds.has(r.regionId));
+    } else if (f.regionId !== '__ALL__') {
+      base = base.filter((r) => r.regionId === f.regionId);
+    }
+
+    const rows = calc.filterRecords(base, Object.assign({}, f, { regionId: '' }))
       .sort((a, b) => a.regionLabel.localeCompare(b.regionLabel) || a.productName.localeCompare(b.productName) || a.supplierName.localeCompare(b.supplierName));
 
     el('#overview-count').textContent = `${rows.length} of ${data.currentPrices.length} prices shown`;
@@ -77,7 +97,7 @@
     tbody.innerHTML = rows.map((r) => {
       const dirClass = 'dir-' + r.direction.toLowerCase();
       const arrow = calc.directionArrow(r.direction);
-      const changeTxt = r.direction === 'NEW' ? 'first capture' : (typeof r.change === 'number' ? `${arrow} ${Math.abs(r.change).toFixed(2)}` : '—');
+      const changeTxt = r.direction === 'NEW' ? 'first capture' : (typeof r.change === 'number' ? `${arrow} ${dpl(Math.abs(r.change))}` : '—');
       const gstTxt = r.gstStatus === 'included' ? 'Incl. GST' : r.gstStatus === 'excluded' ? 'Excl. GST' : `<span class="pill warn">${esc(r.gstStatus)}</span>`;
       const extractionPill = r.extractionMethod === 'PDF_COORDINATE'
         ? '<span class="pill info" title="Resolved via x/y coordinate extraction, not left-to-right text order">coordinate</span>'
@@ -89,8 +109,8 @@
         <td>${esc(r.supplierName)}</td>
         <td>${esc(r.regionLabel)}<div class="sub-cell">${esc(r.terminalName)}</div></td>
         <td>${esc(r.productName)}</td>
-        <td class="num">${cpl(r.currentValue)}</td>
-        <td class="num" style="color:var(--muted)">${cpl(r.previousValue)}</td>
+        <td class="num">${dpl(r.currentValue)}</td>
+        <td class="num" style="color:var(--muted)">${dpl(r.previousValue)}</td>
         <td class="num ${dirClass}">${changeTxt}</td>
         <td class="num ${dirClass}">${pct(r.changePct)}</td>
         <td>${fmtDate(r.effectiveDate)}</td>
@@ -122,7 +142,7 @@
       const lowest = dieselRows.reduce((a, b) => (a.currentValue < b.currentValue ? a : b));
       cards.push(`<div class="kpi">
         <div class="lbl">${esc(region.label)} · lowest diesel</div>
-        <div class="val">${cpl(lowest.currentValue)} c/L</div>
+        <div class="val">${dpl(lowest.currentValue)}/L</div>
         <div class="meta">${esc(lowest.supplierName)} · ${fmtDate(lowest.effectiveDate)}</div>
       </div>`);
     });
@@ -231,16 +251,31 @@
       { name: 'AIP — Diesel', color: '#a1311f', data: data.aipPrices.map((p) => p.diesel) },
     ], { yFormat: (v) => v.toFixed(0) }).render();
 
-    const last = data.aipPrices[data.aipPrices.length - 1];
-    const first = data.aipPrices[0];
-    el('#aip-kpis').innerHTML = `
-      <div class="compare-chip"><div class="lbl">Latest ULP</div><div class="val">${cpl(last.ulp)} AUc/L</div></div>
-      <div class="compare-chip"><div class="lbl">Latest Diesel</div><div class="val">${cpl(last.diesel)} AUc/L</div></div>
-      <div class="compare-chip"><div class="lbl">As at</div><div class="val" style="font-size:.95rem">${fmtDate(last.date)}</div></div>
-      <div class="compare-chip"><div class="lbl">Series start</div><div class="val" style="font-size:.95rem">${fmtDate(first.date)}</div></div>`;
+    const kpiBox = el('#aip-kpis');
+    if (!data.aipPrices.length) {
+      kpiBox.innerHTML = `<p class="empty">No AIP data collected yet — this connector isn't finished. See the note below.</p>`;
+    } else {
+      const last = data.aipPrices[data.aipPrices.length - 1];
+      const first = data.aipPrices[0];
+      kpiBox.innerHTML = `
+        <div class="compare-chip"><div class="lbl">Latest ULP</div><div class="val">${cpl(last.ulp)} AUc/L</div></div>
+        <div class="compare-chip"><div class="lbl">Latest Diesel</div><div class="val">${cpl(last.diesel)} AUc/L</div></div>
+        <div class="compare-chip"><div class="lbl">As at</div><div class="val" style="font-size:.95rem">${fmtDate(last.date)}</div></div>
+        <div class="compare-chip"><div class="lbl">Series start</div><div class="val" style="font-size:.95rem">${fmtDate(first.date)}</div></div>`;
+    }
   }
 
   // ============================================================== CHALLENGE
+  // NZ GST rate — used to compute the GST-inclusive Challenge price from
+  // what you actually pay before tax, so it's directly comparable to
+  // competitor prices (which are always shown GST-inclusive, as published).
+  const GST_RATE = 0.15;
+  // Levies (ETS, PEFML, ACC, NLTF, LAFT, RFT) already sitting inside the
+  // price you pay — shown as a separate reference line, not derived from
+  // anywhere; it's the figure you gave me, and it'll need updating by hand
+  // if government levy rates change.
+  const LEVIES_PER_LITRE_DOLLARS = 0.0687;
+
   function populateChallengeFilters() {
     fillOptions(el('#cf-region'), activeRegions, { value: (r) => r.id, label: (r) => r.label });
     fillOptions(el('#cf-product'), config.products, { value: (p) => p.id, label: (p) => p.label });
@@ -248,7 +283,20 @@
 
   function resetChallengeForm() {
     el('#challenge-form').reset();
+    el('#cf-preview').hidden = true;
   }
+
+  function updateChallengePreview() {
+    const preGst = Number(el('#cf-price').value);
+    const box = el('#cf-preview');
+    if (!Number.isFinite(preGst) || preGst <= 0) { box.hidden = true; return; }
+    const final = preGst * (1 + GST_RATE);
+    box.hidden = false;
+    el('#cf-preview-pre').textContent = '$' + preGst.toFixed(4);
+    el('#cf-preview-final').textContent = '$' + final.toFixed(4);
+    el('#cf-preview-levy').textContent = '$' + LEVIES_PER_LITRE_DOLLARS.toFixed(4);
+  }
+  el('#cf-price').addEventListener('input', updateChallengePreview);
 
   // Corrections are keyed by the id they correct, so both the original row
   // and its correction render together instead of the correction looking
@@ -261,18 +309,19 @@
 
     const tbody = el('#challenge-rows');
     if (!originals.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="empty">No Challenge prices entered yet. Use the form above.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="empty">No Challenge prices entered yet. Use the form above.</td></tr>';
     } else {
       tbody.innerHTML = originals.map((c) => {
         const corrections = byCorrectionOf[c.id] || [];
         const latest = corrections.length ? corrections[corrections.length - 1] : null;
         const displayed = latest || c;
         const correctionNote = latest
-          ? `<div class="sub-cell">Corrected from ${cpl(c.finalPrice)} — "${esc(latest.correctionReason)}"</div>` : '';
+          ? `<div class="sub-cell">Corrected from ${dpl(c.finalPrice)} — "${esc(latest.correctionReason)}"</div>` : '';
         return `<tr data-id="${esc(c.id)}">
           <td>${esc(lookup.regionById[c.regionId] ? lookup.regionById[c.regionId].label : c.regionId)}</td>
           <td>${esc(lookup.productById[c.productId] ? lookup.productById[c.productId].label : c.productId)}</td>
-          <td class="num">${cpl(displayed.finalPrice)}${correctionNote}</td>
+          <td class="num" style="color:var(--muted)">${typeof displayed.preGstPrice === 'number' ? dpl(displayed.preGstPrice) : '—'}</td>
+          <td class="num">${dpl(displayed.finalPrice)}${correctionNote}</td>
           <td>${fmtDate(c.effectiveDate)}</td>
           <td>${fmtDateTime(c.enteredAt)}</td>
           <td class="sub-cell">${esc(c.notes || '—')}</td>
@@ -311,12 +360,12 @@
       return `<div style="margin-bottom:16px">
         <strong>${esc(region.label)} — ${esc(product.label)}</strong>
         <div class="compare-strip">
-          <div class="compare-chip"><div class="lbl">Challenge</div><div class="val">${cpl(cmp.challenge)}</div></div>
-          <div class="compare-chip"><div class="lbl">Lowest competitor</div><div class="val">${cpl(cmp.lowest)}</div></div>
-          <div class="compare-chip"><div class="lbl">Highest competitor</div><div class="val">${cpl(cmp.highest)}</div></div>
-          <div class="compare-chip"><div class="lbl">Market average</div><div class="val">${cpl(cmp.average)}</div></div>
-          <div class="compare-chip"><div class="lbl">Vs average</div><div class="val ${posClass}">${cmp.vsAverage > 0 ? '+' : ''}${cpl(cmp.vsAverage)}</div></div>
-          <div class="compare-chip"><div class="lbl">Vs lowest</div><div class="val ${cmp.vsLowest > 0 ? 'dir-up' : 'dir-down'}">${cmp.vsLowest > 0 ? '+' : ''}${cpl(cmp.vsLowest)}</div></div>
+          <div class="compare-chip"><div class="lbl">Challenge</div><div class="val">${dpl(cmp.challenge)}</div></div>
+          <div class="compare-chip"><div class="lbl">Lowest competitor</div><div class="val">${dpl(cmp.lowest)}</div></div>
+          <div class="compare-chip"><div class="lbl">Highest competitor</div><div class="val">${dpl(cmp.highest)}</div></div>
+          <div class="compare-chip"><div class="lbl">Market average</div><div class="val">${dpl(cmp.average)}</div></div>
+          <div class="compare-chip"><div class="lbl">Vs average</div><div class="val ${posClass}">${cmp.vsAverage > 0 ? '+' : ''}${dpl(cmp.vsAverage)}</div></div>
+          <div class="compare-chip"><div class="lbl">Vs lowest</div><div class="val ${cmp.vsLowest > 0 ? 'dir-up' : 'dir-down'}">${cmp.vsLowest > 0 ? '+' : ''}${dpl(cmp.vsLowest)}</div></div>
         </div>
       </div>`;
     }).join('');
@@ -324,15 +373,23 @@
 
   el('#challenge-form').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const preGstDollars = Number(el('#cf-price').value);
+    if (!Number.isFinite(preGstDollars) || preGstDollars <= 0) {
+      alert('Enter a positive price before GST, e.g. 2.5490.');
+      return;
+    }
+    const preGstCents = preGstDollars * 100;
+    const finalCents = preGstCents * (1 + GST_RATE);
     const entry = {
       regionId: el('#cf-region').value,
       productId: el('#cf-product').value,
-      finalPrice: Number(el('#cf-price').value),
+      preGstPrice: preGstCents,      // reference — what you told me, before tax
+      finalPrice: finalCents,         // GST-inclusive — this is what competitor comparisons use
       effectiveDate: el('#cf-date').value,
       notes: el('#cf-notes').value.trim(),
     };
-    if (!entry.regionId || !entry.productId || !entry.effectiveDate || !Number.isFinite(entry.finalPrice) || entry.finalPrice <= 0) {
-      alert('Fill in terminal, product, a positive final price and an effective date.');
+    if (!entry.regionId || !entry.productId || !entry.effectiveDate) {
+      alert('Fill in terminal, product, and an effective date.');
       return;
     }
     const submitBtn = el('#cf-submit');
@@ -361,15 +418,17 @@
     const original = list.find((c) => c.id === id);
     if (!original) return;
 
-    const newValueRaw = prompt(`Corrected final price for ${fmtDate(original.effectiveDate)} (was ${cpl(original.finalPrice)}):`, original.finalPrice);
+    const currentPreGst = typeof original.preGstPrice === 'number' ? (original.preGstPrice / 100).toFixed(4) : '';
+    const newValueRaw = prompt(`Corrected price BEFORE GST for ${fmtDate(original.effectiveDate)} (was $${currentPreGst}):`, currentPreGst);
     if (newValueRaw === null) return;
-    const newValue = Number(newValueRaw);
-    if (!Number.isFinite(newValue) || newValue <= 0) { alert('Enter a valid positive number.'); return; }
+    const newPreGstDollars = Number(newValueRaw);
+    if (!Number.isFinite(newPreGstDollars) || newPreGstDollars <= 0) { alert('Enter a valid positive number.'); return; }
     const reason = prompt('Reason for this correction:');
     if (!reason || !reason.trim()) { alert('A correction requires a reason.'); return; }
 
     try {
-      await storage.correctChallengePrice(id, newValue, reason);
+      const newFinalCents = newPreGstDollars * 100 * (1 + GST_RATE);
+      await storage.correctChallengePrice(id, newFinalCents, reason, newPreGstDollars * 100);
       await renderChallenge();
     } catch (err) {
       alert(err.message);

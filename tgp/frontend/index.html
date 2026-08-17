@@ -68,7 +68,7 @@
     <div class="card">
       <div class="card-head">
         <h2>Current terminal gate prices</h2>
-        <p>All figures NZ cents per litre, GST inclusive as published</p>
+        <p>All figures NZD per litre, GST inclusive</p>
       </div>
       <div style="overflow-x:auto">
         <table class="t">
@@ -143,6 +143,10 @@
         <p>Weekdays only · AUD cents/litre · <a class="src-link" href="https://www.aip.com.au/pricing/terminal-gate-prices" target="_blank" rel="noopener">aip.com.au source ↗</a></p>
       </div>
       <div class="card-body">
+        <div class="banner" style="margin-bottom:14px">
+          <span>⚠</span>
+          <span><strong>Not collecting data yet.</strong> AIP publishes its historical prices as a downloadable spreadsheet rather than a plain webpage, and that file hasn't been parsed yet — this needs someone to open the real file and confirm its exact layout before a reader can be built safely. The daily NZ automation runs independently of this and is not affected. Real Australian data — and the up/down stock-ordering indicator this would enable — isn't shown until this is built.</span>
+        </div>
         <div style="position:relative"><canvas id="aip-canvas"></canvas></div>
         <div class="compare-strip" id="aip-kpis"></div>
       </div>
@@ -152,7 +156,7 @@
   <!-- ============================================================ CHALLENGE -->
   <section class="panel" data-panel="challenge" hidden>
     <div class="card">
-      <div class="card-head"><h2>Enter Challenge pricing</h2><p>Final price only — no components calculated here</p></div>
+      <div class="card-head"><h2>Enter Challenge pricing</h2><p>Enter your price before GST — GST is added automatically to match how competitor prices are shown</p></div>
       <div class="card-body">
         <form class="form-grid" id="challenge-form">
           <label>Terminal
@@ -161,8 +165,8 @@
           <label>Product
             <select id="cf-product" required></select>
           </label>
-          <label>Final price (c/L)
-            <input type="number" id="cf-price" step="0.01" min="0.01" max="999" required placeholder="e.g. 245.00">
+          <label>Price before GST ($/L)
+            <input type="number" id="cf-price" step="0.0001" min="0.01" max="9.9999" required placeholder="e.g. 2.5490">
           </label>
           <label>Effective date
             <input type="date" id="cf-date" required>
@@ -170,6 +174,11 @@
           <label style="grid-column:1/-1">Notes (optional)
             <textarea id="cf-notes" placeholder="Any context for this figure…"></textarea>
           </label>
+          <div id="cf-preview" class="compare-strip" style="grid-column:1/-1" hidden>
+            <div class="compare-chip"><div class="lbl">Before GST</div><div class="val" id="cf-preview-pre">—</div></div>
+            <div class="compare-chip"><div class="lbl">+ GST (15%)</div><div class="val" id="cf-preview-final">—</div></div>
+            <div class="compare-chip"><div class="lbl">Levies included in this</div><div class="val" id="cf-preview-levy">—</div></div>
+          </div>
           <div class="form-actions">
             <button type="submit" class="btn" id="cf-submit">Save Challenge price</button>
           </div>
@@ -181,7 +190,7 @@
       <div class="card-head"><h2>Challenge pricing history</h2></div>
       <div style="overflow-x:auto">
         <table class="t">
-          <thead><tr><th>Terminal</th><th>Product</th><th class="num">Final price</th><th>Effective</th><th>Entered</th><th>Notes</th><th></th></tr></thead>
+          <thead><tr><th>Terminal</th><th>Product</th><th class="num">Before GST</th><th class="num">Final (incl. GST)</th><th>Effective</th><th>Entered</th><th>Notes</th><th></th></tr></thead>
           <tbody id="challenge-rows"></tbody>
         </table>
       </div>
