@@ -14,7 +14,7 @@
       <h1><span class="dot" aria-hidden="true"></span>Terminal Gate Pricing</h1>
       <p class="sub">Auckland — Wiri and Mount Maunganui · competitor prices collected automatically, Challenge pricing entered manually</p>
     </div>
-    <span class="badge">DEMO_DATA — real Aug 2026 snapshot + generated history, not live-connected</span>
+    <span class="badge" id="data-badge">Connecting to live data…</span>
   </div>
 
   <div id="review-banner" class="banner" hidden></div>
@@ -250,10 +250,21 @@
   <footer class="note">Research figures read from supplier documents on 16 Aug 2026 (Pacific/Auckland). Extended history and AIP series are generated demo data. See README-frontend.md for the full breakdown.</footer>
 </div>
 
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="js/data.js"></script>
 <script src="js/calculations.js"></script>
 <script src="js/storage.js"></script>
 <script src="js/charts.js"></script>
 <script src="js/app.js"></script>
+<script>
+  window.TGP.dataReady.then(() => {
+    document.getElementById('data-badge').textContent = 'LIVE — reading real Firestore data';
+    document.getElementById('data-badge').style.color = 'var(--success)';
+  }).catch(() => {
+    document.getElementById('data-badge').textContent = 'Could not connect to live data';
+    document.getElementById('data-badge').style.color = 'var(--danger)';
+  });
+</script>
 </body>
 </html>

@@ -187,7 +187,7 @@
     const labels = cutoffDate ? allDates.filter((d) => new Date(d) >= cutoffDate) : allDates;
 
     const series = supplierIds
-      .filter((sid) => config.availability[sid] && config.availability[sid][regionId] && config.availability[sid][regionId].includes(productId))
+      .filter((sid) => !config.availability || (config.availability[sid] && config.availability[sid][regionId] && config.availability[sid][regionId].includes(productId)))
       .map((sid) => {
         const s = lookup.supplierById[sid];
         const bySeriesDate = {};
@@ -253,8 +253,8 @@
   // Corrections are keyed by the id they correct, so both the original row
   // and its correction render together instead of the correction looking
   // like an unrelated new entry.
-  function renderChallenge() {
-    const list = storage.getChallengePrices();
+  async function renderChallenge() {
+    const list = await storage.getChallengePrices();
     const byCorrectionOf = {};
     list.forEach((c) => { if (c.correctionOf) (byCorrectionOf[c.correctionOf] = byCorrectionOf[c.correctionOf] || []).push(c); });
     const originals = list.filter((c) => !c.correctionOf).sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate));
@@ -322,7 +322,7 @@
     }).join('');
   }
 
-  el('#challenge-form').addEventListener('submit', (e) => {
+  el('#challenge-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const entry = {
       regionId: el('#cf-region').value,
@@ -335,21 +335,30 @@
       alert('Fill in terminal, product, a positive final price and an effective date.');
       return;
     }
-    storage.addChallengePrice(entry);
-    resetChallengeForm();
-    renderChallenge();
+    const submitBtn = el('#cf-submit');
+    submitBtn.disabled = true; submitBtn.textContent = 'Saving…';
+    try {
+      await storage.addChallengePrice(entry);
+      resetChallengeForm();
+      await renderChallenge();
+    } catch (err) {
+      alert('Could not save: ' + err.message);
+    } finally {
+      submitBtn.disabled = false; submitBtn.textContent = 'Save Challenge price';
+    }
   });
 
   // A correction is create-only: it prompts for the new value and a reason,
   // then adds a NEW record referencing the original. There is no edit-in-place
   // and no delete — matching the real backend's ChallengePriceRepository,
   // which has no update() or delete() method at all.
-  el('#challenge-rows').addEventListener('click', (e) => {
+  el('#challenge-rows').addEventListener('click', async (e) => {
     if (!e.target.classList.contains('cp-correct')) return;
     const row = e.target.closest('tr[data-id]');
     if (!row) return;
     const id = row.dataset.id;
-    const original = storage.getChallengePrices().find((c) => c.id === id);
+    const list = await storage.getChallengePrices();
+    const original = list.find((c) => c.id === id);
     if (!original) return;
 
     const newValueRaw = prompt(`Corrected final price for ${fmtDate(original.effectiveDate)} (was ${cpl(original.finalPrice)}):`, original.finalPrice);
@@ -360,8 +369,8 @@
     if (!reason || !reason.trim()) { alert('A correction requires a reason.'); return; }
 
     try {
-      storage.correctChallengePrice(id, newValue, reason);
-      renderChallenge();
+      await storage.correctChallengePrice(id, newValue, reason);
+      await renderChallenge();
     } catch (err) {
       alert(err.message);
     }
@@ -419,7 +428,7 @@
   }
 
   // ============================================================== boot
-  function init() {
+  async function init() {
     populateOverviewFilters();
     populateHistoryFilters();
     populateChallengeFilters();
@@ -428,17 +437,26 @@
     el('#h-product').value = 'DIESEL';
     el('#cf-date').value = new Date().toISOString().slice(0, 10);
 
-    storage.seedIfEmpty([
-      { regionId: 'AUCKLAND_WIRI', productId: 'DIESEL', finalPrice: 244.50, effectiveDate: '2026-08-11', notes: 'Weekly figure from supply team.' },
-      { regionId: 'MOUNT_MAUNGANUI', productId: 'DIESEL', finalPrice: 241.00, effectiveDate: '2026-08-11', notes: '' },
-    ]);
+    // Show a loading state immediately — the real Firestore data can take
+    // a moment to arrive over the network, and an empty-looking page with
+    // no explanation reads as broken rather than loading.
+    el('#overview-rows').innerHTML = '<tr><td colspan="11" class="empty">Loading live prices…</td></tr>';
+    el('#kpi-strip').innerHTML = '<div class="kpi"><div class="lbl">Status</div><div class="val" style="font-size:1rem">Loading…</div></div>';
+
+    try {
+      await window.TGP.dataReady;
+    } catch (err) {
+      el('#overview-rows').innerHTML = `<tr><td colspan="11" class="empty">Could not load live data: ${esc(err.message)}. Check your internet connection and reload.</td></tr>`;
+      el('#kpi-strip').innerHTML = '';
+      return;
+    }
 
     renderKpis();
     renderReviewBanner();
     renderOverview();
     renderHistory();
     renderMarket();
-    renderChallenge();
+    await renderChallenge();
     renderAutomation();
     renderErrors();
     renderDocuments();
