@@ -6,7 +6,7 @@ const { ChallengePriceRepository } = require('../base');
 class FirestoreChallengePriceRepository extends ChallengePriceRepository {
   constructor(db) {
     super();
-    this.col = db.collection('tgpApp').collection('challengePricing');
+    this.col = db.collection('tgpApp').doc('_').collection('challengePricing');
   }
 
   async create(entry) {
