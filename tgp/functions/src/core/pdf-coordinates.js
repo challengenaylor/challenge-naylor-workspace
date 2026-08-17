@@ -208,7 +208,26 @@ function detectColumnAnchors(headerRowItems, columnDefs) {
   return anchors;
 }
 
+/**
+ * Reconstruct row-per-line plain text from positioned PDF items — matches
+ * what a normal PDF-to-text tool produces (one visual row per text line).
+ * This is the text shape the simpler, already-tested text-based extractors
+ * (connectors/gull.js, connectors/z.js, connectors/bp-header-driven.js)
+ * expect; naively joining a whole page's items with a single space would
+ * destroy the row structure entirely and break every one of them.
+ */
+function positionedItemsToLineText(items, yTolerance) {
+  const rows = groupIntoRows(items, yTolerance);
+  return rows.map((row) => row.items.map((it) => it.str).join(' ')).join('\n');
+}
+
+async function extractPdfAsLineText(pdfBuffer) {
+  const pages = await extractPositionedText(pdfBuffer);
+  return pages.map((p) => positionedItemsToLineText(p.items)).join('\n');
+}
+
 module.exports = {
   extractPositionedText, groupIntoRows, mergeWrappedLabelRows,
   splitLabelAndValues, assignByXAnchor, extractRows, detectColumnAnchors,
+  positionedItemsToLineText, extractPdfAsLineText,
 };
