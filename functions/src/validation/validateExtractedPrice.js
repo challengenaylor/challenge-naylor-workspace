@@ -39,16 +39,22 @@ function validateOne(record, ctx) {
 
   if (!record.effectiveDate) {
     errors.push('STALE_DATE:MISSING');
+  } else if (!/^\d{4}-\d{2}-\d{2}$/.test(record.effectiveDate)) {
+    errors.push('STALE_DATE:MALFORMED');
   } else {
-    const eff = new Date(record.effectiveDate + 'T00:00:00Z');
-    if (Number.isNaN(eff.getTime())) {
-      errors.push('STALE_DATE:MALFORMED');
-    } else {
-      const now = ctx.now ? new Date(ctx.now) : new Date();
-      const ageDays = (now - eff) / 86400000;
-      if (ageDays > STALE_DAYS) errors.push(`STALE_DATE:${Math.floor(ageDays)}_DAYS_OLD`);
-      if (ageDays < -1) errors.push('STALE_DATE:FUTURE'); // more than a day ahead is suspicious for a same-day publication
-    }
+    // Compare CALENDAR DATES in Pacific/Auckland, not raw UTC instants.
+    // The bug this replaces: comparing "now" (a UTC instant) against
+    // "effectiveDate + T00:00:00Z" (UTC midnight) ignores that NZ is
+    // 12-13 hours ahead of UTC — a price that has genuinely just taken
+    // effect in NZ can still read as "the future" for most of the NZ day,
+    // since UTC hasn't reached that calendar date yet. Converting both
+    // sides to their NZ-local calendar date first removes the ambiguity
+    // entirely; there's no time-of-day component left to get wrong.
+    const now = ctx.now ? new Date(ctx.now) : new Date();
+    const nzToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Auckland' }).format(now); // YYYY-MM-DD
+    const ageDays = (Date.parse(nzToday + 'T00:00:00Z') - Date.parse(record.effectiveDate + 'T00:00:00Z')) / 86400000;
+    if (ageDays > STALE_DAYS) errors.push(`STALE_DATE:${Math.floor(ageDays)}_DAYS_OLD`);
+    if (ageDays < -1) errors.push('STALE_DATE:FUTURE'); // more than a day ahead is suspicious for a same-day publication
   }
 
   if (!record.sourceDocumentHash) errors.push('MISSING_SOURCE_DOCUMENT_HASH');
