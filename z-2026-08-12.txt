@@ -1,0 +1,26 @@
+Effective Date: 12/08/2026 0:01
+Location Terminal Premium 95 Regular 91 Diesel
+Marsden Point Marsden Point Terminal (WOSL) 291.39 272.32 240.19 
+Auckland Wiri Oil Service Limited (WOSL) 292.76 274.04 242.46 
+Tauranga Z Mount Maunganui North 292.10 271.99 239.28 
+Z Mount Maunganui South 292.10 271.99 239.28 
+Napier Z Napier 296.86 273.90 238.60 
+Wellington Z Seaview 293.10 273.44 240.73 
+Hutt City Terminal (NZOSL) 293.10 273.44 240.73 
+Nelson Z Nelson 296.86 273.90 241.19 
+Christchurch Z Lyttelton 271.99 239.28 
+Timaru Z Timaru North 292.29 274.24 241.54 
+Z Timaru South 241.54 
+Dunedin Z Dunedin 294.36 274.01 241.31 
+All Terminal Gate Prices :
+Are NZ cents per litre including ETS and all applicable taxes (NLTF, PEFML, ACC, LAFT, RFT and GST)
+Are for fuel at ambient temperature
+Effective Date: 5/08/2026 0:01
+Location Terminal Premium 95 Regular 91 Diesel
+Marsden Point Marsden Point Terminal (WOSL) 306.51 287.92 255.70 
+Auckland Wiri Oil Service Limited (WOSL) 307.88 289.64 257.97 
+Tauranga Z Mount Maunganui North 307.22 287.60 254.79 
+Z Mount Maunganui South 307.22 287.60 254.79 
+Christchurch Z Lyttelton 287.60 254.79 
+All Terminal Gate Prices :
+Are NZ cents per litre including ETS and all applicable taxes (NLTF, PEFML, ACC, LAFT, RFT and GST)

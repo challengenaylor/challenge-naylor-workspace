@@ -1,0 +1,18 @@
+Price effective 12:01am 14/08/2026 *All Prices in NZCPL
+Operator Terminal M95* M91* ADF*
+WOSL Marsden Point TLF 294.77 280.97 250.39
+WOSL Wiri 296.38 282.58 250.25
+NZOSL Mt Maunganui BP 250.66
+TNZ Mt Maunganui TNZ 282.85
+NZOSL Napier BP 283.43 251.16
+NZOSL Hutt City BP 297.38 283.59 251.39
+NZOSL Lyttelton BP 286.72 251.25
+NZOSL Dunedin BP 300.45 286.19 250.66
+Price effective 12:01am 11/08/2026 *All Prices in NZCPL
+Operator Terminal M95* M91* ADF*
+WOSL Marsden Point TLF 291.46 277.66 245.02
+WOSL Wiri 293.07 279.27 247.18
+NZOSL Mt Maunganui BP 245.3
+*Notes:
+*Includes All Taxes (Excise, PEFML, ACC, Carbon, LAFT, GST)
+All Prices quoted at ambient temperature

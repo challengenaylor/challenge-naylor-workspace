@@ -1,0 +1,87 @@
+<!--
+  This is a RECONSTRUCTED fixture, not an invented one: every header, row,
+  value and "N/A" cell below is exactly what was observed on
+  https://www.mobil.co.nz/en-nz/commercial-fuels/terminal-gate via the
+  web_fetch tool earlier in this project ("effective 12:01am Saturday 15
+  August 2026"). The web_fetch tool returns markdown-converted content, not
+  raw HTML bytes, and this sandbox's outbound network does not reach
+  mobil.co.nz directly (only package registries are allowlisted), so the
+  real raw HTML could not be captured. This file reproduces the real
+  observed table structure (headers, row grouping, blank Location cells,
+  N/A cells for a grade Mobil doesn't sell at that terminal) as genuine
+  HTML markup, so the connector below can be tested against real DOM
+  parsing rather than a hand-shaped JS object. Testing against Mobil's
+  actual raw HTTP response remains LIVE VERIFICATION REQUIRED.
+-->
+<p>Mobil Terminal Gate Prices at specified Terminals effective 12:01am Saturday 15 August 2026.</p>
+<table id="tgp-table">
+  <thead>
+    <tr>
+      <th>Location</th>
+      <th>Terminal</th>
+      <th>Operator</th>
+      <th>Unadditised Regular 91</th>
+      <th>Unadditised Premium 95</th>
+      <th>Unadditised ULS Diesel</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Marsden Point</td>
+      <td>Marsden Point TLF</td>
+      <td>WO</td>
+      <td>288.46</td>
+      <td>301.02</td>
+      <td>252.33</td>
+    </tr>
+    <tr>
+      <td>Auckland (Wiri)</td>
+      <td>Wiri</td>
+      <td>WOS</td>
+      <td>289.61</td>
+      <td>302.17</td>
+      <td>253.71</td>
+    </tr>
+    <tr>
+      <td>Mount Maunganui</td>
+      <td>Mobil</td>
+      <td>Mobil</td>
+      <td>288.57</td>
+      <td>301.13</td>
+      <td>252.56</td>
+    </tr>
+    <tr>
+      <td>Wellington (Seaview)</td>
+      <td>Mobil</td>
+      <td>Mobil</td>
+      <td>289.03</td>
+      <td>301.71</td>
+      <td>252.79</td>
+    </tr>
+    <tr>
+      <td>Christchurch (incl. Lyttelton &amp; Woolston)</td>
+      <td>Woolston (Mobil)</td>
+      <td>Mobil</td>
+      <td>288.23</td>
+      <td>300.79</td>
+      <td>251.99</td>
+    </tr>
+    <tr>
+      <td></td>
+      <td>Lyttelton (Mobil)</td>
+      <td>Mobil</td>
+      <td>N/A</td>
+      <td>N/A</td>
+      <td>251.99</td>
+    </tr>
+    <tr>
+      <td>Bluff</td>
+      <td>Mobil</td>
+      <td>Mobil</td>
+      <td>290.30</td>
+      <td>302.74</td>
+      <td>254.06</td>
+    </tr>
+  </tbody>
+</table>
+<p>All quoted TGPs include: Excise duty, Petroleum or Engine Fuel Monitoring Levy (PEFML), ACC Levy, National Land Transport Fund, Local Authority Fuel Tax (LAFT), Regional Fuels Tax (RFT) where relevant, New Zealand Emissions Trading Scheme (ETS) Carbon Cost, Goods and Services Tax (GST); Invoiced price is at the applicable rate on the day of pick up.</p>

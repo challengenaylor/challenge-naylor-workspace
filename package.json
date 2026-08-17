@@ -1,0 +1,15 @@
+{
+  "name": "tgp-functions",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Challenge TGP — supplier connectors, validation engine, local repository adapters",
+  "main": "src/orchestrator.js",
+  "scripts": {
+    "test": "node test/run.js && node test/run-pdf-coordinates.js && node test/run-orchestrator.js && node test/run-challenge.js && node test/run-aip.js"
+  },
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.2.108"
+  }
+}
