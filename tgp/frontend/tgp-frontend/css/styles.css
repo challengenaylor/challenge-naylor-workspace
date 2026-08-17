@@ -1,0 +1,196 @@
+/* ==========================================================================
+   DESIGN NOTES (kept in-file since there's no separate design doc)
+
+   Subject: a wholesale fuel-pricing control room — the person checking this
+   page is comparing terminal GATE prices, i.e. literally reading gauges at
+   an industrial site, several times a day. The design leans into that:
+   a technical, instrument-panel register rather than a generic SaaS-dashboard
+   look (no cream+terracotta, no near-black+neon — both are AI-default tells).
+
+   Palette:
+     --bg        #eef1ee   pale industrial grey-green (painted steel, not paper)
+     --surface   #ffffff   panel face
+     --surface-2 #e4e9e2   recessed panel / inset well
+     --ink       #16211c   near-black deep green-charcoal (gauge lettering)
+     --muted     #5b6b61
+     --line      #c7d0c5
+     --accent    #0f6659   deep teal — primary brand/interactive colour
+     --danger    #a1311f   brick red — price UP (cost increase, the bad
+                            direction for a buyer) and error states
+     --success   #1c7a4c   deep green — price DOWN and healthy status
+     --warn      #b5790b   amber — caution / needs-review
+     --warn-bg   #fbf1de
+
+   Type: Space Grotesk (display, used sparingly for headings/labels — a
+   geometric technical face, not a default AI serif) + IBM Plex Sans (body)
+   + IBM Plex Mono (every number: prices, deltas, dates, hashes — reads like
+   a ticker/gauge readout, which is the point).
+
+   Signature element: the semicircular pressure gauge on the Market tab
+   (built in charts.js) — directional pressure is quite literally what a
+   terminal gate operator reads off a real gauge, so the metaphor is earned
+   rather than decorative.
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root{
+  --bg:#eef1ee; --surface:#fff; --surface-2:#e4e9e2; --ink:#16211c; --muted:#5b6b61; --line:#c7d0c5;
+  --accent:#0f6659; --accent-ink:#fff;
+  --danger:#a1311f; --success:#1c7a4c; --warn:#b5790b; --warn-bg:#fbf1de;
+  --radius:4px; --radius-lg:8px;
+  --font-display:'Space Grotesk',system-ui,sans-serif;
+  --font-body:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --font-mono:'IBM Plex Mono',ui-monospace,'SF Mono',Menlo,monospace;
+  --shadow: 0 1px 2px rgba(22,33,28,.06), 0 1px 1px rgba(22,33,28,.04);
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:
+    linear-gradient(var(--bg),var(--bg)) fixed,
+    repeating-linear-gradient(135deg, rgba(22,33,28,.015) 0 2px, transparent 2px 14px);
+  color:var(--ink); font-family:var(--font-body); font-size:15px; line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--accent)}
+button{font-family:inherit}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+.wrap{max-width:1240px;margin:0 auto;padding:18px 20px 60px}
+
+/* ---------- header ---------- */
+.top{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+.top h1{
+  font-family:var(--font-display); font-weight:700; font-size:1.5rem; letter-spacing:.01em;
+  margin:0; display:flex; align-items:center; gap:10px;
+}
+.top h1 .dot{width:10px;height:10px;border-radius:50%;background:var(--accent);display:inline-block;box-shadow:0 0 0 3px rgba(15,102,89,.18)}
+.top .sub{color:var(--muted); font-size:.86rem; margin:2px 0 0}
+.top .badge{
+  font-family:var(--font-mono); font-size:.72rem; text-transform:uppercase; letter-spacing:.06em;
+  background:var(--surface-2); border:1px solid var(--line); border-radius:99px; padding:3px 10px; color:var(--muted);
+}
+
+/* ---------- tabs ---------- */
+.tabs{display:flex;gap:2px;overflow-x:auto;border-bottom:2px solid var(--line);margin-bottom:18px;-webkit-overflow-scrolling:touch}
+.tab{
+  flex:0 0 auto; background:none; border:0; cursor:pointer; padding:10px 16px; font:inherit;
+  font-family:var(--font-display); font-weight:600; font-size:.86rem; color:var(--muted);
+  border-bottom:2px solid transparent; margin-bottom:-2px; white-space:nowrap;
+}
+.tab[aria-selected="true"]{color:var(--accent); border-bottom-color:var(--accent)}
+.tab .count{font-family:var(--font-mono);font-weight:400;color:var(--muted);margin-left:5px}
+
+.panel[hidden]{display:none}
+
+/* ---------- cards ---------- */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);margin-bottom:18px;box-shadow:var(--shadow);overflow:hidden}
+.card > .card-head{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;
+  padding:12px 16px;border-bottom:1px solid var(--line);background:var(--surface-2);
+}
+.card > .card-head h2{font-family:var(--font-display);font-weight:600;font-size:.86rem;text-transform:uppercase;letter-spacing:.05em;margin:0;color:var(--ink)}
+.card > .card-head p{margin:0;color:var(--muted);font-size:.78rem}
+.card-body{padding:14px 16px}
+
+/* ---------- filter bar ---------- */
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.filters select,.filters input[type="text"],.filters input[type="search"],.filters input[type="date"],.filters input[type="number"]{
+  font:inherit; font-size:.84rem; padding:7px 10px; border:1px solid var(--line); border-radius:var(--radius);
+  background:var(--surface); color:var(--ink);
+}
+.filters label{display:flex;flex-direction:column;gap:3px;font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.btn{
+  font:inherit; font-family:var(--font-display); font-weight:600; font-size:.82rem; letter-spacing:.02em;
+  padding:8px 14px; border-radius:var(--radius); border:1px solid var(--accent); cursor:pointer;
+  background:var(--accent); color:var(--accent-ink);
+}
+.btn.secondary{background:transparent;color:var(--accent)}
+.btn.ghost{background:transparent;color:var(--muted);border-color:var(--line)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap}
+
+/* ---------- tables ---------- */
+table.t{width:100%;border-collapse:collapse;font-size:.86rem}
+table.t th{
+  text-align:left; font-family:var(--font-mono); font-size:.68rem; text-transform:uppercase; letter-spacing:.06em;
+  color:var(--muted); padding:8px 12px; border-bottom:1px solid var(--line); white-space:nowrap;
+  cursor:default; user-select:none;
+}
+table.t td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+table.t tr:last-child td{border-bottom:0}
+table.t tr:hover td{background:rgba(15,102,89,.035)}
+.num{font-family:var(--font-mono);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.mono{font-family:var(--font-mono)}
+.sub-cell{color:var(--muted);font-size:.76rem;margin-top:1px}
+
+.dir-up{color:var(--danger)} .dir-down{color:var(--success)} .dir-flat{color:var(--muted)} .dir-new{color:var(--accent)}
+
+/* ---------- pills / badges ---------- */
+.pill{display:inline-flex;align-items:center;gap:4px;font-family:var(--font-mono);font-size:.68rem;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.pill.ok{background:#eaf5ee;border-color:var(--success);color:var(--success)}
+.pill.warn{background:var(--warn-bg);border-color:var(--warn);color:var(--warn)}
+.pill.err{background:#f8e9e5;border-color:var(--danger);color:var(--danger)}
+.pill.info{background:#e8eef7;border-color:#3a5a9b;color:#3a5a9b}
+
+.banner{display:flex;gap:10px;align-items:flex-start;background:var(--warn-bg);border:1px solid var(--warn);color:#6b4c08;border-radius:var(--radius);padding:10px 13px;font-size:.85rem;margin-bottom:16px}
+.banner strong{font-family:var(--font-display)}
+
+.empty{padding:30px 14px;text-align:center;color:var(--muted);font-size:.88rem}
+a.src-link{font-size:.78rem;text-decoration:none;white-space:nowrap}
+a.src-link:hover{text-decoration:underline}
+
+/* ---------- KPI strip ---------- */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:18px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);padding:13px 15px;box-shadow:var(--shadow)}
+.kpi .lbl{font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.kpi .val{font-family:var(--font-mono);font-size:1.5rem;font-weight:600;margin-top:3px}
+.kpi .meta{font-size:.76rem;color:var(--muted);margin-top:3px}
+
+/* ---------- gauge + legend ---------- */
+.gauge-wrap{display:flex;gap:22px;flex-wrap:wrap;align-items:center}
+.gauge-canvas-box{flex:0 0 300px;max-width:100%}
+.gauge-methodology{flex:1 1 280px;min-width:240px}
+.gauge-methodology p{margin:0 0 8px;color:var(--muted);font-size:.85rem}
+.signal-row{display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:.82rem;padding:6px 0;border-bottom:1px dashed var(--line)}
+.signal-row:last-child{border-bottom:0}
+
+.tgp-legend{display:flex;gap:14px;flex-wrap:wrap;padding:8px 4px 0;font-size:.78rem;color:var(--muted)}
+.tgp-legend-item{display:inline-flex;align-items:center;gap:6px}
+.tgp-legend-item i{width:10px;height:10px;border-radius:2px;display:inline-block}
+
+/* ---------- forms ---------- */
+.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;align-items:end}
+.form-grid label{display:flex;flex-direction:column;gap:4px;font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.form-grid input,.form-grid select,.form-grid textarea{
+  font:inherit;font-size:.88rem;padding:8px 10px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);color:var(--ink);
+}
+.form-grid textarea{grid-column:1/-1;min-height:52px;resize:vertical}
+.form-actions{grid-column:1/-1;display:flex;gap:8px}
+
+/* ---------- comparison ---------- */
+.compare-strip{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px}
+.compare-chip{flex:1 1 130px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px}
+.compare-chip .lbl{font-size:.68rem;text-transform:uppercase;color:var(--muted);letter-spacing:.05em}
+.compare-chip .val{font-family:var(--font-mono);font-size:1.15rem;font-weight:600;margin-top:2px}
+
+/* ---------- automation status cards ---------- */
+.status-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.status-card{border:1px solid var(--line);border-radius:var(--radius-lg);padding:12px 14px;background:var(--surface)}
+.status-card .row1{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.status-card h3{font-family:var(--font-display);font-size:.92rem;margin:0}
+.status-card dl{margin:0;font-size:.78rem;color:var(--muted)}
+.status-card dl div{display:flex;justify-content:space-between;padding:2px 0}
+.status-card dl b{color:var(--ink);font-family:var(--font-mono);font-weight:500}
+
+footer.note{color:var(--muted);font-size:.76rem;text-align:center;margin-top:24px}
+
+@media (max-width:640px){
+  .wrap{padding:12px 12px 40px}
+  table.t{font-size:.78rem}
+  table.t th,table.t td{padding:7px 8px}
+  .top h1{font-size:1.2rem}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}

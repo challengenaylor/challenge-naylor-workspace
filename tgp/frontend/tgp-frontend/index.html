@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en-NZ">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terminal Gate Pricing — Challenge</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <div>
+      <h1><span class="dot" aria-hidden="true"></span>Terminal Gate Pricing</h1>
+      <p class="sub">Auckland — Wiri and Mount Maunganui · competitor prices collected automatically, Challenge pricing entered manually</p>
+    </div>
+    <span class="badge">DEMO_DATA — real Aug 2026 snapshot + generated history, not live-connected</span>
+  </div>
+
+  <div id="review-banner" class="banner" hidden></div>
+
+  <div class="kpis" id="kpi-strip"></div>
+
+  <nav class="tabs" role="tablist" aria-label="TGP sections">
+    <button class="tab" role="tab" aria-selected="true" data-panel="overview">Overview</button>
+    <button class="tab" role="tab" aria-selected="false" data-panel="history">History &amp; charts</button>
+    <button class="tab" role="tab" aria-selected="false" data-panel="market">Market direction</button>
+    <button class="tab" role="tab" aria-selected="false" data-panel="challenge">Challenge pricing</button>
+    <button class="tab" role="tab" aria-selected="false" data-panel="automation">Automation &amp; errors</button>
+    <button class="tab" role="tab" aria-selected="false" data-panel="documents">Sources &amp; documents</button>
+  </nav>
+
+  <!-- ============================================================ OVERVIEW -->
+  <section class="panel" data-panel="overview">
+    <div class="card">
+      <div class="card-head">
+        <h2>Filters</h2>
+        <p id="overview-count"></p>
+      </div>
+      <div class="card-body">
+        <div class="filters">
+          <label>Terminal
+            <select id="f-region"><option value="">All active terminals</option></select>
+          </label>
+          <label>Product
+            <select id="f-product"><option value="">All products</option></select>
+          </label>
+          <label>Supplier
+            <select id="f-supplier"><option value="">All suppliers</option></select>
+          </label>
+          <label>Direction
+            <select id="f-direction">
+              <option value="">Any</option>
+              <option value="UP">Increase</option>
+              <option value="DOWN">Decrease</option>
+              <option value="FLAT">No change</option>
+              <option value="NEW">First observation</option>
+            </select>
+          </label>
+          <label>Search
+            <input type="search" id="f-search" placeholder="Terminal, supplier…">
+          </label>
+          <button class="btn ghost" id="f-clear" style="align-self:flex-end">Clear filters</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Current terminal gate prices</h2>
+        <p>All figures NZ cents per litre, GST inclusive as published</p>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="t">
+          <thead><tr>
+            <th>Supplier</th><th>Terminal</th><th>Product</th>
+            <th class="num">Current</th><th class="num">Previous</th><th class="num">Change</th><th class="num">% chg</th>
+            <th>Effective</th><th>GST</th><th>Extraction</th><th>Source</th>
+          </tr></thead>
+          <tbody id="overview-rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ HISTORY -->
+  <section class="panel" data-panel="history" hidden>
+    <div class="card">
+      <div class="card-head"><h2>Chart controls</h2></div>
+      <div class="card-body">
+        <div class="filters">
+          <label>Range
+            <select id="h-range">
+              <option value="7">7 days</option>
+              <option value="30" selected>30 days</option>
+              <option value="90">3 months</option>
+              <option value="180">6 months</option>
+              <option value="365">12 months</option>
+              <option value="all">All history</option>
+            </select>
+          </label>
+          <label>Terminal
+            <select id="h-region"></select>
+          </label>
+          <label>Product
+            <select id="h-product"></select>
+          </label>
+          <label>Suppliers
+            <span id="h-suppliers" style="display:flex;gap:10px;padding-top:6px"></span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2 id="history-title">Price history</h2></div>
+      <div class="card-body">
+        <div style="position:relative"><canvas id="history-canvas"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ MARKET -->
+  <section class="panel" data-panel="market" hidden>
+    <div class="card">
+      <div class="card-head"><h2>NZ market direction indicator</h2></div>
+      <div class="card-body gauge-wrap">
+        <div class="gauge-canvas-box"><canvas id="gauge-canvas"></canvas></div>
+        <div class="gauge-methodology">
+          <p id="market-confidence"></p>
+          <div class="signal-row"><span>AIP 5-session movement</span><b id="sig-aip5" class="mono"></b></div>
+          <div class="signal-row"><span>AIP 10-session movement</span><b id="sig-aip10" class="mono"></b></div>
+          <div class="signal-row"><span>Recent NZ TGP movement (avg, all active prices)</span><b id="sig-nz" class="mono"></b></div>
+          <p style="margin-top:10px;font-size:.76rem" id="market-methodology"></p>
+          <p style="margin-top:6px;font-size:.76rem;color:var(--muted)">This is a directional indicator, not a price forecast. AIP is an Australian wholesale benchmark; it does not set NZ prices.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>AIP — Australian terminal gate benchmark</h2>
+        <p>Weekdays only · AUD cents/litre · <a class="src-link" href="https://www.aip.com.au/pricing/terminal-gate-prices" target="_blank" rel="noopener">aip.com.au source ↗</a></p>
+      </div>
+      <div class="card-body">
+        <div style="position:relative"><canvas id="aip-canvas"></canvas></div>
+        <div class="compare-strip" id="aip-kpis"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ CHALLENGE -->
+  <section class="panel" data-panel="challenge" hidden>
+    <div class="card">
+      <div class="card-head"><h2>Enter Challenge pricing</h2><p>Final price only — no components calculated here</p></div>
+      <div class="card-body">
+        <form class="form-grid" id="challenge-form">
+          <label>Terminal
+            <select id="cf-region" required></select>
+          </label>
+          <label>Product
+            <select id="cf-product" required></select>
+          </label>
+          <label>Final price (c/L)
+            <input type="number" id="cf-price" step="0.01" min="0.01" max="999" required placeholder="e.g. 245.00">
+          </label>
+          <label>Effective date
+            <input type="date" id="cf-date" required>
+          </label>
+          <label style="grid-column:1/-1">Notes (optional)
+            <textarea id="cf-notes" placeholder="Any context for this figure…"></textarea>
+          </label>
+          <div class="form-actions">
+            <button type="submit" class="btn" id="cf-submit">Save Challenge price</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Challenge pricing history</h2></div>
+      <div style="overflow-x:auto">
+        <table class="t">
+          <thead><tr><th>Terminal</th><th>Product</th><th class="num">Final price</th><th>Effective</th><th>Entered</th><th>Notes</th><th></th></tr></thead>
+          <tbody id="challenge-rows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Challenge vs market</h2><p>Most recent Challenge figure per terminal/product against current competitor prices</p></div>
+      <div class="card-body" id="challenge-compare"></div>
+    </div>
+  </section>
+
+  <!-- ============================================================ AUTOMATION -->
+  <section class="panel" data-panel="automation" hidden>
+    <div class="card">
+      <div class="card-head"><h2>Supplier connector status</h2><p>Demo statuses — will reflect real Cloud Function runs once the backend is connected</p></div>
+      <div class="card-body">
+        <div class="status-grid" id="automation-grid"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Extraction errors &amp; reviews</h2></div>
+      <div class="card-body">
+        <div class="filters">
+          <label>Severity
+            <select id="e-severity">
+              <option value="">All</option>
+              <option value="ERROR">Error</option>
+              <option value="WARNING">Warning</option>
+              <option value="INFO">Info</option>
+              <option value="RESOLVED">Resolved</option>
+            </select>
+          </label>
+          <label>Status
+            <select id="e-status">
+              <option value="">All</option>
+              <option value="Needs Review">Needs review</option>
+              <option value="Resolved">Resolved</option>
+              <option value="Ignored">Ignored</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="t">
+          <thead><tr><th>Severity</th><th>Supplier</th><th>Date</th><th>Message</th><th>Status</th></tr></thead>
+          <tbody id="error-rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ DOCUMENTS -->
+  <section class="panel" data-panel="documents" hidden>
+    <div class="card">
+      <div class="card-head"><h2>Source document audit trail</h2></div>
+      <div style="overflow-x:auto">
+        <table class="t">
+          <thead><tr><th>Supplier</th><th>Document</th><th>Effective</th><th>Retrieved</th><th>Hash</th><th>Products</th><th>Terminals</th><th>Status</th></tr></thead>
+          <tbody id="document-rows"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <footer class="note">Research figures read from supplier documents on 16 Aug 2026 (Pacific/Auckland). Extended history and AIP series are generated demo data. See README-frontend.md for the full breakdown.</footer>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/calculations.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
