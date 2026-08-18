@@ -155,7 +155,7 @@
       const e = d.data();
       return {
         id: e.id, severity: e.stage === 'CONNECTOR_EXCEPTION' ? 'ERROR' : 'WARNING',
-        supplierId: e.supplierId, date: (e.timestamp || '').slice(0, 10),
+        supplierId: e.supplierId, date: (e.timestamp || '').slice(0, 10), timestamp: e.timestamp || null,
         message: e.details || e.error, status: 'Needs Review', resolution: null,
       };
     });
@@ -201,9 +201,24 @@
       const [currentPrices, documents, connectorErrors, reviewErrors, aipPrices] = await Promise.all([
         loadCurrentPrices(), loadDocuments(), loadErrors(), loadReviewQueue(), loadAip(),
       ]);
+
+      // An error only means something right now if no LATER successful
+      // fetch has happened for that supplier since. Errors never expire on
+      // their own — a 403 from three fixes ago would otherwise sit in this
+      // list forever looking exactly as urgent as one from five minutes ago.
+      const latestSuccessBySupplier = {};
+      documents.forEach((d) => {
+        const cur = latestSuccessBySupplier[d.supplierId];
+        if (!cur || d.retrievedAt > cur) latestSuccessBySupplier[d.supplierId] = d.retrievedAt;
+      });
+      const currentConnectorErrors = connectorErrors.filter((e) => {
+        const latestSuccess = latestSuccessBySupplier[e.supplierId];
+        return !latestSuccess || !e.timestamp || e.timestamp > latestSuccess;
+      });
+
       global.TGP.data.currentPrices = currentPrices;
       global.TGP.data.documents = documents;
-      global.TGP.data.errors = [...connectorErrors, ...reviewErrors];
+      global.TGP.data.errors = [...currentConnectorErrors, ...reviewErrors];
       global.TGP.data.aipPrices = aipPrices;
       global.TGP.data.priceHistory = []; // history charting against live history is a follow-up piece, not wired yet
       global.TGP.data.automationRuns = SUPPLIERS.map((s) => {

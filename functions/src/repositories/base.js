@@ -31,6 +31,14 @@ class ReviewRepository {
   /** Queue a NEEDS_REVIEW extraction result for admin attention. */
   async enqueue(_reviewRecord) { throw new Error('ReviewRepository.enqueue not implemented'); }
   async listPending() { throw new Error('ReviewRepository.listPending not implemented'); }
+  /**
+   * Auto-resolve any pending entries for this exact supplier+terminal+product
+   * — called after a later run successfully validates a price for that same
+   * identity, so a fixed problem doesn't sit in the queue forever looking
+   * like it's still happening. Distinct from recordCorrection(), which is an
+   * admin manually fixing one specific record.
+   */
+  async resolveSuperseded(_supplierId, _terminalRaw, _productRaw) { throw new Error('ReviewRepository.resolveSuperseded not implemented'); }
   /** Record an admin correction. The original extracted record is never mutated. */
   async recordCorrection(_correction) { throw new Error('ReviewRepository.recordCorrection not implemented'); }
   async listCorrections(_filter) { throw new Error('ReviewRepository.listCorrections not implemented'); }

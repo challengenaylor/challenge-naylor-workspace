@@ -58,6 +58,14 @@ async function runAllSuppliers({ repos, connectors, now }) {
       const putResults = [];
       for (const price of validPrices) {
         putResults.push(await repos.priceRepo.putCurrent(price));
+        // A price that validates cleanly now may have previously failed —
+        // e.g. today's timezone bug flagged genuinely-valid Z prices as
+        // STALE_DATE:FUTURE before the fix. Without this, that old review
+        // entry sits in the queue forever looking like an unresolved
+        // problem even after the underlying bug is fixed and re-deployed.
+        if (repos.reviewRepo.resolveSuperseded) {
+          await repos.reviewRepo.resolveSuperseded(price.supplierId, price.terminalRaw, price.productRaw);
+        }
       }
       for (const review of reviewPrices) {
         const errors = review._extractionNote ? [review._extractionNote, ...review.validationErrors] : review.validationErrors;

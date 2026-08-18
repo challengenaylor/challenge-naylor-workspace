@@ -32,6 +32,29 @@ class FirestoreReviewRepository extends ReviewRepository {
     return snap.docs.map((d) => d.data());
   }
 
+  async resolveSuperseded(supplierId, terminalRaw, productRaw) {
+    // Deliberately only two equality filters in the query itself (avoids
+    // needing a manual composite index — Firestore requires one for some
+    // multi-field equality combinations and this repository has no way to
+    // create that index itself). The remaining match is done in memory.
+    const snap = await this.queueCol
+      .where('status', '==', 'NEEDS_REVIEW')
+      .where('supplierId', '==', supplierId)
+      .get();
+    const matches = snap.docs.filter((d) => {
+      const data = d.data();
+      return data.terminalRaw === terminalRaw && data.productRaw === productRaw;
+    });
+    if (!matches.length) return { resolvedCount: 0 };
+    const batch = this.db.batch();
+    const resolvedAt = new Date().toISOString();
+    matches.forEach((d) => {
+      batch.set(d.ref, { status: 'SUPERSEDED', resolvedAt, resolvedReason: 'A later run validated this successfully.' }, { merge: true });
+    });
+    await batch.commit();
+    return { resolvedCount: matches.length };
+  }
+
   async recordCorrection(correction) {
     const required = ['reviewId', 'originalValue', 'correctedValue', 'reason', 'adminId'];
     const missing = required.filter((k) => correction[k] === undefined || correction[k] === null || correction[k] === '');

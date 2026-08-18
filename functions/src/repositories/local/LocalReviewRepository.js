@@ -41,6 +41,20 @@ class LocalReviewRepository extends ReviewRepository {
     return this.queue.filter((r) => r.status === 'NEEDS_REVIEW');
   }
 
+  async resolveSuperseded(supplierId, terminalRaw, productRaw) {
+    const all = this.queue.readAll();
+    let count = 0;
+    const updated = all.map((r) => {
+      if (r.status === 'NEEDS_REVIEW' && r.supplierId === supplierId && r.terminalRaw === terminalRaw && r.productRaw === productRaw) {
+        count++;
+        return Object.assign({}, r, { status: 'SUPERSEDED', resolvedAt: new Date().toISOString(), resolvedReason: 'A later run validated this successfully.' });
+      }
+      return r;
+    });
+    if (count) this.queue.writeAll(updated);
+    return { resolvedCount: count };
+  }
+
   async recordCorrection(correction) {
     const required = ['reviewId', 'originalValue', 'correctedValue', 'reason', 'adminId'];
     const missing = required.filter((k) => correction[k] === undefined || correction[k] === null || correction[k] === '');
