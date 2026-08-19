@@ -23,8 +23,28 @@ const HEADER_MATCHERS = [
   { key: 'FROM', patterns: [/^from$/i] },
 ];
 
+/**
+ * Finds a table's header row, tolerant of tables that don't use proper
+ * semantic markup — confirmed necessary live on 19 Aug 2026: both Tasman
+ * Fuels and AIP's real tables have zero <thead><th> cells despite clearly
+ * having a header row when viewed in a browser. Falls back through, in
+ * order: thead th -> thead td -> the first <tr>'s cells.
+ *
+ * Returns the header ROW ELEMENT too, not just its cells — needed so data
+ * extraction can correctly skip that exact row rather than risk reading it
+ * twice (once as header, once as the first "data" row) when there's no
+ * <thead> to naturally separate them.
+ */
+function findHeaderRow($, table) {
+  let headRow = $(table).find('thead tr').first();
+  if (headRow.length && headRow.find('th,td').length) return headRow;
+  headRow = $(table).find('tr').first();
+  return headRow;
+}
+
 function mapColumns($, table) {
-  const headerCells = $(table).find('thead th');
+  const headerRow = findHeaderRow($, table);
+  const headerCells = headerRow.find('th,td');
   const columnMap = {};
   const unmapped = [];
   headerCells.each((i, el) => {
@@ -32,7 +52,7 @@ function mapColumns($, table) {
     const match = HEADER_MATCHERS.find((h) => h.patterns.some((re) => re.test(text)));
     if (match) columnMap[i] = match.key; else unmapped.push({ index: i, text });
   });
-  return { columnMap, unmapped };
+  return { columnMap, unmapped, headerRow };
 }
 
 /** "15/08/2026" (day-first, as every other NZ TGP source in this project uses) -> "2026-08-15". */
@@ -52,7 +72,7 @@ function extractTasman(html) {
     return { status: 'TABLE_STRUCTURE_CHANGED', reason: 'No table found on the Tasman Fuels TGP page.' };
   }
 
-  const { columnMap, unmapped } = mapColumns($, table);
+  const { columnMap, unmapped, headerRow } = mapColumns($, table);
   const required = ['DIESEL', 'REGULAR_91', 'PREMIUM_95', 'FROM'];
   const found = new Set(Object.values(columnMap));
   const missing = required.filter((k) => !found.has(k));
@@ -64,10 +84,16 @@ function extractTasman(html) {
     };
   }
 
-  const row = $(table).find('tbody tr').first();
-  if (!row.length) return { status: 'TABLE_STRUCTURE_CHANGED', reason: 'Table has a header but no data row.' };
+  // The data row is whichever <tr> comes after the header row — found this
+  // way (rather than always assuming `tbody tr:first`) because when there's
+  // no real <thead>, the header row IS the first <tr>, and the data row is
+  // the one after it.
+  const allRows = $(table).find('tr');
+  const headerIndex = allRows.index(headerRow);
+  const row = allRows.eq(headerIndex + 1);
+  if (!row.length) return { status: 'TABLE_STRUCTURE_CHANGED', reason: 'Table has a header but no data row after it.' };
 
-  const cells = row.find('td');
+  const cells = row.find('td,th');
   const byKey = {};
   cells.each((i, td) => { if (columnMap[i]) byKey[columnMap[i]] = $(td).text().trim(); });
 

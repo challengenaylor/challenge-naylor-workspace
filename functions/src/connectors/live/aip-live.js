@@ -32,12 +32,25 @@ function parseAipHeaderDate(text) {
 }
 
 /**
+ * Finds a table's header row, tolerant of tables with no real <thead>
+ * structure — same fix applied to connectors/live/tasman-live.js for the
+ * identical real-world failure (found live 19 Aug 2026: zero <thead><th>
+ * cells despite a clear header row when viewed in a browser).
+ */
+function findHeaderRow($, table) {
+  let headRow = $(table).find('thead tr').first();
+  if (headRow.length && headRow.find('th,td').length) return headRow;
+  return $(table).find('tr').first();
+}
+
+/**
  * Parses one fuel-grade table into { date: [{city, value}] }.
  * @param {CheerioStatic} $
  * @param {Cheerio} table
  */
 function parseGradeTable($, table) {
-  const headerCells = $(table).find('thead th');
+  const headerRow = findHeaderRow($, table);
+  const headerCells = headerRow.find('th,td');
   const dateColumns = []; // {index, date}
   headerCells.each((i, el) => {
     if (i === 0) return; // first column is "Location"
@@ -48,8 +61,14 @@ function parseGradeTable($, table) {
   const byDate = {};
   dateColumns.forEach((c) => { byDate[c.date] = []; });
 
-  $(table).find('tbody tr').each((_, tr) => {
-    const cells = $(tr).find('td');
+  // Data rows are every <tr> AFTER the header row — not `tbody tr`, since a
+  // table with no real <thead> has its header row sitting inside <tbody>
+  // (or with no tbody at all) alongside the data rows.
+  const allRows = $(table).find('tr');
+  const headerIndex = allRows.index(headerRow);
+  allRows.each((rowIdx, tr) => {
+    if (rowIdx <= headerIndex) return;
+    const cells = $(tr).find('td,th');
     const city = $(cells[0]).text().trim();
     if (!city) return;
     dateColumns.forEach((c) => {
