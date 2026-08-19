@@ -70,6 +70,31 @@ function nationalAverage(cityValues) {
 }
 
 /**
+ * Find the nearest preceding heading-like text for a table, walking UP the
+ * ancestor chain and checking preceding siblings at each level. The
+ * previous version only checked direct siblings (`prevAll`), which fails
+ * silently the moment a page wraps the heading and the table in different
+ * container divs — confirmed as the real failure mode live on 18 Aug 2026
+ * (found real tables, couldn't identify either one).
+ */
+function findNearbyHeadingText($, el) {
+  let current = $(el);
+  for (let depth = 0; depth < 6 && current.length; depth++) {
+    // Check preceding siblings that ARE headings, and preceding siblings
+    // that CONTAIN a heading somewhere inside them (e.g. a wrapper div
+    // holding just the <h2>) — the second case is what the real page
+    // structure needed and the first version of this fix still missed.
+    const direct = current.prevAll('h1,h2,h3,h4,h5,strong,b,caption').first();
+    if (direct.length && direct.text().trim()) return direct.text();
+    const nested = current.prevAll().find('h1,h2,h3,h4,h5,strong,b,caption').last();
+    if (nested.length && nested.text().trim()) return nested.text();
+    current = current.parent();
+    if (current.is('body') || !current.length) break;
+  }
+  return '';
+}
+
+/**
  * @param {string} html
  * @returns {{status:'OK', observations: Array<{date,ulp,diesel,cityDetail}>} | {status:'TABLE_STRUCTURE_CHANGED', reason}}
  */
@@ -80,17 +105,27 @@ function extractDailyPrices(html) {
     return { status: 'TABLE_STRUCTURE_CHANGED', reason: `Expected 2 tables (Petrol, Diesel), found ${tables.length}.` };
   }
 
-  // Identify which table is which by the heading text immediately before it,
-  // rather than assuming table order — more robust if the page ever
-  // reorders the two sections.
   let ulpTable = null, dieselTable = null;
   tables.each((i, t) => {
-    const heading = $(t).prevAll('h1,h2,h3,h4').first().text().toLowerCase();
+    const heading = findNearbyHeadingText($, t).toLowerCase();
     if (/petrol|ulp/.test(heading)) ulpTable = t;
     if (/diesel/.test(heading)) dieselTable = t;
   });
+
+  let assumedByOrder = false;
+  // Documented, explicit fallback — never a silent guess. Confirmed by real
+  // screenshot on 18 Aug 2026 that this page always lists Petrol/ULP before
+  // Diesel; used ONLY when there are exactly 2 tables and heading detection
+  // genuinely found nothing for either, and always flagged in the result
+  // rather than treated as equivalent to a confirmed identification.
+  if ((!ulpTable || !dieselTable) && tables.length === 2) {
+    ulpTable = tables.get(0);
+    dieselTable = tables.get(1);
+    assumedByOrder = true;
+  }
+
   if (!ulpTable || !dieselTable) {
-    return { status: 'TABLE_STRUCTURE_CHANGED', reason: 'Could not identify which table is Petrol/ULP and which is Diesel from nearby headings.' };
+    return { status: 'TABLE_STRUCTURE_CHANGED', reason: 'Could not identify which table is Petrol/ULP and which is Diesel, by heading or by position.' };
   }
 
   const ulpByDate = parseGradeTable($, ulpTable);
@@ -108,7 +143,7 @@ function extractDailyPrices(html) {
     cityDetail: { ulp: ulpByDate[date] || [], diesel: dieselByDate[date] || [] },
   })).filter((o) => o.ulp !== null || o.diesel !== null);
 
-  return { status: 'OK', observations };
+  return { status: 'OK', observations, assumedByOrder };
 }
 
 const SOURCE_URL = 'https://aip.com.au/pricing/terminal-gate-prices';

@@ -61,6 +61,7 @@
     { id: 'Z', name: 'Z Energy', sourceType: 'PDF', color: '#1c7a4c' },
     { id: 'BP', name: 'BP New Zealand', sourceType: 'PDF', color: '#a1311f' },
     { id: 'MOBIL', name: 'Mobil', sourceType: 'HTML', color: '#3a5a9b' },
+    { id: 'TASMAN', name: 'Tasman Fuels', sourceType: 'HTML', color: '#8a5a1c' },
   ];
 
   const supplierById = Object.fromEntries(SUPPLIERS.map((s) => [s.id, s]));

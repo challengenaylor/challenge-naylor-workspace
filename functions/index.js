@@ -41,6 +41,7 @@ const gull = require('./src/connectors/live/gull-live');
 const z = require('./src/connectors/live/z-live');
 const bp = require('./src/connectors/live/bp-live');
 const mobil = require('./src/connectors/live/mobil-live');
+const tasman = require('./src/connectors/live/tasman-live');
 const aip = require('./src/connectors/live/aip-live');
 
 async function runOnce() {
@@ -52,7 +53,7 @@ async function runOnce() {
   };
 
   const results = await runAllSuppliers({
-    repos, connectors: [gull, z, bp, mobil], now: new Date().toISOString(),
+    repos, connectors: [gull, z, bp, mobil, tasman], now: new Date().toISOString(),
   });
 
   results.forEach((r) => {
