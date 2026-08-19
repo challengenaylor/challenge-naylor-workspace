@@ -1985,14 +1985,24 @@ const Forecast = {
 
   // Generates discrete PREDICTED fuel events between fromDate and toDate —
   // spaced by your learned real interval, using your recent trend-adjusted
-  // amount where there's enough evidence. Explicitly skips any window
-  // already covered by a CONFIRMED pending fuel invoice, so a predicted
-  // event and a real entered invoice are never both counted for the same
-  // delivery — one authoritative fuel figure per date, always.
+  // amount where there's enough evidence. Once you have a CONFIRMED pending
+  // invoice for a delivery, it already accounts for "the next delivery" —
+  // so every predicted date up to and including the latest confirmed
+  // invoice's delivery/due date (whichever is later) is suppressed
+  // entirely, not just dates within a narrow window around it. Real fuel
+  // deliveries don't land on a rigid schedule, so a narrow suppression
+  // radius let a confirmed invoice and a predicted event both fire for
+  // what was almost certainly the same real delivery — this fixes that.
   predictFuelEvents(fromDate, toDate){
     const profile = this.fuelProfile();
     if(!profile) return [];
-    const confirmedDates = DB.data.fuelInvoices.filter(i=>i.status!=="paid").map(i=>i.dueDateAdjusted);
+    const pendingInvoices = DB.data.fuelInvoices.filter(i=>i.status!=="paid");
+    const confirmedCutoff = pendingInvoices.length
+      ? pendingInvoices.reduce((latest, i) => {
+          const relevant = i.deliveryDate > i.dueDateAdjusted ? i.deliveryDate : i.dueDateAdjusted;
+          return relevant > latest ? relevant : latest;
+        }, "0000-00-00")
+      : null;
     const step = Math.max(1, Math.round(profile.interval.median));
     const amount = (profile.recentAvg && profile.count>=4) ? profile.recentAvg : profile.amount.median;
     const confidence = profile.count>=8 ? "high" : profile.count>=4 ? "medium" : "low";
@@ -2001,8 +2011,8 @@ const Forecast = {
     while(cursor < fromDate) cursor = DateUtil.addDays(cursor, step);
     let guard = 0;
     while(cursor <= toDate && guard < 400){
-      const suppressedByConfirmed = confirmedDates.some(d => Math.abs((new Date(cursor+"T00:00:00") - new Date(d+"T00:00:00"))/86400000) <= step/2);
-      if(!suppressedByConfirmed && cursor >= fromDate){
+      const coveredByConfirmed = confirmedCutoff && cursor <= confirmedCutoff;
+      if(!coveredByConfirmed && cursor >= fromDate){
         events.push({
           date: cursor, amount: Math.round(amount*100)/100, confidence,
           reason: `Expected fuel payment ~${fmt.money(amount)} around ${fmt.date(cursor)} — based on ${profile.count} historical fuel payments averaging every ${step} days (last actual: ${fmt.date(profile.lastDate)}, ${fmt.money(profile.lastAmount)}).`
@@ -4821,15 +4831,15 @@ function Forecast_renderExplain(){
       try{
         const doc = await fbDb.collection("users").doc(user.uid).get();
         const role = doc.exists ? doc.data().role : null;
-        if(role === "admin"){
+        if(role === "admin" || role === "manager"){
           loadingMsg.textContent = "Loading your data…";
           await App.init(); // fetches everything from the live database before the app becomes visible
           document.getElementById("loginGate").style.display = "none";
-          document.getElementById("app").style.display = "flex";
+          document.getElementById("app").style.display = "";
         } else {
           loadingMsg.style.display = "none";
           loginBox.style.display = "block";
-          document.getElementById("loginError").textContent = "This account doesn't have Admin access to Cash Flow.";
+          document.getElementById("loginError").textContent = "This account doesn't have Admin or Manager access to Cash Flow.";
           fbAuth.signOut();
         }
       } catch(e){
