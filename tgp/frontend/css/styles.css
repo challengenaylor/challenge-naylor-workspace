@@ -195,3 +195,9 @@ footer.note{color:var(--muted);font-size:.76rem;text-align:center;margin-top:24p
   .top h1{font-size:1.2rem}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* Auth gate: display:flex only applies when NOT hidden, so the browser's
+   default [hidden]{display:none} is never fought against — this is the
+   robust version of what auth.js's showGate()/hideGate() also manage
+   directly as a defensive backup. */
+#auth-gate:not([hidden]){display:flex}

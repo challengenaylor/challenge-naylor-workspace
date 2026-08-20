@@ -641,5 +641,8 @@
     renderDocuments();
   }
 
-  document.addEventListener('DOMContentLoaded', init);
+  // Started by auth.js once a real sign-in is confirmed — not auto-run on
+  // page load, since there's nothing to show until that happens.
+  window.TGP = window.TGP || {};
+  window.TGP.init = init;
 }());

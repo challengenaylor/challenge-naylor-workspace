@@ -197,7 +197,7 @@
     ]);
   }
 
-  global.TGP.dataReady = withTimeout((async () => {
+  global.TGP.loadAllData = () => withTimeout((async () => {
     try {
       const [currentPrices, documents, connectorErrors, reviewErrors, aipPrices] = await Promise.all([
         loadCurrentPrices(), loadDocuments(), loadErrors(), loadReviewQueue(), loadAip(),
