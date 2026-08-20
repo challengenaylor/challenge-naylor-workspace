@@ -43,10 +43,14 @@ async function run() {
     const coordResult = await extractBpCoordinates(pdfBuffer);
     if (coordResult.status === 'OK') {
       const records = normalizeBpCoordinates(coordResult.blocks, documentText, 'BP');
-      return {
-        status: 'OK', sourceUrl: SOURCE_URL, documentUrl: SOURCE_URL,
-        documentContent: pdfBuffer, extractionMethod: 'PDF_COORDINATE', records,
-      };
+      // Same safety net as z-live.js — only trust the coordinate path if
+      // it actually produced records, never a silent empty result.
+      if (records.length > 0) {
+        return {
+          status: 'OK', sourceUrl: SOURCE_URL, documentUrl: SOURCE_URL,
+          documentContent: pdfBuffer, extractionMethod: 'PDF_COORDINATE', records,
+        };
+      }
     }
   } catch (err) {
     // Fall through to text extraction below — a coordinate-extraction

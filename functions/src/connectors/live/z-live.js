@@ -37,10 +37,18 @@ async function run() {
     const coordResult = await extractZCoordinates(pdfBuffer);
     if (coordResult.status === 'OK') {
       const records = normalizeZCoordinates(coordResult.blocks, documentText, 'Z');
-      return {
-        status: 'OK', sourceUrl: c.sourceUrl, documentUrl: discovery.documentUrl,
-        documentContent: pdfBuffer, extractionMethod: 'PDF_COORDINATE', records,
-      };
+      // SAFETY NET: coordinate extraction can return status:'OK' with zero
+      // usable rows if something about the real PDF's structure doesn't
+      // match what was assumed (confirmed happened live 20 Aug 2026 — Z
+      // dropped from 60 valid prices to 0). A silent empty result is worse
+      // than falling back, so only trust the coordinate path if it actually
+      // produced records.
+      if (records.length > 0) {
+        return {
+          status: 'OK', sourceUrl: c.sourceUrl, documentUrl: discovery.documentUrl,
+          documentContent: pdfBuffer, extractionMethod: 'PDF_COORDINATE', records,
+        };
+      }
     }
   } catch (err) {
     // fall through to text extraction
