@@ -18,10 +18,30 @@ const cheerio = require('cheerio');
 
 const HEADER_MATCHERS = [
   { key: 'DIESEL', patterns: [/^diesel$/i] },
-  { key: 'REGULAR_91', patterns: [/ulp\s*91/i, /^91$/i] },
-  { key: 'PREMIUM_95', patterns: [/pulp\s*95/i, /^95$/i] },
+  { key: 'REGULAR_91', patterns: [/ulp\s*91/i, /^91$/i, /regular\s*91/i, /unleaded\s*91/i] },
+  { key: 'PREMIUM_95', patterns: [/pulp\s*95/i, /^95$/i, /premium\s*95/i, /unleaded\s*95/i] },
   { key: 'FROM', patterns: [/^from$/i] },
 ];
+
+/**
+ * Identifies the actual data row by CONTENT rather than position — a real
+ * date plus at least 2 plausible price values (100-400 c/L). More robust
+ * than assuming "the last row" or "the row after the header", both of
+ * which turned out wrong against the real page at different points
+ * (confirmed 19-20 Aug 2026): a numbers-only row was being mistaken for a
+ * header candidate, corrupting the header merge.
+ */
+function findDataRow($, table) {
+  let best = null;
+  $(table).find('tr').each((_, tr) => {
+    const row = $(tr);
+    const texts = row.find('th,td').map((_, el) => $(el).text().trim()).get();
+    const hasDate = texts.some((t) => parseDayFirstDate(t));
+    const plausiblePrices = texts.filter((t) => { const n = Number(t); return Number.isFinite(n) && n >= 100 && n <= 400; });
+    if (hasDate && plausiblePrices.length >= 2) best = row; // last matching row wins if more than one
+  });
+  return best;
+}
 
 /**
  * Finds header information for a table, tolerant of both non-semantic
@@ -82,10 +102,14 @@ function extractTasman(html) {
 
   // Tasman publishes exactly one data row (single terminal, current week
   // only) — it's reliably the LAST row in the table, whatever the header
-  // structure above it looks like.
+  // Tasman publishes exactly one data row (single terminal, current week
+  // only) — identified by CONTENT (a real date plus plausible price
+  // values), not by position, since neither "last row" nor "row after
+  // header" held up against the real page structure.
   const allRows = $(table).find('tr');
   if (!allRows.length) return { status: 'TABLE_STRUCTURE_CHANGED', reason: 'Table has no rows at all.' };
-  const dataRow = allRows.last();
+  const dataRow = findDataRow($, table);
+  if (!dataRow) return { status: 'TABLE_STRUCTURE_CHANGED', reason: 'Could not find a row containing both a date and plausible prices.' };
 
   const { columnMap, unmapped, missing } = mapColumns($, table, dataRow);
   if (missing.length) {
