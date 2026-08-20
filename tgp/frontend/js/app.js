@@ -340,8 +340,15 @@
     const tbody = el('#challenge-rows');
     const groupList = Object.entries(groups).sort(([, a], [, b]) => b[0].effectiveDate.localeCompare(a[0].effectiveDate));
 
+    // Levies are stored on the entry itself in cents (LEVIES_PER_LITRE_DOLLARS
+    // * 100), subtracted from the pre-GST price you entered — this is the
+    // one place that math needs to happen for display, not stored per-entry,
+    // since the levy figure itself is a single known constant, not something
+    // extracted per price.
+    const beforeLevies = (e) => (typeof e.preGstPrice === 'number' ? e.preGstPrice - LEVIES_PER_LITRE_DOLLARS * 100 : null);
+
     if (!groupList.length) {
-      tbody.innerHTML = '<tr><td colspan="8" class="empty">No Challenge prices entered yet. Use the form above.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="10" class="empty">No Challenge prices entered yet. Use the form above.</td></tr>';
     } else {
       tbody.innerHTML = groupList.map(([key, entries]) => {
         const latest = entries[0];
@@ -355,11 +362,14 @@
         const correctionNote = latest.wasCorrected
           ? `<div class="sub-cell">Corrected from ${dpl(latest.originalFinalPrice)} — "${esc(latest.correctionReason)}"</div>` : '';
         const historyCount = entries.length - 1;
+        const latestBeforeLevies = beforeLevies(latest);
 
         return `<tr data-id="${esc(latest.id)}" data-key="${esc(key)}">
           <td>${esc(region ? region.label : latest.regionId)}</td>
           <td>${esc(product ? product.label : latest.productId)}</td>
-          <td class="num">${dpl(latest.finalPrice)}${correctionNote}</td>
+          <td class="num-center">${latestBeforeLevies !== null ? dpl(latestBeforeLevies) : '—'}</td>
+          <td class="num-center">${typeof latest.preGstPrice === 'number' ? dpl(latest.preGstPrice) : '—'}</td>
+          <td class="num-center">${dpl(latest.finalPrice)}${correctionNote}</td>
           <td class="num ${dirClass}">${changeText}</td>
           <td>${fmtDate(latest.effectiveDate)}</td>
           <td>${fmtDateTime(latest.enteredAt)}</td>
@@ -370,16 +380,21 @@
           </td>
         </tr>
         <tr class="cp-history-row" data-key="${esc(key)}" hidden>
-          <td colspan="8" style="background:var(--surface-2);padding:10px 12px 14px 30px">
+          <td colspan="10" style="background:var(--surface-2);padding:10px 12px 14px 30px">
             <table class="t" style="font-size:.82rem">
-              <thead><tr><th>Price</th><th>Effective</th><th>Entered</th><th>Notes</th></tr></thead>
+              <thead><tr>
+                <th class="num-center">Before levies</th><th class="num-center">After levies</th><th class="num-center">Final (incl. GST)</th>
+                <th>Effective</th><th>Entered</th><th>Notes</th>
+              </tr></thead>
               <tbody>
-                ${entries.slice(1).map((e) => `<tr>
-                  <td class="num">${dpl(e.finalPrice)}${e.wasCorrected ? `<div class="sub-cell">was ${dpl(e.originalFinalPrice)}, corrected</div>` : ''}</td>
+                ${entries.slice(1).map((e) => { const bl = beforeLevies(e); return `<tr>
+                  <td class="num-center">${bl !== null ? dpl(bl) : '—'}</td>
+                  <td class="num-center">${typeof e.preGstPrice === 'number' ? dpl(e.preGstPrice) : '—'}</td>
+                  <td class="num-center">${dpl(e.finalPrice)}${e.wasCorrected ? `<div class="sub-cell">was ${dpl(e.originalFinalPrice)}, corrected</div>` : ''}</td>
                   <td>${fmtDate(e.effectiveDate)}</td>
                   <td>${fmtDateTime(e.enteredAt)}</td>
                   <td class="sub-cell">${esc(e.notes || '—')}</td>
-                </tr>`).join('')}
+                </tr>`; }).join('')}
               </tbody>
             </table>
           </td>
@@ -435,14 +450,17 @@
           <div class="compare-chip"><div class="lbl">Vs average</div><div class="val ${posClass}">${cmp.vsAverage > 0 ? '+' : ''}${dpl(cmp.vsAverage)}</div></div>
           <div class="compare-chip"><div class="lbl">Vs lowest here</div><div class="val ${cmp.vsLowest > 0 ? 'dir-up' : 'dir-down'}">${cmp.vsLowest > 0 ? '+' : ''}${dpl(cmp.vsLowest)}</div></div>
         </div>
-        ${cheapest && !cheapestIsSameAsLocal ? `
+        ${cheapest ? `
         <div class="compare-strip" style="margin-top:8px">
           <div class="compare-chip" style="background:var(--warn-bg);border-color:var(--warn)">
             <div class="lbl">Cheapest anywhere (any terminal)</div>
             <div class="val">${dpl(cheapest.currentValue)}</div>
-            <div class="sub-cell">${esc(cheapest.supplierName)} — ${esc(cheapest.regionLabel)} (${esc(cheapest.terminalName)})</div>
+            <div class="sub-cell">${esc(cheapest.supplierName)} — ${esc(cheapest.regionLabel)} (${esc(cheapest.terminalName)})${cheapestIsSameAsLocal ? ' — same as lowest here' : ''}</div>
           </div>
-        </div>` : ''}
+        </div>` : `
+        <div class="compare-strip" style="margin-top:8px">
+          <p class="empty" style="padding:8px 0">No price for this product found at any terminal to compare nationally.</p>
+        </div>`}
       </div>`;
     }).join('');
   }
