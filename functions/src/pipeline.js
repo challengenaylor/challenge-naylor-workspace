@@ -122,4 +122,32 @@ function reviewStub(supplierId, terminalRaw, productRaw, priceRaw, effectiveDate
   };
 }
 
-module.exports = { normalizeGull, normalizeZ, normalizeBp, normalizeMobil, mapGstStatus };
+/**
+ * BP coordinate-extraction normalizer. Unlike normalizeBp() above, rows
+ * here already have correctly resolved values (keyed by product ID
+ * directly, e.g. {DIESEL: 250.66}) — coordinate extraction has already
+ * done the sparse-row resolution that text extraction couldn't, so there's
+ * no "row.values.length !== row.columns.length" check needed here; a
+ * sparse row is simply a row with fewer keys in its values object, which
+ * is exactly correct, not ambiguous.
+ */
+function normalizeBpCoordinates(blocks, documentText, supplierId) {
+  const gst = detectGst(documentText);
+  const records = [];
+  for (const block of blocks) {
+    for (const row of block.rows) {
+      const fullLabel = `${row.operator} ${row.terminal}`;
+      const term = normaliseTerminal(fullLabel, { operatorColumn: row.operator, supplierId });
+      for (const [productId, value] of Object.entries(row.values)) {
+        records.push({
+          supplierId, terminalId: term.terminalId, terminalRaw: fullLabel,
+          productId, productRaw: productId, priceCentsPerLitre: value,
+          gstStatus: mapGstStatus(gst.gstStatus), effectiveDate: block.effectiveDate,
+        });
+      }
+    }
+  }
+  return records;
+}
+
+module.exports = { normalizeGull, normalizeZ, normalizeBp, normalizeBpCoordinates, normalizeMobil, mapGstStatus };
