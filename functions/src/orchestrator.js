@@ -40,6 +40,17 @@ async function runAllSuppliers({ repos, connectors, now }) {
         continue;
       }
 
+      // A connector can succeed via a fallback path while still wanting to
+      // report WHY its preferred path failed — logged as a warning (not an
+      // error, since the run genuinely succeeded) so the reason is visible
+      // instead of a silent, undiagnosable fallback.
+      if (outcome._fallbackDiagnostics) {
+        await repos.errorRepo.record({
+          supplierId: connector.id, stage: 'COORDINATE_EXTRACTION_FALLBACK', error: 'FELL_BACK_TO_TEXT_EXTRACTION',
+          details: JSON.stringify(outcome._fallbackDiagnostics),
+        });
+      }
+
       const docHash = sha256(outcome.documentContent);
       const docResult = await repos.documentRepo.record({
         supplierId: connector.id,

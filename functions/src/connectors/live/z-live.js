@@ -33,8 +33,10 @@ async function run() {
 
   const documentText = await extractPdfAsLineText(pdfBuffer);
 
+  let coordinateDiagnostics = null;
   try {
     const coordResult = await extractZCoordinates(pdfBuffer);
+    coordinateDiagnostics = coordResult.diagnostics || null;
     if (coordResult.status === 'OK') {
       const records = normalizeZCoordinates(coordResult.blocks, documentText, 'Z');
       // SAFETY NET: coordinate extraction can return status:'OK' with zero
@@ -51,7 +53,7 @@ async function run() {
       }
     }
   } catch (err) {
-    // fall through to text extraction
+    coordinateDiagnostics = { exception: err.message };
   }
 
   const { blocks } = c.extract(documentText);
@@ -60,6 +62,11 @@ async function run() {
   return {
     status: 'OK', sourceUrl: c.sourceUrl, documentUrl: discovery.documentUrl,
     documentContent: pdfBuffer, extractionMethod: 'TEXT_EXACT_ARITY', records,
+    // Picked up by the orchestrator and logged as a warning — this is what
+    // turns the next coordinate-extraction failure into something with a
+    // real, specific reason attached, instead of a silent fallback nobody
+    // can diagnose.
+    _fallbackDiagnostics: coordinateDiagnostics,
   };
 }
 

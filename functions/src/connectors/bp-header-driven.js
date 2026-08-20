@@ -81,7 +81,15 @@ function extractBp(documentText) {
     const op = OPERATOR_TOKENS.find((o) => line.toUpperCase().startsWith(o + ' '));
     if (!op) continue;
 
-    const firstNumIdx = line.search(/\d{2,3}\.\d/);
+    // Was /\d{2,3}\.\d/ — required a decimal point to recognise a number,
+    // which silently failed on whole-number prices like BP's real
+    // "NZOSL Dunedin BP 305 290.72 259.06" (confirmed live 20 Aug 2026 from
+    // the actual PDF): "305" has no decimal, so the old regex skipped past
+    // it entirely and swallowed it into the terminal name, making a
+    // genuinely complete 3-value row look falsely sparse. No terminal or
+    // operator name in this document contains digits, so matching any
+    // 2-4 digit run (decimal or not) is a safe, correct boundary.
+    const firstNumIdx = line.search(/\d{2,4}/);
     if (firstNumIdx < 1) continue;
 
     const terminal = line.slice(op.length, firstNumIdx).trim();

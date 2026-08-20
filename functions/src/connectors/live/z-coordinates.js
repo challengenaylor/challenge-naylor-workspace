@@ -36,11 +36,17 @@ const COLUMN_DEFS = [
 
 /**
  * @param {Buffer} pdfBuffer
- * @returns {{status:'OK', blocks: Array} | {status:'TABLE_STRUCTURE_CHANGED', reason}}
+ * @returns {{status:'OK', blocks: Array} | {status:'TABLE_STRUCTURE_CHANGED', reason, diagnostics}}
  */
 async function extractZCoordinates(pdfBuffer) {
   const pages = await extractPositionedText(pdfBuffer);
   const blocks = [];
+  // Real, concrete detail about what was actually seen — surfaced through
+  // to the error log when this fails, instead of a silent empty fallback.
+  // Every previous attempt at Z's coordinate extraction failed without any
+  // trace of WHY; this is what turns the next failure into something
+  // diagnosable instead of another guess.
+  const diagnostics = { pagesScanned: pages.length, totalItems: pages.reduce((n, p) => n + p.items.length, 0), blockAttempts: [] };
 
   for (const page of pages) {
     const rows = groupIntoRows(page.items);
@@ -50,6 +56,7 @@ async function extractZCoordinates(pdfBuffer) {
       const text = row.items.map((it) => it.str).join(' ');
       if (/effective date/i.test(text)) blockStarts.push({ index: i, text });
     });
+    diagnostics.blockAttempts.push({ page: page.page, rowsFound: rows.length, effectiveDateRowsFound: blockStarts.length });
 
     for (let b = 0; b < blockStarts.length; b++) {
       const startIdx = blockStarts[b].index;
@@ -57,12 +64,29 @@ async function extractZCoordinates(pdfBuffer) {
       const blockRows = rows.slice(startIdx, endIdx);
 
       const dateInfo = parseEffectiveDate(blockStarts[b].text);
-      if (dateInfo.status !== 'OK') continue;
+      if (dateInfo.status !== 'OK') {
+        diagnostics.blockAttempts.push({ block: blockStarts[b].text, outcome: 'DATE_PARSE_FAILED', reason: dateInfo.reason });
+        continue;
+      }
 
       const headerRowIdx = blockRows.findIndex((r) => r.items.some((it) => /^location$/i.test(it.str.trim())));
-      if (headerRowIdx === -1) continue;
+      if (headerRowIdx === -1) {
+        diagnostics.blockAttempts.push({
+          block: dateInfo.effectiveDate, outcome: 'NO_HEADER_ROW_FOUND',
+          rowsInBlock: blockRows.length,
+          sampleRowTexts: blockRows.slice(0, 5).map((r) => r.items.map((it) => it.str).join(' | ')),
+        });
+        continue;
+      }
       const anchors = detectColumnAnchors(blockRows[headerRowIdx].items, COLUMN_DEFS);
-      if (anchors.length < 3) continue;
+      if (anchors.length < 3) {
+        diagnostics.blockAttempts.push({
+          block: dateInfo.effectiveDate, outcome: 'INSUFFICIENT_ANCHORS',
+          anchorsFound: anchors.map((a) => a.key),
+          headerRowRawItems: blockRows[headerRowIdx].items.map((it) => it.str),
+        });
+        continue;
+      }
 
       const dataRows = mergeWrappedLabelRows(blockRows.slice(headerRowIdx + 1));
       const resolvedRows = [];
@@ -95,11 +119,12 @@ async function extractZCoordinates(pdfBuffer) {
       }
 
       blocks.push({ effectiveDate: dateInfo.effectiveDate, rows: resolvedRows });
+      diagnostics.blockAttempts.push({ block: dateInfo.effectiveDate, outcome: 'OK', rowsResolved: resolvedRows.length, anchorsFound: anchors.map((a) => a.key) });
     }
   }
 
-  if (!blocks.length) return { status: 'TABLE_STRUCTURE_CHANGED', reason: 'No "Effective Date" blocks with a resolvable header found in the PDF.' };
-  return { status: 'OK', blocks };
+  if (!blocks.length) return { status: 'TABLE_STRUCTURE_CHANGED', reason: 'No "Effective Date" blocks with a resolvable header found in the PDF.', diagnostics };
+  return { status: 'OK', blocks, diagnostics };
 }
 
 module.exports = { extractZCoordinates, KNOWN_LOCATIONS, COLUMN_DEFS };

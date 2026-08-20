@@ -249,6 +249,18 @@
   function renderMarket() {
     const md = calc.marketDirection(data.aipPrices, data.currentPrices);
 
+    // Dynamic, honest status — reflects the REAL current data state instead
+    // of a fixed message that can silently go stale the moment the
+    // underlying connector starts (or stops) working.
+    const statusBox = el('#aip-status-banner');
+    if (data.aipPrices.length === 0) {
+      statusBox.innerHTML = `<div class="banner"><span>⚠</span><span><strong>Not collecting data yet.</strong> The AIP connector hasn't recorded any observations.</span></div>`;
+    } else if (data.aipPrices.length < 15) {
+      statusBox.innerHTML = `<div class="banner"><span>ℹ</span><span><strong>Collecting real data — ${data.aipPrices.length} observation${data.aipPrices.length === 1 ? '' : 's'} so far.</strong> The direction indicator needs 15+ before it can report anything with confidence; this builds up automatically, a little more each weekday.</span></div>`;
+    } else {
+      statusBox.innerHTML = '';
+    }
+
     if (!gauge) gauge = new charts.Gauge(el('#gauge-canvas'));
     gauge.setValue(md.score, md.state.replace('_', ' ')).render();
 

@@ -197,14 +197,37 @@ function extractRows(items, columnAnchors, opts) {
  */
 function detectColumnAnchors(headerRowItems, columnDefs) {
   const anchors = [];
-  for (const item of headerRowItems) {
-    const text = item.str.trim();
+  const sorted = [...headerRowItems].sort((a, b) => a.x - b.x);
+
+  function tryMatch(text, x) {
     for (const def of columnDefs) {
       if (def.patterns.some((re) => re.test(text)) && !anchors.some((a) => a.key === def.key)) {
-        anchors.push({ key: def.key, label: text, x: item.x });
+        anchors.push({ key: def.key, label: text, x });
+        return true;
       }
     }
+    return false;
   }
+
+  // Single items first (the common case, and what every synthetic test
+  // fixture in this project used, since pdf-lib draws a whole phrase as
+  // one text item). Real PDF generators frequently DON'T do this — a real
+  // document can split "Premium 95" into two separate positioned text
+  // items ("Premium" and "95") even though they render as one visual
+  // phrase, because that's how the source document's internal text runs
+  // were laid out. A header-matching pass that only checks single items
+  // silently fails against that real structure — this is the leading
+  // theory for why Z's coordinate extraction returned zero rows against
+  // the real PDF while working fine against every synthetic test.
+  sorted.forEach((item) => tryMatch(item.str.trim(), item.x));
+
+  // Then adjacent-pair concatenation for anything still unmatched — covers
+  // exactly the "Premium" + "95" split case above.
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const combined = `${sorted[i].str.trim()} ${sorted[i + 1].str.trim()}`.trim();
+    tryMatch(combined, sorted[i].x);
+  }
+
   return anchors;
 }
 

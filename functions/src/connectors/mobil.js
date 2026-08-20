@@ -125,6 +125,16 @@ function extractTable(html) {
       if (key) byKey[key] = $(td).text().trim();
     });
 
+    // A row with no terminal name, no operator, AND every grade cell
+    // genuinely empty (not "N/A" — actually blank) isn't real data at all —
+    // it's a formatting artifact (a spacer row, a trailing empty <tr> in
+    // the real markup). Confirmed live 20 Aug 2026: this was surfacing as
+    // three separate MISSING_CELL review items with terminal shown as "?",
+    // which is noise, not a genuine extraction failure to review.
+    const hasAnyIdentity = !!(byKey.TERMINAL || byKey.OPERATOR || byKey.LOCATION);
+    const hasAnyValue = ['REGULAR_91', 'PREMIUM_95', 'DIESEL'].some((k) => byKey[k] && byKey[k].trim());
+    if (!hasAnyIdentity && !hasAnyValue) return;
+
     const location = byKey.LOCATION || lastLocation;
     if (byKey.LOCATION) lastLocation = byKey.LOCATION;
 
