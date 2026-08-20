@@ -24,35 +24,43 @@ const HEADER_MATCHERS = [
 ];
 
 /**
- * Finds a table's header row, tolerant of tables that don't use proper
- * semantic markup — confirmed necessary live on 19 Aug 2026: both Tasman
- * Fuels and AIP's real tables have zero <thead><th> cells despite clearly
- * having a header row when viewed in a browser. Falls back through, in
- * order: thead th -> thead td -> the first <tr>'s cells.
+ * Finds header information for a table, tolerant of both non-semantic
+ * markup (no <thead>) and a two-row header where labels are split across
+ * rows (e.g. "Week"/"From" in row 1, "Diesel"/"ULP 91"/"PULP 95" in row 2)
+ * — both confirmed live on 19 Aug 2026 as Tasman's real structure.
  *
- * Returns the header ROW ELEMENT too, not just its cells — needed so data
- * extraction can correctly skip that exact row rather than risk reading it
- * twice (once as header, once as the first "data" row) when there's no
- * <thead> to naturally separate them.
+ * Merges matches from every candidate row (every row except the identified
+ * data row) by column index — a later row's match for an index does not
+ * override an earlier one, but different rows can each contribute
+ * different columns. This deliberately does NOT require every candidate
+ * row to have the same cell count as the data row (a strict requirement
+ * broke the real "From" column, which lives in a 3-cell row while the
+ * value columns live in a different 5-cell row). The real safety net
+ * against misalignment is downstream: parseDayFirstDate() rejects anything
+ * that isn't a real date, and the shared price-range validation rejects
+ * anything outside 100-400 c/L — a genuinely misaligned column produces
+ * content that fails one of those checks rather than a silently wrong
+ * price.
  */
-function findHeaderRow($, table) {
-  let headRow = $(table).find('thead tr').first();
-  if (headRow.length && headRow.find('th,td').length) return headRow;
-  headRow = $(table).find('tr').first();
-  return headRow;
-}
+function mapColumns($, table, dataRow) {
+  const required = ['DIESEL', 'REGULAR_91', 'PREMIUM_95', 'FROM'];
+  const candidates = $(table).find('tr').not(dataRow);
 
-function mapColumns($, table) {
-  const headerRow = findHeaderRow($, table);
-  const headerCells = headerRow.find('th,td');
   const columnMap = {};
   const unmapped = [];
-  headerCells.each((i, el) => {
-    const text = $(el).text().trim();
-    const match = HEADER_MATCHERS.find((h) => h.patterns.some((re) => re.test(text)));
-    if (match) columnMap[i] = match.key; else unmapped.push({ index: i, text });
+  candidates.each((_, tr) => {
+    $(tr).find('th,td').each((i, el) => {
+      if (columnMap[i]) return; // first match for a given index wins
+      const text = $(el).text().trim();
+      const match = HEADER_MATCHERS.find((h) => h.patterns.some((re) => re.test(text)));
+      if (match) columnMap[i] = match.key;
+      else if (text) unmapped.push({ index: i, text });
+    });
   });
-  return { columnMap, unmapped, headerRow };
+
+  const found = new Set(Object.values(columnMap));
+  const missing = required.filter((k) => !found.has(k));
+  return { columnMap, unmapped, missing };
 }
 
 /** "15/08/2026" (day-first, as every other NZ TGP source in this project uses) -> "2026-08-15". */
@@ -72,10 +80,14 @@ function extractTasman(html) {
     return { status: 'TABLE_STRUCTURE_CHANGED', reason: 'No table found on the Tasman Fuels TGP page.' };
   }
 
-  const { columnMap, unmapped, headerRow } = mapColumns($, table);
-  const required = ['DIESEL', 'REGULAR_91', 'PREMIUM_95', 'FROM'];
-  const found = new Set(Object.values(columnMap));
-  const missing = required.filter((k) => !found.has(k));
+  // Tasman publishes exactly one data row (single terminal, current week
+  // only) — it's reliably the LAST row in the table, whatever the header
+  // structure above it looks like.
+  const allRows = $(table).find('tr');
+  if (!allRows.length) return { status: 'TABLE_STRUCTURE_CHANGED', reason: 'Table has no rows at all.' };
+  const dataRow = allRows.last();
+
+  const { columnMap, unmapped, missing } = mapColumns($, table, dataRow);
   if (missing.length) {
     return {
       status: 'TABLE_STRUCTURE_CHANGED',
@@ -84,16 +96,7 @@ function extractTasman(html) {
     };
   }
 
-  // The data row is whichever <tr> comes after the header row — found this
-  // way (rather than always assuming `tbody tr:first`) because when there's
-  // no real <thead>, the header row IS the first <tr>, and the data row is
-  // the one after it.
-  const allRows = $(table).find('tr');
-  const headerIndex = allRows.index(headerRow);
-  const row = allRows.eq(headerIndex + 1);
-  if (!row.length) return { status: 'TABLE_STRUCTURE_CHANGED', reason: 'Table has a header but no data row after it.' };
-
-  const cells = row.find('td,th');
+  const cells = dataRow.find('td,th');
   const byKey = {};
   cells.each((i, td) => { if (columnMap[i]) byKey[columnMap[i]] = $(td).text().trim(); });
 
