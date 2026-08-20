@@ -1,0 +1,81 @@
+[debug] [2026-08-20T01:06:18.275Z] ----------------------------------------------------------------------
+[debug] [2026-08-20T01:06:18.278Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\HP\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js deploy --only functions
+[debug] [2026-08-20T01:06:18.278Z] CLI Version:   15.27.0
+[debug] [2026-08-20T01:06:18.278Z] Platform:      win32
+[debug] [2026-08-20T01:06:18.278Z] Node Version:  v24.19.0
+[debug] [2026-08-20T01:06:18.278Z] Detected Agent: unknown
+[debug] [2026-08-20T01:06:18.279Z] Time:          Thu Aug 20 2026 13:06:18 GMT+1200 (New Zealand Standard Time)
+[debug] [2026-08-20T01:06:18.279Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-08-20T01:06:19.513Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-08-20T01:06:19.514Z] > authorizing via signed-in user (challengenaylorstreet@gmail.com)
+[debug] [2026-08-20T01:06:19.514Z] [iam] checking project alpha-7fce5 for permissions ["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]
+[debug] [2026-08-20T01:06:19.533Z] Checked if tokens are valid: true, expires at: 1787190550159
+[debug] [2026-08-20T01:06:19.534Z] Checked if tokens are valid: true, expires at: 1787190550159
+[debug] [2026-08-20T01:06:19.535Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/alpha-7fce5:testIamPermissions [none]
+[debug] [2026-08-20T01:06:19.536Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/alpha-7fce5:testIamPermissions  x-goog-user-project=alpha-7fce5
+[debug] [2026-08-20T01:06:19.536Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/alpha-7fce5:testIamPermissions {"permissions":["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]}
+[debug] [2026-08-20T01:06:20.147Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/alpha-7fce5:testIamPermissions 200
+[debug] [2026-08-20T01:06:20.147Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/alpha-7fce5:testIamPermissions {"permissions":["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]}
+[debug] [2026-08-20T01:06:20.148Z] Checked if tokens are valid: true, expires at: 1787190550159
+[debug] [2026-08-20T01:06:20.148Z] Checked if tokens are valid: true, expires at: 1787190550159
+[debug] [2026-08-20T01:06:20.148Z] >>> [apiv2][query] POST https://iam.googleapis.com/v1/projects/alpha-7fce5/serviceAccounts/alpha-7fce5@appspot.gserviceaccount.com:testIamPermissions [none]
+[debug] [2026-08-20T01:06:20.148Z] >>> [apiv2][body] POST https://iam.googleapis.com/v1/projects/alpha-7fce5/serviceAccounts/alpha-7fce5@appspot.gserviceaccount.com:testIamPermissions {"permissions":["iam.serviceAccounts.actAs"]}
+[debug] [2026-08-20T01:06:21.674Z] <<< [apiv2][status] POST https://iam.googleapis.com/v1/projects/alpha-7fce5/serviceAccounts/alpha-7fce5@appspot.gserviceaccount.com:testIamPermissions 200
+[debug] [2026-08-20T01:06:21.674Z] <<< [apiv2][body] POST https://iam.googleapis.com/v1/projects/alpha-7fce5/serviceAccounts/alpha-7fce5@appspot.gserviceaccount.com:testIamPermissions {"permissions":["iam.serviceAccounts.actAs"]}
+[info] 
+[info] === Deploying to 'alpha-7fce5'...
+[info] 
+[info] i  deploying functions 
+[debug] [2026-08-20T01:06:21.689Z] Checked if tokens are valid: true, expires at: 1787190550159
+[debug] [2026-08-20T01:06:21.689Z] Checked if tokens are valid: true, expires at: 1787190550159
+[debug] [2026-08-20T01:06:21.689Z] >>> [apiv2][query] GET https://cloudresourcemanager.googleapis.com/v1/projects/alpha-7fce5 [none]
+[debug] [2026-08-20T01:06:21.995Z] <<< [apiv2][status] GET https://cloudresourcemanager.googleapis.com/v1/projects/alpha-7fce5 200
+[debug] [2026-08-20T01:06:21.996Z] <<< [apiv2][body] GET https://cloudresourcemanager.googleapis.com/v1/projects/alpha-7fce5 {"projectNumber":"10647816245","projectId":"alpha-7fce5","lifecycleState":"ACTIVE","name":"ALPHA","labels":{"firebase":"enabled","firebase-core":"disabled"},"createTime":"2026-08-11T00:16:08.447Z"}
+[info] i  functions: preparing codebase default for deployment 
+[info] i  functions: ensuring required API cloudfunctions.googleapis.com is enabled... 
+[info] i  functions: ensuring required API cloudbuild.googleapis.com is enabled... 
+[info] i  artifactregistry: ensuring required API artifactregistry.googleapis.com is enabled... 
+[debug] [2026-08-20T01:06:21.998Z] Checked if tokens are valid: true, expires at: 1787190550159
+[debug] [2026-08-20T01:06:21.998Z] Checked if tokens are valid: true, expires at: 1787190550159
+[debug] [2026-08-20T01:06:21.998Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/alpha-7fce5/adminSdkConfig [none]
+[debug] [2026-08-20T01:06:22.969Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/alpha-7fce5/adminSdkConfig 200
+[debug] [2026-08-20T01:06:22.970Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/alpha-7fce5/adminSdkConfig {"projectId":"alpha-7fce5","storageBucket":"alpha-7fce5.firebasestorage.app"}
+[debug] [2026-08-20T01:06:22.970Z] Checked if tokens are valid: true, expires at: 1787190550159
+[debug] [2026-08-20T01:06:22.970Z] Checked if tokens are valid: true, expires at: 1787190550159
+[debug] [2026-08-20T01:06:22.970Z] >>> [apiv2][query] GET https://runtimeconfig.googleapis.com/v1beta1/projects/alpha-7fce5/configs [none]
+[debug] [2026-08-20T01:06:23.684Z] <<< [apiv2][status] GET https://runtimeconfig.googleapis.com/v1beta1/projects/alpha-7fce5/configs 200
+[debug] [2026-08-20T01:06:23.684Z] <<< [apiv2][body] GET https://runtimeconfig.googleapis.com/v1beta1/projects/alpha-7fce5/configs {}
+[debug] [2026-08-20T01:06:23.685Z] Validating nodejs source
+[debug] [2026-08-20T01:06:24.355Z] > [functions] package.json contents: {
+  "name": "functions",
+  "description": "Cloud Functions for Firebase",
+  "scripts": {
+    "serve": "firebase emulators:start --only functions",
+    "shell": "firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  },
+  "engines": {
+    "node": "24"
+  },
+  "main": "index.js",
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "firebase-admin": "^13.6.0",
+    "firebase-functions": "^7.0.0",
+    "pdfjs-dist": "^6.2.108"
+  },
+  "devDependencies": {
+    "firebase-functions-test": "^3.4.1"
+  },
+  "private": true
+}
+[debug] [2026-08-20T01:06:24.355Z] Building nodejs source
+[info] i  functions: Loading and analyzing source code for codebase default to determine what to deploy 
+[debug] [2026-08-20T01:06:24.356Z] Could not find functions.yaml. Must use http discovery
+[debug] [2026-08-20T01:06:24.364Z] Found firebase-functions binary at 'C:\Users\HP\Documents\GitHub\challenge-naylor-workspace\functions\node_modules\.bin\firebase-functions'
+[info] Serving at port 8096
+
+[debug] [2026-08-20T01:06:24.982Z] Got response from /__/functions.yaml {"endpoints":{"tgpDailyAutomation":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["australia-southeast1"],"labels":{},"scheduleTrigger":{"schedule":"0 6 * * *","retryConfig":{},"timeZone":"Pacific/Auckland"},"entryPoint":"tgpDailyAutomation"},"tgpManualRun":{"availableMemoryMb":null,"timeoutSeconds":null,"minInstances":null,"maxInstances":null,"ingressSettings":null,"concurrency":null,"serviceAccountEmail":null,"vpc":null,"platform":"gcfv2","region":["australia-southeast1"],"secretEnvironmentVariables":[{"key":"TGP_MANUAL_KEY"}],"labels":{},"httpsTrigger":{},"entryPoint":"tgpManualRun"}},"specVersion":"v1alpha1","requiredAPIs":[{"api":"cloudscheduler.googleapis.com","reason":"Needed for scheduled functions."}],"extensions":{},"params":[{"type":"secret","name":"TGP_MANUAL_KEY"}]}
