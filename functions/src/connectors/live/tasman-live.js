@@ -1,19 +1,21 @@
 'use strict';
 
 const cheerio = require('cheerio');
+const { normaliseTerminal } = require('../../core/terminals');
 
 /**
  * Tasman Fuels — the 5th supplier, added 19 Aug 2026. Confirmed real and
  * publishing TGP via live web research (tasmanfuels.co.nz/terminal-gate-
- * pricing/), one week after the original four suppliers were built —
- * the research phase for this project was never actually exhaustive
- * against every possible NZ importer, just the ones investigated at the
- * time.
+ * pricing/), one week after the original four suppliers were built.
  *
- * Single terminal (Timaru — confirmed via tasmanfuels.co.nz/our-terminal/,
- * "37-71 Fraser Street, Timaru"), single row per publication, weekly. This
- * is the simplest connector in the project — no sparse rows, no wrapped
- * labels, no multi-terminal ambiguity.
+ * Single terminal (Timaru, confirmed via tasmanfuels.co.nz/our-terminal/),
+ * single row per publication, weekly. Simple data, but the real table
+ * markup (confirmed by screenshot 20 Aug 2026) uses rowspan="2" on "Week"
+ * and "From" so they visually span two header rows without being repeated
+ * in the DOM — every earlier version of this connector assumed raw DOM
+ * cell index equalled visual column position, which is only true once
+ * colspan/rowspan are accounted for. This version resolves TRUE effective
+ * column positions from the actual grid geometry instead.
  */
 
 const HEADER_MATCHERS = [
@@ -23,71 +25,64 @@ const HEADER_MATCHERS = [
   { key: 'FROM', patterns: [/^from$/i] },
 ];
 
-/**
- * Identifies the actual data row by CONTENT rather than position — a real
- * date plus at least 2 plausible price values (100-400 c/L). More robust
- * than assuming "the last row" or "the row after the header", both of
- * which turned out wrong against the real page at different points
- * (confirmed 19-20 Aug 2026): a numbers-only row was being mistaken for a
- * header candidate, corrupting the header merge.
- */
-function findDataRow($, table) {
-  let best = null;
-  $(table).find('tr').each((_, tr) => {
-    const row = $(tr);
-    const texts = row.find('th,td').map((_, el) => $(el).text().trim()).get();
-    const hasDate = texts.some((t) => parseDayFirstDate(t));
-    const plausiblePrices = texts.filter((t) => { const n = Number(t); return Number.isFinite(n) && n >= 100 && n <= 400; });
-    if (hasDate && plausiblePrices.length >= 2) best = row; // last matching row wins if more than one
-  });
-  return best;
-}
-
-/**
- * Finds header information for a table, tolerant of both non-semantic
- * markup (no <thead>) and a two-row header where labels are split across
- * rows (e.g. "Week"/"From" in row 1, "Diesel"/"ULP 91"/"PULP 95" in row 2)
- * — both confirmed live on 19 Aug 2026 as Tasman's real structure.
- *
- * Merges matches from every candidate row (every row except the identified
- * data row) by column index — a later row's match for an index does not
- * override an earlier one, but different rows can each contribute
- * different columns. This deliberately does NOT require every candidate
- * row to have the same cell count as the data row (a strict requirement
- * broke the real "From" column, which lives in a 3-cell row while the
- * value columns live in a different 5-cell row). The real safety net
- * against misalignment is downstream: parseDayFirstDate() rejects anything
- * that isn't a real date, and the shared price-range validation rejects
- * anything outside 100-400 c/L — a genuinely misaligned column produces
- * content that fails one of those checks rather than a silently wrong
- * price.
- */
-function mapColumns($, table, dataRow) {
-  const required = ['DIESEL', 'REGULAR_91', 'PREMIUM_95', 'FROM'];
-  const candidates = $(table).find('tr').not(dataRow);
-
-  const columnMap = {};
-  const unmapped = [];
-  candidates.each((_, tr) => {
-    $(tr).find('th,td').each((i, el) => {
-      if (columnMap[i]) return; // first match for a given index wins
-      const text = $(el).text().trim();
-      const match = HEADER_MATCHERS.find((h) => h.patterns.some((re) => re.test(text)));
-      if (match) columnMap[i] = match.key;
-      else if (text) unmapped.push({ index: i, text });
-    });
-  });
-
-  const found = new Set(Object.values(columnMap));
-  const missing = required.filter((k) => !found.has(k));
-  return { columnMap, unmapped, missing };
-}
-
 /** "15/08/2026" (day-first, as every other NZ TGP source in this project uses) -> "2026-08-15". */
 function parseDayFirstDate(text) {
   const m = String(text).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (!m) return null;
   return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+}
+
+/**
+ * Resolves every cell in a table to its TRUE effective column position,
+ * accounting for colspan and rowspan. Returns one array per row, each
+ * entry {text, col}. This is what makes "From" (row 1, rowspan=2) and
+ * "ULP 91" (row 2) correctly land at DIFFERENT effective columns instead
+ * of colliding at the same raw DOM index.
+ */
+function computeEffectiveGrid($, table) {
+  const rows = $(table).find('tr').toArray();
+  const occupied = {};
+  const grid = [];
+
+  rows.forEach((tr, rowIdx) => {
+    occupied[rowIdx] = occupied[rowIdx] || {};
+    let col = 0;
+    const rowCells = [];
+    $(tr).find('th,td').each((_, cellEl) => {
+      while (occupied[rowIdx][col]) col++;
+      const $cell = $(cellEl);
+      const colspan = parseInt($cell.attr('colspan'), 10) || 1;
+      const rowspan = parseInt($cell.attr('rowspan'), 10) || 1;
+      rowCells.push({ text: $cell.text().trim(), col });
+      for (let c = col; c < col + colspan; c++) {
+        for (let r = rowIdx; r < rowIdx + rowspan; r++) {
+          occupied[r] = occupied[r] || {};
+          occupied[r][c] = true;
+        }
+      }
+      col += colspan;
+    });
+    grid.push(rowCells);
+  });
+
+  return grid;
+}
+
+/**
+ * Identifies the data row's index in the grid by CONTENT (a real date plus
+ * at least 2 plausible price values, 100-400 c/L) rather than position —
+ * more robust than assuming "the last row", which broke once real
+ * structure had more rows than expected.
+ */
+function findDataRowIndex(grid) {
+  let best = -1;
+  grid.forEach((row, i) => {
+    const texts = row.map((c) => c.text);
+    const hasDate = texts.some((t) => parseDayFirstDate(t));
+    const plausiblePrices = texts.filter((t) => { const n = Number(t); return Number.isFinite(n) && n >= 100 && n <= 400; });
+    if (hasDate && plausiblePrices.length >= 2) best = i;
+  });
+  return best;
 }
 
 /**
@@ -100,18 +95,31 @@ function extractTasman(html) {
     return { status: 'TABLE_STRUCTURE_CHANGED', reason: 'No table found on the Tasman Fuels TGP page.' };
   }
 
-  // Tasman publishes exactly one data row (single terminal, current week
-  // only) — it's reliably the LAST row in the table, whatever the header
-  // Tasman publishes exactly one data row (single terminal, current week
-  // only) — identified by CONTENT (a real date plus plausible price
-  // values), not by position, since neither "last row" nor "row after
-  // header" held up against the real page structure.
-  const allRows = $(table).find('tr');
-  if (!allRows.length) return { status: 'TABLE_STRUCTURE_CHANGED', reason: 'Table has no rows at all.' };
-  const dataRow = findDataRow($, table);
-  if (!dataRow) return { status: 'TABLE_STRUCTURE_CHANGED', reason: 'Could not find a row containing both a date and plausible prices.' };
+  const grid = computeEffectiveGrid($, table);
+  if (!grid.length) return { status: 'TABLE_STRUCTURE_CHANGED', reason: 'Table has no rows at all.' };
 
-  const { columnMap, unmapped, missing } = mapColumns($, table, dataRow);
+  const dataRowIdx = findDataRowIndex(grid);
+  if (dataRowIdx === -1) {
+    return { status: 'TABLE_STRUCTURE_CHANGED', reason: 'Could not find a row containing both a date and plausible prices.' };
+  }
+
+  // Merge header matches from every OTHER row, keyed by TRUE effective
+  // column — this is what correctly separates "From" (col 1) from
+  // "ULP 91" (col 3) even though they were colliding at raw index 1 before.
+  const columnMap = {}; // effectiveCol -> key
+  const unmapped = [];
+  grid.forEach((row, i) => {
+    if (i === dataRowIdx) return;
+    row.forEach(({ text, col }) => {
+      if (columnMap[col] || !text) return;
+      const match = HEADER_MATCHERS.find((h) => h.patterns.some((re) => re.test(text)));
+      if (match) columnMap[col] = match.key; else unmapped.push({ col, text });
+    });
+  });
+
+  const required = ['DIESEL', 'REGULAR_91', 'PREMIUM_95', 'FROM'];
+  const found = new Set(Object.values(columnMap));
+  const missing = required.filter((k) => !found.has(k));
   if (missing.length) {
     return {
       status: 'TABLE_STRUCTURE_CHANGED',
@@ -120,9 +128,9 @@ function extractTasman(html) {
     };
   }
 
-  const cells = dataRow.find('td,th');
+  const dataRow = grid[dataRowIdx];
   const byKey = {};
-  cells.each((i, td) => { if (columnMap[i]) byKey[columnMap[i]] = $(td).text().trim(); });
+  dataRow.forEach(({ text, col }) => { if (columnMap[col]) byKey[columnMap[col]] = text; });
 
   const effectiveDate = parseDayFirstDate(byKey.FROM);
   if (!effectiveDate) return { status: 'TABLE_STRUCTURE_CHANGED', reason: `Could not parse effective date from "${byKey.FROM}".` };
@@ -135,8 +143,6 @@ function extractTasman(html) {
 
   return { status: 'OK', effectiveDate, values };
 }
-
-const { normaliseTerminal } = require('../../core/terminals');
 
 const SOURCE_URL = 'https://tasmanfuels.co.nz/terminal-gate-pricing/';
 
@@ -162,4 +168,4 @@ async function run() {
   };
 }
 
-module.exports = { id: 'TASMAN', run, extractTasman, parseDayFirstDate, SOURCE_URL };
+module.exports = { id: 'TASMAN', run, extractTasman, parseDayFirstDate, computeEffectiveGrid, SOURCE_URL };
