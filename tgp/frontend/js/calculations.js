@@ -145,24 +145,37 @@
     const competitors = currentPrices.filter((r) =>
       r.regionId === challengeEntry.regionId && r.productId === challengeEntry.productId);
     if (!competitors.length) {
-      return { challenge: challengeEntry.finalPrice, competitors: [], lowest: null, highest: null, average: null, vsAverage: null, vsLowest: null };
+      return { challenge: challengeEntry.finalPrice, competitors: [], lowest: null, highest: null, average: null, vsAverage: null, vsLowest: null, lowestRecord: null, highestRecord: null };
     }
+    const lowestRecord = competitors.reduce((a, b) => (b.currentValue < a.currentValue ? b : a));
+    const highestRecord = competitors.reduce((a, b) => (b.currentValue > a.currentValue ? b : a));
     const values = competitors.map((c) => c.currentValue);
-    const lowest = Math.min(...values);
-    const highest = Math.max(...values);
     const average = +(values.reduce((a, b) => a + b, 0) / values.length).toFixed(2);
     return {
       challenge: challengeEntry.finalPrice,
       competitors,
-      lowest, highest, average,
+      lowest: lowestRecord.currentValue, highest: highestRecord.currentValue, average,
+      lowestRecord, highestRecord,
       vsAverage: +(challengeEntry.finalPrice - average).toFixed(2),
-      vsLowest: +(challengeEntry.finalPrice - lowest).toFixed(2),
+      vsLowest: +(challengeEntry.finalPrice - lowestRecord.currentValue).toFixed(2),
     };
+  }
+
+  /**
+   * The single cheapest published price for a product ANYWHERE across every
+   * terminal/region a supplier reports — not scoped to one Challenge
+   * terminal. Gives a "where do we sit against the whole market" reference
+   * point alongside the same-terminal comparison above.
+   */
+  function cheapestAnywhere(productId, currentPrices) {
+    const matches = currentPrices.filter((r) => r.productId === productId);
+    if (!matches.length) return null;
+    return matches.reduce((a, b) => (b.currentValue < a.currentValue ? b : a));
   }
 
   global.TGP = global.TGP || {};
   global.TGP.calc = {
     change, directionArrow, directionWord, filterRecords, seriesMovement,
-    marketDirection, challengeComparison, methodologyText,
+    marketDirection, challengeComparison, cheapestAnywhere, methodologyText,
   };
 }(window));

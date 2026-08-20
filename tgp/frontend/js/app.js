@@ -29,7 +29,11 @@
   // Dollars-per-litre display — what you asked for: $2.9310 instead of
   // 293.10. Converts the underlying cents-per-litre value; nothing about
   // how prices are stored or calculated changes, only how they're shown.
-  function dpl(v) { return typeof v === 'number' ? '$' + (v / 100).toFixed(4) : '—'; }
+  function dpl(v) {
+    if (typeof v !== 'number') return '—';
+    const dollars = v / 100;
+    return (dollars < 0 ? '-$' : '$') + Math.abs(dollars).toFixed(4);
+  }
   function pct(v) { return typeof v === 'number' ? (v > 0 ? '+' : '') + v.toFixed(2) + '%' : '—'; }
   function el(sel, root) { return (root || document).querySelector(sel); }
   function els(sel, root) { return Array.from((root || document).querySelectorAll(sel)); }
@@ -410,16 +414,35 @@
           <p class="empty">No competitor prices published for this terminal/product to compare against.</p></div>`;
       }
       const posClass = cmp.vsAverage > 0 ? 'dir-up' : cmp.vsAverage < 0 ? 'dir-down' : 'dir-flat';
+      const cheapest = calc.cheapestAnywhere(c.productId, data.currentPrices);
+      const cheapestIsSameAsLocal = cheapest && cmp.lowestRecord && cheapest.recordId === cmp.lowestRecord.recordId;
+
       return `<div style="margin-bottom:16px">
         <strong>${esc(region.label)} — ${esc(product.label)}</strong>
         <div class="compare-strip">
           <div class="compare-chip"><div class="lbl">Challenge</div><div class="val">${dpl(cmp.challenge)}</div></div>
-          <div class="compare-chip"><div class="lbl">Lowest competitor</div><div class="val">${dpl(cmp.lowest)}</div></div>
-          <div class="compare-chip"><div class="lbl">Highest competitor</div><div class="val">${dpl(cmp.highest)}</div></div>
+          <div class="compare-chip">
+            <div class="lbl">Lowest here</div>
+            <div class="val">${dpl(cmp.lowest)}</div>
+            <div class="sub-cell">${esc(cmp.lowestRecord.supplierName)} — ${esc(cmp.lowestRecord.terminalName)}</div>
+          </div>
+          <div class="compare-chip">
+            <div class="lbl">Highest here</div>
+            <div class="val">${dpl(cmp.highest)}</div>
+            <div class="sub-cell">${esc(cmp.highestRecord.supplierName)} — ${esc(cmp.highestRecord.terminalName)}</div>
+          </div>
           <div class="compare-chip"><div class="lbl">Market average</div><div class="val">${dpl(cmp.average)}</div></div>
           <div class="compare-chip"><div class="lbl">Vs average</div><div class="val ${posClass}">${cmp.vsAverage > 0 ? '+' : ''}${dpl(cmp.vsAverage)}</div></div>
-          <div class="compare-chip"><div class="lbl">Vs lowest</div><div class="val ${cmp.vsLowest > 0 ? 'dir-up' : 'dir-down'}">${cmp.vsLowest > 0 ? '+' : ''}${dpl(cmp.vsLowest)}</div></div>
+          <div class="compare-chip"><div class="lbl">Vs lowest here</div><div class="val ${cmp.vsLowest > 0 ? 'dir-up' : 'dir-down'}">${cmp.vsLowest > 0 ? '+' : ''}${dpl(cmp.vsLowest)}</div></div>
         </div>
+        ${cheapest && !cheapestIsSameAsLocal ? `
+        <div class="compare-strip" style="margin-top:8px">
+          <div class="compare-chip" style="background:var(--warn-bg);border-color:var(--warn)">
+            <div class="lbl">Cheapest anywhere (any terminal)</div>
+            <div class="val">${dpl(cheapest.currentValue)}</div>
+            <div class="sub-cell">${esc(cheapest.supplierName)} — ${esc(cheapest.regionLabel)} (${esc(cheapest.terminalName)})</div>
+          </div>
+        </div>` : ''}
       </div>`;
     }).join('');
   }
