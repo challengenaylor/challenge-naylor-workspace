@@ -305,27 +305,80 @@
     const list = await storage.getChallengePrices();
     const byCorrectionOf = {};
     list.forEach((c) => { if (c.correctionOf) (byCorrectionOf[c.correctionOf] = byCorrectionOf[c.correctionOf] || []).push(c); });
-    const originals = list.filter((c) => !c.correctionOf).sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate));
+    const originals = list.filter((c) => !c.correctionOf);
+
+    // Resolve each original entry to its DISPLAYED value — the latest
+    // correction if one exists, otherwise the entry itself.
+    const effective = originals.map((c) => {
+      const corrections = byCorrectionOf[c.id] || [];
+      const latestCorrection = corrections.length ? corrections[corrections.length - 1] : null;
+      return {
+        id: c.id, regionId: c.regionId, productId: c.productId,
+        effectiveDate: c.effectiveDate, enteredAt: c.enteredAt, notes: c.notes,
+        finalPrice: latestCorrection ? latestCorrection.finalPrice : c.finalPrice,
+        preGstPrice: latestCorrection ? latestCorrection.preGstPrice : c.preGstPrice,
+        wasCorrected: !!latestCorrection,
+        correctionReason: latestCorrection ? latestCorrection.correctionReason : null,
+        originalFinalPrice: c.finalPrice,
+      };
+    });
+
+    // Group by terminal+product — this is the comparison unit: "how has
+    // Mount Maunganui Diesel moved from one entry to the next", not a flat
+    // list of every entry ever made.
+    const groups = {};
+    effective.forEach((e) => {
+      const key = e.regionId + '::' + e.productId;
+      (groups[key] = groups[key] || []).push(e);
+    });
+    Object.values(groups).forEach((g) => g.sort((a, b) => b.effectiveDate.localeCompare(a.effectiveDate) || b.enteredAt.localeCompare(a.enteredAt)));
 
     const tbody = el('#challenge-rows');
-    if (!originals.length) {
+    const groupList = Object.entries(groups).sort(([, a], [, b]) => b[0].effectiveDate.localeCompare(a[0].effectiveDate));
+
+    if (!groupList.length) {
       tbody.innerHTML = '<tr><td colspan="8" class="empty">No Challenge prices entered yet. Use the form above.</td></tr>';
     } else {
-      tbody.innerHTML = originals.map((c) => {
-        const corrections = byCorrectionOf[c.id] || [];
-        const latest = corrections.length ? corrections[corrections.length - 1] : null;
-        const displayed = latest || c;
-        const correctionNote = latest
-          ? `<div class="sub-cell">Corrected from ${dpl(c.finalPrice)} — "${esc(latest.correctionReason)}"</div>` : '';
-        return `<tr data-id="${esc(c.id)}">
-          <td>${esc(lookup.regionById[c.regionId] ? lookup.regionById[c.regionId].label : c.regionId)}</td>
-          <td>${esc(lookup.productById[c.productId] ? lookup.productById[c.productId].label : c.productId)}</td>
-          <td class="num" style="color:var(--muted)">${typeof displayed.preGstPrice === 'number' ? dpl(displayed.preGstPrice) : '—'}</td>
-          <td class="num">${dpl(displayed.finalPrice)}${correctionNote}</td>
-          <td>${fmtDate(c.effectiveDate)}</td>
-          <td>${fmtDateTime(c.enteredAt)}</td>
-          <td class="sub-cell">${esc(c.notes || '—')}</td>
-          <td><button class="btn ghost cp-correct" style="padding:4px 8px;font-size:.72rem">Correct…</button></td>
+      tbody.innerHTML = groupList.map(([key, entries]) => {
+        const latest = entries[0];
+        const previous = entries[1] || null;
+        const region = lookup.regionById[latest.regionId], product = lookup.productById[latest.productId];
+
+        const change = previous ? +(latest.finalPrice - previous.finalPrice).toFixed(4) : null;
+        const dirClass = change === null ? 'dir-flat' : change > 0 ? 'dir-up' : change < 0 ? 'dir-down' : 'dir-flat';
+        const arrow = change === null ? '' : change > 0 ? '▲' : change < 0 ? '▼' : '→';
+        const changeText = change === null ? 'first entry' : `${arrow} ${dpl(Math.abs(change))}`;
+        const correctionNote = latest.wasCorrected
+          ? `<div class="sub-cell">Corrected from ${dpl(latest.originalFinalPrice)} — "${esc(latest.correctionReason)}"</div>` : '';
+        const historyCount = entries.length - 1;
+
+        return `<tr data-id="${esc(latest.id)}" data-key="${esc(key)}">
+          <td>${esc(region ? region.label : latest.regionId)}</td>
+          <td>${esc(product ? product.label : latest.productId)}</td>
+          <td class="num">${dpl(latest.finalPrice)}${correctionNote}</td>
+          <td class="num ${dirClass}">${changeText}</td>
+          <td>${fmtDate(latest.effectiveDate)}</td>
+          <td>${fmtDateTime(latest.enteredAt)}</td>
+          <td class="sub-cell">${esc(latest.notes || '—')}</td>
+          <td style="white-space:nowrap">
+            <button class="btn ghost cp-correct" style="padding:4px 8px;font-size:.72rem">Correct…</button>
+            ${historyCount > 0 ? `<button class="btn ghost cp-history-toggle" style="padding:4px 8px;font-size:.72rem" data-key="${esc(key)}">History (${historyCount})</button>` : ''}
+          </td>
+        </tr>
+        <tr class="cp-history-row" data-key="${esc(key)}" hidden>
+          <td colspan="8" style="background:var(--surface-2);padding:10px 12px 14px 30px">
+            <table class="t" style="font-size:.82rem">
+              <thead><tr><th>Price</th><th>Effective</th><th>Entered</th><th>Notes</th></tr></thead>
+              <tbody>
+                ${entries.slice(1).map((e) => `<tr>
+                  <td class="num">${dpl(e.finalPrice)}${e.wasCorrected ? `<div class="sub-cell">was ${dpl(e.originalFinalPrice)}, corrected</div>` : ''}</td>
+                  <td>${fmtDate(e.effectiveDate)}</td>
+                  <td>${fmtDateTime(e.enteredAt)}</td>
+                  <td class="sub-cell">${esc(e.notes || '—')}</td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </td>
         </tr>`;
       }).join('');
     }
@@ -410,6 +463,15 @@
   // and no delete — matching the real backend's ChallengePriceRepository,
   // which has no update() or delete() method at all.
   el('#challenge-rows').addEventListener('click', async (e) => {
+    if (e.target.classList.contains('cp-history-toggle')) {
+      const key = e.target.dataset.key;
+      const historyRow = document.querySelector(`.cp-history-row[data-key="${CSS.escape(key)}"]`);
+      if (historyRow) {
+        historyRow.hidden = !historyRow.hidden;
+        e.target.textContent = e.target.textContent.replace(/^History/, historyRow.hidden ? 'History' : 'Hide history');
+      }
+      return;
+    }
     if (!e.target.classList.contains('cp-correct')) return;
     const row = e.target.closest('tr[data-id]');
     if (!row) return;
