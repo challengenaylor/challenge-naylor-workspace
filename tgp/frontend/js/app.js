@@ -34,6 +34,23 @@
     const dollars = v / 100;
     return (dollars < 0 ? '-$' : '$') + Math.abs(dollars).toFixed(4);
   }
+  /**
+   * Describes WHERE a price record is from, always leading with the actual
+   * location — some suppliers' own published "Terminal" column just repeats
+   * their own name (Mobil literally lists "Mobil" as the terminal for
+   * Mount Maunganui, real data, not a bug) which is useless for identifying
+   * where the price actually is. The specific terminal name is only added
+   * in parentheses when it says something the region label doesn't already.
+   */
+  function describeTerminal(record) {
+    const supplier = record.supplierName || '';
+    const region = record.regionLabel || '';
+    const raw = (record.terminalName || '').trim();
+    const isRedundant = !raw
+      || raw.toLowerCase() === supplier.toLowerCase()
+      || (region && region.toLowerCase().includes(raw.toLowerCase()));
+    return isRedundant ? `${supplier} — ${region}` : `${supplier} — ${region} (${raw})`;
+  }
   function pct(v) { return typeof v === 'number' ? (v > 0 ? '+' : '') + v.toFixed(2) + '%' : '—'; }
   function el(sel, root) { return (root || document).querySelector(sel); }
   function els(sel, root) { return Array.from((root || document).querySelectorAll(sel)); }
@@ -439,12 +456,12 @@
           <div class="compare-chip">
             <div class="lbl">Lowest here</div>
             <div class="val">${dpl(cmp.lowest)}</div>
-            <div class="sub-cell">${esc(cmp.lowestRecord.supplierName)} — ${esc(cmp.lowestRecord.terminalName)}</div>
+            <div class="sub-cell">${esc(describeTerminal(cmp.lowestRecord))}</div>
           </div>
           <div class="compare-chip">
             <div class="lbl">Highest here</div>
             <div class="val">${dpl(cmp.highest)}</div>
-            <div class="sub-cell">${esc(cmp.highestRecord.supplierName)} — ${esc(cmp.highestRecord.terminalName)}</div>
+            <div class="sub-cell">${esc(describeTerminal(cmp.highestRecord))}</div>
           </div>
           <div class="compare-chip"><div class="lbl">Market average</div><div class="val">${dpl(cmp.average)}</div></div>
           <div class="compare-chip"><div class="lbl">Vs average</div><div class="val ${posClass}">${cmp.vsAverage > 0 ? '+' : ''}${dpl(cmp.vsAverage)}</div></div>
@@ -455,7 +472,7 @@
           <div class="compare-chip" style="background:var(--warn-bg);border-color:var(--warn)">
             <div class="lbl">Cheapest anywhere (any terminal)</div>
             <div class="val">${dpl(cheapest.currentValue)}</div>
-            <div class="sub-cell">${esc(cheapest.supplierName)} — ${esc(cheapest.regionLabel)} (${esc(cheapest.terminalName)})${cheapestIsSameAsLocal ? ' — same as lowest here' : ''}</div>
+            <div class="sub-cell">${esc(describeTerminal(cheapest))}${cheapestIsSameAsLocal ? ' — same as lowest here' : ''}</div>
           </div>
         </div>` : `
         <div class="compare-strip" style="margin-top:8px">
