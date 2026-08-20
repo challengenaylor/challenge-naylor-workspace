@@ -150,4 +150,26 @@ function normalizeBpCoordinates(blocks, documentText, supplierId) {
   return records;
 }
 
-module.exports = { normalizeGull, normalizeZ, normalizeBp, normalizeBpCoordinates, normalizeMobil, mapGstStatus };
+/**
+ * Z coordinate-extraction normalizer — same rationale as
+ * normalizeBpCoordinates() above, adapted for Z's separate Location column.
+ */
+function normalizeZCoordinates(blocks, documentText, supplierId) {
+  const gst = detectGst(documentText);
+  const records = [];
+  for (const block of blocks) {
+    for (const row of block.rows) {
+      const term = normaliseTerminal(row.terminal, { locationColumn: row.location, supplierId });
+      for (const [productId, value] of Object.entries(row.values)) {
+        records.push({
+          supplierId, terminalId: term.terminalId, terminalRaw: row.terminal,
+          productId, productRaw: productId, priceCentsPerLitre: value,
+          gstStatus: mapGstStatus(gst.gstStatus), effectiveDate: block.effectiveDate,
+        });
+      }
+    }
+  }
+  return records;
+}
+
+module.exports = { normalizeGull, normalizeZ, normalizeZCoordinates, normalizeBp, normalizeBpCoordinates, normalizeMobil, mapGstStatus };
