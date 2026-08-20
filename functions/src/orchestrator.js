@@ -58,6 +58,26 @@ async function runAllSuppliers({ repos, connectors, now }) {
       const putResults = [];
       for (const price of validPrices) {
         putResults.push(await repos.priceRepo.putCurrent(price));
+        if (repos.reviewRepo.resolveSuperseded) {
+          // A price that validates cleanly now may have previously failed —
+          // e.g. today's timezone bug flagged genuinely-valid Z prices as
+          // STALE_DATE:FUTURE before the fix. Without this, that old review
+          // entry sits in the queue forever looking like an unresolved
+          // problem even after the underlying bug is fixed and re-deployed.
+          await repos.reviewRepo.resolveSuperseded(price.supplierId, price.terminalRaw, price.productRaw);
+          // ALSO resolve any "MULTIPLE_GRADES" stub for this terminal — a
+          // sparse row is logged generically (not tied to one product,
+          // since text extraction couldn't say which grade the value(s)
+          // belonged to). Coordinate extraction resolving it produces
+          // separate per-grade records, none of which match "MULTIPLE_
+          // GRADES" by exact productRaw — without this second call, a
+          // sparse row that's now correctly resolved for EVERY grade it
+          // publishes still leaves its old generic review entry stuck
+          // pending forever. Confirmed live 20 Aug 2026: this is exactly
+          // why BP's already-fixed sparse rows kept reappearing in the
+          // error banner even after the fix deployed successfully.
+          await repos.reviewRepo.resolveSuperseded(price.supplierId, price.terminalRaw, 'MULTIPLE_GRADES');
+        }
       }
       for (const review of reviewPrices) {
         const errors = review._extractionNote ? [review._extractionNote, ...review.validationErrors] : review.validationErrors;
