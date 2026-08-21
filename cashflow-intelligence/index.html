@@ -4524,6 +4524,15 @@ const Settings = {
 const App = {
   async init(){
     await DB.load();
+    // Every pending fuel invoice / other payment gets recalculated fresh
+    // with the CURRENT code on every load — not just when some unrelated
+    // action happens to trigger it. This is the actual fix for the class
+    // of bug where a stored verdict was computed once by an older version
+    // of the model and then silently never refreshed: now it can't happen,
+    // because "stale" isn't possible — every session recomputes from scratch.
+    DB.data.fuelInvoices.forEach(i => { if(i.status!=="paid") FuelPlanner.recalc(i.id); });
+    DB.data.otherPayments.forEach(p => { if(p.status!=="paid") PaymentPlanner.recalc(p.id); });
+    DB.save();
     this._wireNav();
     this._wireImport();
     this._wireTxToolbar();
