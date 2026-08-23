@@ -2526,7 +2526,12 @@ const Simulator = {
     // earlier-imported statement, check for it immediately rather than
     // waiting for the next import
     const autoMatched = ReconciliationEngine.run();
+    // same consistency fix as FuelPlanner.addInvoice() — this new invoice
+    // changes the picture for every other pending commitment too
+    DB.data.fuelInvoices.filter(i=>i.id!==record.id).forEach(i=>FuelPlanner.recalc(i.id));
+    DB.data.otherPayments.forEach(p=>PaymentPlanner.recalc(p.id));
     DB.save();
+    FuelPlanner._trackAssessment(record.id);
     FuelPlanner.renderList();
     Dashboard.render();
     toast(autoMatched ? "Saved — and already matched against a past statement, marked paid." : "Saved to Pending & Recent Fuel Invoices.");
@@ -2923,15 +2928,32 @@ const FuelPlanner = {
     const record = this._buildRecord(supplier, iso, amount, notes, invoiceNumber, result);
     DB.data.fuelInvoices.push(record);
     ReconciliationEngine.run(); // in case a matching transaction is already in an earlier-imported statement
+    // Adding this invoice changes the cash-flow picture for every OTHER
+    // pending fuel invoice and other payment too — recalc them all so
+    // nothing already on screen can be left showing a stale verdict. This
+    // is the fix for the Assessment panel disagreeing with the list: the
+    // list is now guaranteed current the moment this finishes, and the
+    // panel below always re-renders FROM this same invoice's stored data
+    // (see _trackAssessment), so the two can never show different numbers.
+    DB.data.fuelInvoices.filter(i=>i.id!==record.id).forEach(i=>this.recalc(i.id));
+    DB.data.otherPayments.forEach(p=>PaymentPlanner.recalc(p.id));
     DB.save();
-    this._renderResult(result, record);
-    this.renderList();
+    this._trackAssessment(record.id);
+    this.renderList(); // renders the list AND refreshes the Assessment panel from the same current data
     Dashboard.render();
     document.getElementById("fiAmount").value = "";
     document.getElementById("fiNotes").value = "";
     document.getElementById("fiDueOverride").value = "";
     document.getElementById("fiInvoiceNumber").value = "";
   },
+
+  // Tracks which invoice the Assessment panel is currently showing, so it
+  // can be kept in sync with that invoice's stored data on every future
+  // render — a real payment or invoice added afterward, or the app simply
+  // reloading, can change this invoice's verdict, and the panel needs to
+  // reflect that instead of freezing at whatever it showed at add-time.
+  _trackedAssessmentId: null,
+  _trackAssessment(id){ this._trackedAssessmentId = id; },
 
   _buildRecord(supplier, deliveryISO, amount, notes, invoiceNumber, result){
     return {
@@ -3005,6 +3027,14 @@ const FuelPlanner = {
 
   renderList(){
     const wrap = document.getElementById("fiList");
+    // Keep the Assessment panel in sync with whichever invoice it's tracking
+    // — re-rendered from that invoice's CURRENT stored data every time the
+    // list renders, so it can never disagree with the list below it.
+    if(this._trackedAssessmentId){
+      const tracked = DB.data.fuelInvoices.find(i=>i.id===this._trackedAssessmentId);
+      if(tracked) this._renderResult(tracked, tracked);
+      else this._trackedAssessmentId = null; // invoice was removed or paid — stop tracking it
+    }
     const today = localTodayISO(); // real device date — a "days until due" countdown must use actual today, not the last import date
     const dataToday = DateUtil.todayISO();
     const staleDays = Math.round((new Date(today+"T00:00:00") - new Date(dataToday+"T00:00:00"))/86400000);
@@ -3038,7 +3068,7 @@ const FuelPlanner = {
           ${inv.verdict==='safe' ? '✅ Pay On Time' : `⚠ ${inv.extensionDays} Business Day Extension`}
         </div>
         <div class="kv-grid">
-          <div><div class="k">Due Date</div><div class="v" style="font-size:13px;">${fmt.date(inv.dueDateAdjusted)}</div></div>
+          <div><div class="k">Due Date</div><div class="v"><input type="date" value="${inv.dueDateAdjusted}" style="font-size:13px;padding:3px 6px;width:100%;" onchange="FuelPlanner.updateDueDate('${inv.id}', this.value)"></div></div>
           <div><div class="k">${daysUntil<0?'Status':'Countdown'}</div><div class="v" style="font-size:13px;color:${daysUntil<0?'var(--red-600)':'var(--navy-900)'};">${dueLabel}</div></div>
           <div><div class="k">Projected Balance</div><div class="v" style="font-size:13px;color:${inv.projectedBalance>=0?'var(--green-600)':'var(--navy-900)'};">${fmt.money(inv.projectedBalance)}</div></div>
           <div><div class="k">Available Funds After</div><div class="v" style="font-size:13px;color:${trueAvailable<0?'var(--red-600)':(trueAvailable<10000?'var(--amber-600)':'var(--green-600)')};">${fmt.money(trueAvailable)}</div></div>
@@ -3132,6 +3162,25 @@ const FuelPlanner = {
     if(!inv) return;
     inv.invoiceNumber = value.trim();
     DB.save();
+  },
+
+  // Lets you correct a due date directly on an existing invoice — no need
+  // to delete and re-enter it. Weekend/holiday auto-adjustment still
+  // applies, and this recalculates every pending invoice and payment
+  // (not just this one), since a due-date change shifts the whole picture.
+  updateDueDate(id, newDateISO){
+    const inv = DB.data.fuelInvoices.find(i=>i.id===id);
+    if(!inv || !newDateISO) return;
+    const adjusted = DateUtil.adjustToBusinessDay(newDateISO);
+    inv.dueDateRaw = newDateISO;
+    inv.dueDateAdjusted = adjusted;
+    inv.dueDateOverridden = true; // manually editing the date counts as an explicit override, same as entering one on the form
+    DB.data.fuelInvoices.forEach(i=>this.recalc(i.id));
+    DB.data.otherPayments.forEach(p=>PaymentPlanner.recalc(p.id));
+    DB.save();
+    if(newDateISO !== adjusted) toast(`${fmt.date(newDateISO)} is a weekend/holiday — due date moved to ${fmt.date(adjusted)}.`);
+    this.renderList();
+    Dashboard.render();
   }
 };
 
