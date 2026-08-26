@@ -8,7 +8,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script>
 tailwind.config = {
   theme: {
@@ -325,68 +326,9 @@ tailwind.config = {
   .pdfdoc .sign { margin-top: 10px; font-size: 8.5pt; }
   .pdfdoc .foot { margin-top: 14px; padding-top: 6px; border-top: 1px solid #999; font-size: 7.5pt; color: #444; }
   .pagebreak { page-break-before: always; }
-
-  #authGate{
-    position:fixed; inset:0; background:var(--c-paper); z-index:5000;
-    display:flex; align-items:center; justify-content:center;
-  }
-  #authGate .box{
-    width:100%; max-width:360px; background:var(--c-surface); border:1px solid var(--c-line);
-    border-radius:16px; padding:32px 28px; text-align:center; font-family:"IBM Plex Sans", sans-serif;
-    box-shadow: var(--shadow-panel);
-  }
-  #authGate h2{margin:0 0 6px; font-size:1.2rem; font-weight:700; color:var(--c-text);}
-  #authGate p{margin:0 0 20px; font-size:.85rem; color:var(--c-text2);}
-  #authGate input{
-    width:100%; padding:10px 12px; margin-bottom:10px; border:1px solid var(--c-line);
-    border-radius:8px; font-size:.9rem; box-sizing:border-box; font-family:"IBM Plex Sans", sans-serif;
-    background:var(--c-focus-bg); color:var(--c-text);
-  }
-  #authGate button{
-    width:100%; padding:11px; background:var(--c-text); color:var(--c-paper); border:none;
-    border-radius:8px; font-weight:600; cursor:pointer; margin-top:4px;
-    font-family:"IBM Plex Sans", sans-serif;
-  }
-  #authGate .msg{font-size:.8rem; margin-top:12px; color:var(--c-alert);}
-  #logoutCorner{
-    position:fixed; bottom:14px; left:14px; z-index:900; font-size:11px;
-    background:var(--c-surface); border:1px solid var(--c-line); padding:5px 10px; border-radius:20px;
-    color:var(--c-text2); cursor:pointer; font-family:"IBM Plex Sans", sans-serif;
-  }
 </style>
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
-<script>
-  const firebaseConfig = {
-    apiKey: "AIzaSyAPwS1GFwqj6KR4dQgxifykh9HS5km6OX4",
-    authDomain: "alpha-7fce5.firebaseapp.com",
-    projectId: "alpha-7fce5",
-    storageBucket: "alpha-7fce5.firebasestorage.app",
-    messagingSenderId: "10647816245",
-    appId: "1:10647816245:web:fbfb982260cf2eef97097c"
-  };
-  firebase.initializeApp(firebaseConfig);
-  const auth = firebase.auth();
-  const dbFS = firebase.firestore();
-  const np3DocRef = dbFS.collection("np3App").doc("main");
-  const REQUIRED_TOOL_KEY = "np3";
-</script>
 </head>
 <body class="font-sans text-fg antialiased">
-
-<div id="authGate">
-  <div class="box">
-    <h2>Sign in</h2>
-    <p>Enter your login to access NP3 Records.</p>
-    <input type="email" id="gateEmail" placeholder="Email">
-    <input type="password" id="gatePassword" placeholder="Password">
-    <button id="gateBtn">Sign in</button>
-    <div class="msg" id="gateMsg"></div>
-  </div>
-</div>
-<div id="logoutCorner" style="display:none;">Log out</div>
-<div id="appWrap" style="display:none;">
 
 <!-- ══════════ SIDEBAR ══════════ -->
 <div id="scrim" class="fixed inset-0 bg-ink/60 backdrop-blur-[2px] z-40 hidden lg:hidden"></div>
@@ -408,7 +350,7 @@ tailwind.config = {
   <nav id="nav" class="flex-1 overflow-y-auto px-3 space-y-0.5"></nav>
 
   <div class="px-6 py-5 border-t border-white/10">
-    <div class="eyebrow !text-white/50">Synced to the cloud</div>
+    <div class="eyebrow !text-white/50">Saved locally</div>
     <div id="storeMeta" class="mt-1.5 text-[12px] text-white/75 font-mono"></div>
     <button data-act="goSettings" class="mt-3 text-[12px] text-white/70 hover:text-white underline underline-offset-4 decoration-white/25">Back up your data</button>
   </div>
@@ -462,7 +404,7 @@ tailwind.config = {
   <main id="app" class="flex-1 px-5 sm:px-8 py-6 sm:py-8 max-w-[1500px] w-full"></main>
 
   <footer class="px-5 sm:px-8 py-6 text-[11px] text-ink3 font-mono border-t border-line">
-    NP3 Records · records saved to the cloud, synced across every device · <span id="lastSaved">—</span>
+    NP3 Records · records held on this device · <span id="lastSaved">—</span>
   </footer>
 </div>
 
@@ -525,34 +467,26 @@ function seed() {
   };
 }
 
-let db = seed();
+let db;
+try {
+  const raw = localStorage.getItem(KEY);
+  db = raw ? JSON.parse(raw) : seed();
+} catch (e) { db = seed(); }
+for (const k of Object.keys(seed())) if (db[k] === undefined) db[k] = seed()[k];
 
 let saveTimer = null;
 function save(quiet) {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(async () => {
+  saveTimer = setTimeout(() => {
     pruneEmptyWeeks();
     db.savedAt = new Date().toISOString();
     try {
-      await np3DocRef.set(db);
+      localStorage.setItem(KEY, JSON.stringify(db));
       stamp();
     } catch (e) {
-      console.error(e);
-      toast('Could not sync to the cloud — check your internet connection.', 'bad');
+      toast('Storage is full — export a backup, then clear old weeks.', 'bad');
     }
   }, quiet ? 400 : 120);
-}
-
-async function loadFromCloud() {
-  try {
-    const snap = await np3DocRef.get();
-    if (snap.exists) {
-      db = Object.assign(seed(), snap.data());
-      for (const k of Object.keys(seed())) if (db[k] === undefined) db[k] = seed()[k];
-    }
-  } catch (e) {
-    console.error("Could not load saved data from the cloud, starting fresh (offline).", e);
-  }
 }
 
 function pruneEmptyWeeks() {
@@ -1484,138 +1418,236 @@ function applyTheme(dark) {
   $('#themeIcon').innerHTML = dark ? SUN_ICON : MOON_ICON;
   $('#themeToggle').setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
 }
-function docHead(title, sub) {
-  const b = db.business;
-  return '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:20px">' +
-      '<div><h1>' + esc(title) + '</h1>' +
-        '<div class="meta" style="margin-top:3px">' + esc(b.trading || b.name) +
-        (b.trading && b.name && b.trading !== b.name ? ' &nbsp;·&nbsp; ' + esc(b.name) : '') + '</div>' +
-        '<div class="meta">' + esc(b.address) + '</div></div>' +
-      '<div class="meta" style="text-align:right;white-space:nowrap">' +
-        '<div><strong>' + esc(b.plan || 'National Programme 3') + '</strong></div>' +
-        (sub ? '<div>' + esc(sub) + '</div>' : '') +
-        '<div>Printed ' + nzDate(new Date()) + '</div></div></div>' +
-    '<div class="rule"></div><div class="hairline"></div>';
-}
-function docFoot(signedBy) {
-  return '<div class="foot">' +
-    (signedBy ? 'Checks recorded by <strong>' + esc(signedBy) + '</strong>. ' : '') +
-    'Record generated from NP3 Records for ' + esc(db.business.trading || db.business.name) + '. ' +
-    'Retain for at least 4 years.</div>';
-}
-const cellTxt = v => (v === '' || v === null || v === undefined) ? '—' : esc(v);
 
-function sectionDoc(id, wk) {
+/* ══════════════════════════════════════════════════════════════
+   16. PDF EXPORT  —  real vector text via jsPDF + autoTable, not a
+   rasterised screenshot. Every section is built from plain data
+   (columns/rows), so the same builder produces every section's PDF,
+   and columns are sized by autoTable to always fit the page — the
+   thing the old screenshot-based export couldn't guarantee.
+   ══════════════════════════════════════════════════════════════ */
+
+/* jsPDF's built-in fonts don't have glyphs for <= / >= (they render as a
+   stray quote mark) — everything else we use (+/- deg em-dash middot) is
+   fine. Swap just those two, only in PDF-bound text. Applied centrally in
+   drawPdfTable to every cell, not left to each section builder to remember. */
+const pdfSafe = s => String(s == null ? '' : s).replace(/\u2264/g, '<=').replace(/\u2265/g, '>=');
+
+function pdfCell(text, flagged) {
+  // a leading "!" marks a cell for the flagged (red) treatment in didParseCell;
+  // sanitization itself happens once, centrally, in drawPdfTable
+  return (flagged ? '!' : '') + String(text == null ? '' : text);
+}
+
+function pdfMargin() { return { left: 12, right: 12, top: 32, bottom: 16 }; }
+
+function drawPdfLetterhead(doc, title, sub) {
+  const margin = pdfMargin();
+  const pageW = doc.internal.pageSize.getWidth();
+  const b = db.business;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(10, 15, 20);
+  doc.text(pdfSafe(title), margin.left, 16);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(60, 70, 80);
+  const bizLine = pdfSafe(b.trading || b.name) + (b.trading && b.name && b.trading !== b.name ? '   \u00b7   ' + pdfSafe(b.name) : '');
+  doc.text(bizLine, margin.left, 21.5);
+  doc.text(pdfSafe(b.address), margin.left, 25.5);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(10, 15, 20);
+  doc.text(pdfSafe(b.plan || 'National Programme 3'), pageW - margin.right, 16, { align: 'right' });
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(60, 70, 80);
+  if (sub) doc.text(pdfSafe(sub), pageW - margin.right, 20.5, { align: 'right' });
+  doc.text('Printed ' + nzDate(new Date()), pageW - margin.right, 25, { align: 'right' });
+  doc.setDrawColor(20, 20, 20); doc.setLineWidth(0.6);
+  doc.line(margin.left, 28.5, pageW - margin.right, 28.5);
+}
+
+function drawPdfFooterLeft(doc, sub) {
+  const margin = pdfMargin();
+  const pageH = doc.internal.pageSize.getHeight();
+  const b = db.business;
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(100, 100, 100);
+  doc.text(pdfSafe(sub || ('Retain for at least 4 years \u00b7 ' + (b.trading || b.name))), margin.left, pageH - 8);
+}
+
+function drawPdfPageNumber(doc, page, total) {
+  const margin = pdfMargin();
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(100, 100, 100);
+  doc.text('Page ' + page + ' of ' + total, pageW - margin.right, pageH - 8, { align: 'right' });
+}
+
+/* the table (or empty-state message) and, for weekly logs, the
+   signature line. Columns auto-fit the page width via autoTable, and
+   a table too long for one page continues with the header row
+   repeated — both are autoTable's core, guaranteed behaviour as long
+   as the reserved top margin (pdfMargin().top) is respected, which is
+   why the letterhead is stamped in a separate pass afterward rather
+   than through a per-page draw hook (see buildCombinedDoc). */
+function drawPdfTable(doc, data) {
+  const margin = pdfMargin();
+  if (!data.rows.length) {
+    doc.setFont('helvetica', 'italic'); doc.setFontSize(10); doc.setTextColor(120, 120, 120);
+    doc.text(pdfSafe(data.emptyMessage || 'No records for this period.'), margin.left, margin.top + 4);
+    return;
+  }
+  // sanitize every cell centrally here — a "!"-flagged cell keeps its
+  // flag but has the rest of its text passed through pdfSafe, and a
+  // plain cell (e.g. limitText()'s "<= 5C") is never at risk of a
+  // section builder having forgotten to call pdfSafe itself
+  const body = data.rows.map(row => row.map(cell => {
+    const raw = String(cell == null ? '' : cell);
+    const flagged = raw.charAt(0) === '!';
+    return (flagged ? '!' : '') + pdfSafe(flagged ? raw.slice(1) : raw);
+  }));
+  doc.autoTable({
+    startY: margin.top,
+    margin: { left: margin.left, right: margin.right, top: margin.top, bottom: margin.bottom },
+    head: [data.columns.map(pdfSafe)],
+    body,
+    theme: 'grid',
+    styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 2, lineColor: [190, 200, 208], lineWidth: 0.15, overflow: 'linebreak', valign: 'top', textColor: [20, 30, 40] },
+    headStyles: { fillColor: [236, 241, 244], textColor: [20, 30, 40], fontStyle: 'bold', fontSize: 7.5 },
+    didParseCell: cellData => {
+      if (typeof cellData.cell.raw === 'string' && cellData.cell.raw.charAt(0) === '!') {
+        cellData.cell.text = [cellData.cell.raw.slice(1)];
+        cellData.cell.styles.fillColor = [251, 234, 234];
+        cellData.cell.styles.textColor = [150, 20, 20];
+        cellData.cell.styles.fontStyle = 'bold';
+      }
+    }
+  });
+  if (data.showSignoff) {
+    const finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY : margin.top + 10;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(20, 20, 20);
+    doc.text('Task done by: ' + pdfSafe(data.signedBy || '________________________'), margin.left, finalY + 8);
+  }
+}
+
+/* builds one PDF containing every section passed in, each starting on
+   its own page (landscape when it has more than 6 columns — the
+   temperature grid's 7 day columns — portrait otherwise) and each
+   keeping its own letterhead/footer text. A single section is just
+   the n=1 case, so exportSection and exportEverything share this one
+   code path instead of two. */
+function buildCombinedDoc(sections) {
+  const { jsPDF } = window.jspdf;
+  let doc = null;
+  const ranges = [];
+  sections.forEach(data => {
+    const orientation = data.columns.length > 6 ? 'landscape' : 'portrait';
+    if (!doc) doc = new jsPDF({ orientation, unit: 'mm', format: 'a4' });
+    else doc.addPage('a4', orientation);
+    const from = doc.internal.getNumberOfPages();
+    drawPdfTable(doc, data);
+    const to = doc.internal.getNumberOfPages();
+    ranges.push({ from, to, data });
+  });
+  // letterhead + section-specific footer, scoped to each section's own
+  // page range so an earlier section's pages never get relabelled with
+  // a later section's title
+  ranges.forEach(r => {
+    for (let p = r.from; p <= r.to; p++) {
+      doc.setPage(p);
+      drawPdfLetterhead(doc, r.data.title, r.data.sub);
+      drawPdfFooterLeft(doc, r.data.sub);
+    }
+  });
+  // page numbers only make sense once the whole document's page count
+  // is final, so this runs as one last pass over everything
+  const total = doc.internal.getNumberOfPages();
+  for (let p = 1; p <= total; p++) { doc.setPage(p); drawPdfPageNumber(doc, p, total); }
+  return doc;
+}
+
+/* one function per section, returning plain {title, sub, columns, rows,
+   signedBy, emptyMessage} — buildCombinedDoc turns that into the
+   actual PDF. Keeping this as data (not markup) is what lets every
+   section share one renderer, one auto-fit/pagination path, and one
+   page-numbering pass. */
+function sectionPdfData(id, wk) {
   const w = wk ? (db.weeks[wk] || { temps: {}, reheat: [], deliveries: [], doneBy: '' }) : null;
   const sub = wk ? 'Week commencing ' + nzDate(dayDate(wk, 0)) : '';
 
   if (id === 'temps') {
-    const head = '<tr><th>Unit</th><th>Safe zone</th>' + DAYS.map((d, i) =>
-      '<th>' + d.s + '<br><span style="font-weight:400;text-transform:none;letter-spacing:0">' + pad(dayDate(wk, i).getDate()) + '/' + pad(dayDate(wk, i).getMonth() + 1) + '</span></th>').join('') + '</tr>';
-    const body = db.equipment.map(eq => '<tr><td><strong>' + esc(eq.name) + '</strong></td><td class="num">' + limitText(eq) + '</td>' +
-      DAYS.map(d => {
+    const columns = ['Unit', 'Safe zone', ...DAYS.map((d, i) => d.l + '\n' + pad(dayDate(wk, i).getDate()) + '/' + pad(dayDate(wk, i).getMonth() + 1))];
+    const rows = db.equipment.map(eq => {
+      const cells = DAYS.map(d => {
         const c = ((w.temps || {})[eq.id] || {})[d.k] || {};
         const st = tempState(c.v, eq);
-        const val = (c.v === '' || c.v == null) ? '—' : c.v + '°C';
-        return '<td class="num' + (st === 'bad' ? ' flag' : '') + '">' + esc(val) +
-          (st === 'bad' ? '<div style="font-family:inherit;text-align:left;font-size:7pt;font-weight:400;margin-top:2px">' + (c.action ? esc(c.action) : 'NO ACTION RECORDED') + '</div>' : '') + '</td>';
-      }).join('') + '</tr>').join('');
-    return { title: 'Daily fridge temperature monitoring', sub, wide: true,
-      html: '<div class="sect">Temperature checks</div><table><thead>' + head + '</thead><tbody>' + body + '</tbody></table>' +
-        '<div class="sign">Task done by: <strong>' + (w.doneBy ? esc(w.doneBy) : '________________________') + '</strong>' +
-        '<span style="margin-left:28px">Signature: ________________________</span></div>', signedBy: w.doneBy };
+        const val = (c.v === '' || c.v == null) ? '\u2014' : c.v + '\u00b0C';
+        return pdfCell(st === 'bad' ? val + (c.action ? ' \u2014 ' + c.action : ' \u2014 NO ACTION RECORDED') : val, st === 'bad');
+      });
+      return [eq.name, limitText(eq), ...cells];
+    });
+    return { title: 'Daily fridge temperature monitoring', sub, columns, rows, signedBy: w.doneBy, showSignoff: true,
+      emptyMessage: db.equipment.length ? '' : 'No units have been set up yet.' };
   }
 
   if (id === 'reheat') {
-    const rows = (w.reheat || []);
-    return { title: 'Reheated food temperature monitoring', sub, wide: true,
-      html: '<div class="sect">Reheat checks · target 75°C or above</div>' +
-        (rows.length ? '<table><thead><tr><th>Day</th><th>Menu item</th><th>How reheated</th><th>Start time</th><th>Temperature</th><th>Actions taken if required</th></tr></thead><tbody>' +
-          rows.map(r => '<tr><td>' + dayName(r.day, wk) + '</td><td>' + cellTxt(r.item) + '</td><td>' + cellTxt(r.method) + '</td>' +
-            '<td class="num">' + cellTxt(r.start) + '</td>' +
-            '<td class="num' + (r.temp !== '' && Number(r.temp) < 75 ? ' flag' : '') + '">' + (r.temp === '' ? '—' : esc(r.temp) + '°C') + '</td>' +
-            '<td>' + cellTxt(r.actions) + '</td></tr>').join('') + '</tbody></table>'
-          : '<p class="meta">No reheat checks recorded for this week.</p>') +
-        '<div class="sign">Task done by: <strong>' + (w.doneBy ? esc(w.doneBy) : '________________________') + '</strong></div>', signedBy: w.doneBy };
+    const rows = (w.reheat || []).map(r => {
+      const bad = r.temp !== '' && r.temp != null && Number(r.temp) < 75;
+      const tempTxt = r.temp === '' || r.temp == null ? '\u2014' : r.temp + '\u00b0C';
+      return [dayName(r.day, wk), r.item || '\u2014', r.method || '\u2014', r.start || '\u2014',
+        pdfCell(tempTxt, bad), r.actions || (bad ? 'NO ACTION RECORDED' : '')];
+    });
+    return { title: 'Reheated food temperature monitoring', sub, showSignoff: true, signedBy: w.doneBy,
+      columns: ['Day', 'Menu item', 'How reheated', 'Start time', 'Temp', 'Actions taken if required'],
+      rows, emptyMessage: 'No reheat checks recorded for this week.' };
   }
 
   if (id === 'goods') {
-    const rows = (w.deliveries || []);
-    return { title: 'Incoming goods', sub, wide: true,
-      html: '<div class="sect">Delivery temperature checks</div>' +
-        (rows.length ? '<table><thead><tr><th>Day</th><th>Supplier</th><th>Type</th><th>Items delivered</th><th>Temperature</th><th>Notes</th></tr></thead><tbody>' +
-          rows.map(r => {
-            const lim = r.type === 'Frozen' ? -15 : 5;
-            const bad = r.temp !== '' && r.temp != null && Number(r.temp) > lim;
-            return '<tr><td>' + dayName(r.day, wk) + '</td><td>' + cellTxt(r.supplier) + '</td><td>' + cellTxt(r.type) + '</td>' +
-              '<td>' + cellTxt(r.items) + '</td><td class="num' + (bad ? ' flag' : '') + '">' + (r.temp === '' ? '—' : esc(r.temp) + '°C') + '</td><td>' + cellTxt(r.notes) + '</td></tr>';
-          }).join('') + '</tbody></table>'
-          : '<p class="meta">No deliveries recorded for this week.</p>'), signedBy: w.doneBy };
+    const rows = (w.deliveries || []).map(r => {
+      const lim = r.type === 'Frozen' ? -15 : 5;
+      const bad = r.temp !== '' && r.temp != null && Number(r.temp) > lim;
+      const tempTxt = r.temp === '' || r.temp == null ? '\u2014' : r.temp + '\u00b0C';
+      return [dayName(r.day, wk), r.supplier || '\u2014', r.type || '\u2014', r.items || '\u2014', pdfCell(tempTxt, bad), r.notes || (bad ? 'NO ACTION RECORDED' : '')];
+    });
+    return { title: 'Incoming goods', sub, showSignoff: true, signedBy: w.doneBy,
+      columns: ['Day', 'Supplier', 'Type', 'Items delivered', 'Temp', 'Notes'],
+      rows, emptyMessage: 'No deliveries recorded for this week.' };
   }
 
   if (id === 'calib') {
-    return { title: 'Thermometer calibration', sub: 'Six-monthly record', wide: false,
-      html: '<div class="sect">Calibration checks</div>' +
-        (db.calibration.length ? '<table><thead><tr><th>Date</th><th>Thermometer</th><th>Type</th><th>Ice point<br><span style="font-weight:400;text-transform:none">within 1 of 0°C</span></th><th>Boil point<br><span style="font-weight:400;text-transform:none">within 1 of 100°C</span></th><th>Actions taken</th></tr></thead><tbody>' +
-          db.calibration.map(r => {
-            const iceBad = r.ice !== '' && Math.abs(Number(r.ice)) > 1;
-            const boilBad = r.boil !== '' && Math.abs(Number(r.boil) - 100) > 1;
-            return '<tr><td class="num">' + (r.date ? nzDate(new Date(r.date + 'T00:00:00')) : '—') + '</td><td>' + cellTxt(r.name) + '</td><td>' + cellTxt(r.type) + '</td>' +
-              '<td class="num' + (iceBad ? ' flag' : '') + '">' + (r.ice === '' ? '—' : esc(r.ice) + '°C') + '</td>' +
-              '<td class="num' + (boilBad ? ' flag' : '') + '">' + (r.boil === '' ? '—' : esc(r.boil) + '°C') + '</td>' +
-              '<td>' + cellTxt(r.actions) + '</td></tr>';
-          }).join('') + '</tbody></table>'
-          : '<p class="meta">No calibration checks recorded.</p>') };
+    const rows = db.calibration.map(r => {
+      const iceBad = r.ice !== '' && r.ice != null && Math.abs(Number(r.ice)) > 1;
+      const boilBad = r.boil !== '' && r.boil != null && Math.abs(Number(r.boil) - 100) > 1;
+      return [r.date ? nzDate(new Date(r.date + 'T00:00:00')) : '\u2014', r.name || '\u2014', r.type || '\u2014',
+        pdfCell(r.ice === '' || r.ice == null ? '\u2014' : r.ice + '\u00b0C', iceBad),
+        pdfCell(r.boil === '' || r.boil == null ? '\u2014' : r.boil + '\u00b0C', boilBad),
+        r.actions || ((iceBad || boilBad) ? 'NO ACTION RECORDED' : '')];
+    });
+    return { title: 'Thermometer calibration', sub: 'Six-monthly record',
+      columns: ['Date', 'Thermometer', 'Type', 'Ice point (0\u00b0C \u00b11)', 'Boil point (100\u00b0C \u00b11)', 'Actions taken if required'],
+      rows, emptyMessage: 'No calibration checks recorded.' };
   }
 
   if (id === 'illness') {
-    return { title: 'Staff illnesses', sub: 'Ongoing record', wide: false,
-      html: '<div class="sect">Illness register</div>' +
-        (db.illness.length ? '<table><thead><tr><th>Name</th><th>Symptoms</th><th>Actions taken</th><th>Date of final symptom</th><th>Date returned to work</th></tr></thead><tbody>' +
-          db.illness.map(r => '<tr><td>' + cellTxt(r.name) + '</td><td>' + cellTxt(r.symptoms) + '</td><td>' + cellTxt(r.actions) + '</td>' +
-            '<td class="num">' + (r.final ? nzDate(new Date(r.final + 'T00:00:00')) : '—') + '</td>' +
-            '<td class="num">' + (r.returned ? nzDate(new Date(r.returned + 'T00:00:00')) : 'Not yet returned') + '</td></tr>').join('') + '</tbody></table>'
-          : '<p class="meta">No illnesses recorded.</p>') };
+    const rows = db.illness.map(r => [
+      r.name || '\u2014', r.symptoms || '\u2014', r.actions || '\u2014',
+      r.final ? nzDate(new Date(r.final + 'T00:00:00')) : '\u2014',
+      r.returned ? nzDate(new Date(r.returned + 'T00:00:00')) : 'Not yet returned'
+    ]);
+    return { title: 'Staff illnesses', sub: 'Ongoing record',
+      columns: ['Name', 'Symptoms', 'Actions taken', 'Final symptom', 'Returned to work'],
+      rows, emptyMessage: 'No illnesses recorded.' };
   }
 
-  /* settings → the directory itself is a record worth printing */
-  return { title: 'Equipment & supplier directory', sub: '', wide: false,
-    html: '<div class="sect">Equipment</div><table><thead><tr><th>Unit</th><th>Mode</th><th>Safe zone</th><th>Note</th></tr></thead><tbody>' +
-      db.equipment.map(eq => '<tr><td>' + esc(eq.name) + '</td><td>' + MODES[eq.mode || 'chilled'].label + '</td><td class="num">' + limitText(eq) + '</td><td>' + cellTxt(eq.note) + '</td></tr>').join('') +
-      '</tbody></table><div class="sect">Suppliers</div>' +
-      (db.suppliers.length ? '<table><thead><tr><th>Name</th><th>Address</th><th>Contact</th><th>Supplies</th></tr></thead><tbody>' +
-        db.suppliers.map(s => '<tr><td>' + cellTxt(s.name) + '</td><td>' + cellTxt(s.address) + '</td><td>' + cellTxt(s.contact) + '</td><td>' + cellTxt((s.cats || []).join(', ')) + '</td></tr>').join('') + '</tbody></table>'
-        : '<p class="meta">No suppliers recorded.</p>') };
+  // settings/directory: two related tables, exported as two sections
+  // (each gets its own letterhead page) via the _extra hand-off
+  const eqRows = db.equipment.map(eq => [eq.name, MODES[eq.mode || 'chilled'].label, limitText(eq), eq.note || '']);
+  const supRows = db.suppliers.map(s => [s.name || '\u2014', s.address || '\u2014', s.contact || '\u2014', (s.cats || []).join(', ')]);
+  return {
+    title: 'Equipment directory', sub: '',
+    columns: ['Unit', 'Mode', 'Safe zone', 'Note'], rows: eqRows,
+    emptyMessage: 'No units have been set up yet.',
+    _extra: { title: 'Supplier directory', sub: '', columns: ['Name', 'Address', 'Contact', 'Supplies'], rows: supRows, emptyMessage: 'No suppliers recorded.' }
+  };
 }
 
 function dayName(k, wk) {
   const i = DAYS.findIndex(d => d.k === k);
-  if (i < 0) return '—';
+  if (i < 0) return '\u2014';
   return DAYS[i].s + ' ' + pad(dayDate(wk, i).getDate()) + '/' + pad(dayDate(wk, i).getMonth() + 1);
-}
-
-let busy = false;
-function makePDF(inner, filename, wide) {
-  if (busy) return;
-  busy = true;
-  const t = document.createElement('div');
-  t.className = 'toast-in pointer-events-auto bg-surface border border-line text-fg rounded-xl px-4 py-3 text-[13px] font-medium shadow-pop';
-  t.textContent = 'Building your PDF…';
-  $('#toasts').appendChild(t);
-
-  const stage = $('#pdfstage');
-  stage.innerHTML = '<div class="pdfdoc' + (wide ? ' wide' : '') + '" id="pdftarget">' + inner + '</div>';
-
-  html2pdf().set({
-    margin: wide ? [8, 10, 10, 10] : [10, 12, 12, 12],
-    filename: filename,
-    image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: wide ? 'landscape' : 'portrait' },
-    pagebreak: { mode: ['css', 'legacy'] }
-  }).from($('#pdftarget')).save()
-    .then(() => { t.remove(); stage.innerHTML = ''; busy = false; toast('PDF downloaded'); })
-    .catch(() => { t.remove(); stage.innerHTML = ''; busy = false; toast("The PDF didn't build. Try again.", 'bad'); });
 }
 
 function safeName(s) { return String(s).replace(/[^\w\s-]/g, '').replace(/\s+/g, '-'); }
@@ -1623,26 +1655,27 @@ function safeName(s) { return String(s).replace(/[^\w\s-]/g, '').replace(/\s+/g,
 function exportSection(id) {
   const meta = VIEWS.find(v => v.id === id);
   const wk = meta.weekly ? current : null;
-  const d = sectionDoc(id, wk);
-  const name = 'NP3-' + safeName(d.title) + (wk ? '-wc-' + wk : '') + '.pdf';
-  makePDF(docHead(d.title, d.sub) + d.html + docFoot(d.signedBy), name, d.wide);
+  const d = sectionPdfData(id, wk);
+  const sections = d._extra ? [d, d._extra] : [d];
+  const doc = buildCombinedDoc(sections);
+  doc.save('NP3-' + safeName(d.title) + (wk ? '-wc-' + wk : '') + '.pdf');
+  toast('PDF downloaded');
 }
 
 function exportEverything() {
   const wks = knownWeeks().slice().reverse();
-  if (!wks.length) { toast('Nothing recorded yet', 'warn'); return; }
-  let html = '';
-  wks.forEach((wk, i) => {
-    ['temps', 'reheat', 'goods'].forEach((id, j) => {
-      const d = sectionDoc(id, wk);
-      html += '<div' + (i + j > 0 ? ' class="pagebreak"' : '') + '>' + docHead(d.title, d.sub) + d.html + docFoot(d.signedBy) + '</div>';
-    });
-  });
+  const hasAnyData = wks.length || db.calibration.length || db.illness.length || db.equipment.length || db.suppliers.length;
+  if (!hasAnyData) { toast('Nothing recorded yet', 'warn'); return; }
+  const sections = [];
+  wks.forEach(wk => ['temps', 'reheat', 'goods'].forEach(id => sections.push(sectionPdfData(id, wk))));
   ['calib', 'illness', 'settings'].forEach(id => {
-    const d = sectionDoc(id, null);
-    html += '<div class="pagebreak">' + docHead(d.title, d.sub) + d.html + docFoot() + '</div>';
+    const d = sectionPdfData(id, null);
+    sections.push(d);
+    if (d._extra) sections.push(d._extra);
   });
-  makePDF(html, 'NP3-full-record-' + iso(new Date()) + '.pdf', true);
+  const doc = buildCombinedDoc(sections);
+  doc.save('NP3-full-record-' + iso(new Date()) + '.pdf');
+  toast('PDF downloaded');
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -1655,62 +1688,10 @@ window.addEventListener('hashchange', () => {
   if (VIEWS.some(v => v.id === h) && h !== view) { view = h; paintNav(); render(); }
 });
 
-async function startApp() {
-  await loadFromCloud();
-  paintNav();
-  applyTheme(document.documentElement.classList.contains('dark'));
-  render();
-  stamp();
-}
-</script>
-
-</div><!-- /#appWrap -->
-<script>
-  const gateEmail = document.getElementById('gateEmail');
-  const gatePassword = document.getElementById('gatePassword');
-  const gateMsg = document.getElementById('gateMsg');
-  const authGate = document.getElementById('authGate');
-  const logoutCorner = document.getElementById('logoutCorner');
-  const appWrap = document.getElementById('appWrap');
-
-  document.getElementById('gateBtn').addEventListener('click', async () => {
-    gateMsg.textContent = '';
-    try {
-      await auth.signInWithEmailAndPassword(gateEmail.value.trim(), gatePassword.value);
-    } catch (e) {
-      gateMsg.textContent = 'Incorrect email or password.';
-    }
-  });
-  logoutCorner.addEventListener('click', () => auth.signOut());
-
-  let appHasStarted = false;
-  auth.onAuthStateChanged(async (user) => {
-    if (!user) {
-      authGate.style.display = 'flex';
-      logoutCorner.style.display = 'none';
-      appWrap.style.display = 'none';
-      return;
-    }
-    let allowed = false;
-    try {
-      const snap = await dbFS.collection('users').doc(user.uid).get();
-      if (snap.exists) {
-        const data = snap.data();
-        allowed = data.role === 'admin' || (data.tools || []).includes(REQUIRED_TOOL_KEY);
-      }
-    } catch (e) { console.error(e); }
-
-    if (!allowed) {
-      gateMsg.textContent = "You don't have access to this tool.";
-      auth.signOut();
-      return;
-    }
-
-    authGate.style.display = 'none';
-    logoutCorner.style.display = 'block';
-    appWrap.style.display = 'block';
-    if (!appHasStarted) { appHasStarted = true; startApp(); }
-  });
+paintNav();
+applyTheme(document.documentElement.classList.contains('dark'));
+render();
+stamp();
 </script>
 </body>
 </html>
