@@ -1,0 +1,1597 @@
+<!DOCTYPE html>
+<html lang="en-NZ" class="h-full">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NP3 Records</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        ink:       '#0C1A24',
+        ink2:      'var(--c-text2)',
+        ink3:      'var(--c-text3)',
+        fg:        'var(--c-text)',
+        onaccent:  'var(--c-onaccent)',
+        ondanger:  'var(--c-ondanger)',
+        onwarn:    'var(--c-onwarn)',
+        paper:     'var(--c-paper)',
+        surface:   'var(--c-surface)',
+        line:      'var(--c-line)',
+        chill:     'var(--c-accent)',
+        chillsoft: 'var(--c-accent-soft)',
+        alert:     'var(--c-alert)',
+        alertsoft: 'var(--c-alert-soft)',
+        safe:      'var(--c-safe)',
+        hot:       'var(--c-hot)',
+        hotsoft:   'var(--c-hot-soft)'
+      },
+      fontFamily: {
+        sans:  ['"IBM Plex Sans"', 'system-ui', 'sans-serif'],
+        cond:  ['"IBM Plex Sans Condensed"', '"IBM Plex Sans"', 'sans-serif'],
+        mono:  ['"IBM Plex Mono"', 'ui-monospace', 'monospace']
+      },
+      boxShadow: {
+        panel: 'var(--shadow-panel)',
+        pop:   'var(--shadow-pop)',
+        glow:  'var(--shadow-glow)'
+      }
+    }
+  }
+}
+</script>
+<script>
+  /* Applied before first paint so the page never flashes the wrong theme.
+     No stored preference → light, which is the default people asked for. */
+  try { if (localStorage.getItem('np3.theme') === 'dark') document.documentElement.classList.add('dark'); } catch (e) {}
+</script>
+<style>
+  /* ══════════════════════════════════════════════════════════════
+     THEME TOKENS — light is the default (:root); .dark on <html>
+     overrides every one of these to the instrument-panel palette.
+     Everything else in this file and in the generated markup reads
+     colour only through these variables or the Tailwind tokens
+     above that point back to them, so the toggle needs no other
+     code to change.
+     ══════════════════════════════════════════════════════════════ */
+  :root {
+    --c-paper:        #EEF2F6;
+    --c-surface:      #FFFFFF;
+    --c-line:         #DCE4EA;
+    --c-text:         #0C1A24;
+    --c-text2:        #3F5768;
+    --c-text3:        #728699;
+    --c-placeholder:  #A9B9C6;
+    --c-hover:        #F3F6F9;
+    --c-focus-bg:     #FFFFFF;
+    --c-accent:       #0B6B8A;
+    --c-accent-soft:  #E3EFF4;
+    --c-accent-ring:  rgba(11,107,138,.20);
+    --c-onaccent:     #FFFFFF;
+    --c-alert:        #C22C2C;
+    --c-alert-soft:   #FBEAEA;
+    --c-alert-ring:   rgba(194,44,44,.30);
+    --c-ondanger:     #FFFFFF;
+    --c-safe:         #1E7A5B;
+    --c-hot:          #A8571B;
+    --c-hot-soft:     #FBEFE3;
+    --c-onwarn:       #FFFFFF;
+    --c-scrollbar:    #C7D2DB;
+    --c-option-bg:    #FFFFFF;
+    --c-row-tint:     rgba(12,26,36,.02);
+    --glow-accent:    0 1px 2px rgba(12,26,36,.05);
+    --glow-alert:     0 1px 2px rgba(12,26,36,.05);
+    --glow-hot:       0 1px 2px rgba(12,26,36,.05);
+    --shadow-panel:   0 1px 2px rgba(12,26,36,.04), 0 8px 24px -12px rgba(12,26,36,.14);
+    --shadow-pop:     0 24px 60px -20px rgba(12,26,36,.28);
+    --shadow-glow:    0 10px 20px -10px rgba(11,107,138,.35);
+    --bg-glow1:       transparent;
+    --bg-glow2:       transparent;
+    --bg-grid-line:   rgba(15,35,50,.035);
+    color-scheme: light;
+  }
+  html.dark {
+    --c-paper:        #141E30;
+    --c-surface:      rgba(28,40,60,.78);
+    --c-line:         rgba(140,175,210,.20);
+    --c-text:         #EAF2F8;
+    --c-text2:        #A6BACC;
+    --c-text3:        #7E93A8;
+    --c-placeholder:  #3D4E60;
+    --c-hover:        rgba(140,180,220,.06);
+    --c-focus-bg:     rgba(10,17,30,.9);
+    --c-accent:       #22D3EE;
+    --c-accent-soft:  rgba(34,211,238,.10);
+    --c-accent-ring:  rgba(34,211,238,.18);
+    --c-onaccent:     #04121A;
+    --c-alert:        #FB4D5C;
+    --c-alert-soft:   rgba(251,77,92,.12);
+    --c-alert-ring:   rgba(251,77,92,.45);
+    --c-ondanger:     #1A0407;
+    --c-safe:         #34E5A1;
+    --c-hot:          #FFA94D;
+    --c-hot-soft:     rgba(255,169,77,.12);
+    --c-onwarn:       #1A0F03;
+    --c-scrollbar:    rgba(120,160,200,.28);
+    --c-option-bg:    #0F1828;
+    --c-row-tint:     rgba(255,255,255,.03);
+    --glow-accent:    0 0 9px rgba(34,211,238,.75);
+    --glow-alert:     0 0 9px rgba(251,77,92,.75);
+    --glow-hot:       0 0 9px rgba(255,169,77,.7);
+    --shadow-panel:   0 0 0 1px rgba(120,160,200,.08), 0 20px 40px -20px rgba(0,0,0,.7);
+    --shadow-pop:     0 30px 80px -20px rgba(34,211,238,.25), 0 24px 60px -20px rgba(0,0,0,.6);
+    --shadow-glow:    0 0 24px -6px rgba(34,211,238,.55);
+    --bg-glow1:       rgba(34,211,238,.08);
+    --bg-glow2:       rgba(52,229,161,.06);
+    --bg-grid-line:   rgba(160,195,230,.05);
+    color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body {
+    -webkit-font-smoothing: antialiased;
+    background:
+      radial-gradient(900px 500px at 85% -10%, var(--bg-glow1), transparent 60%),
+      radial-gradient(700px 400px at -10% 110%, var(--bg-glow2), transparent 60%),
+      var(--c-paper);
+    transition: background-color .2s;
+  }
+  /* engineering-grid texture, faded out down the page */
+  body::before {
+    content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background-image:
+      linear-gradient(var(--bg-grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--bg-grid-line) 1px, transparent 1px);
+    background-size: 44px 44px;
+    -webkit-mask-image: radial-gradient(ellipse at 50% 0%, #000 40%, transparent 100%);
+            mask-image: radial-gradient(ellipse at 50% 0%, #000 40%, transparent 100%);
+  }
+  /* the static content needs lifting above the texture; the fixed and sticky
+     chrome already paints above it, and must keep its own positioning */
+  main, footer { position: relative; z-index: 1; }
+  /* the sidebar is a constant dark anchor in both themes, like the rest
+     of the app's chrome — only the content area itself switches */
+  #sidebar { background: rgba(7,11,18,.85); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+
+  /* glass panels */
+  .bg-surface { -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+  /* ---- Instrument label: the recurring structural device ---- */
+  .eyebrow {
+    font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", sans-serif;
+    font-weight: 600; font-size: 10px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--c-text3);
+  }
+
+  /* ---- Inputs: quiet until touched ---- */
+  .fld {
+    width: 100%; background: transparent; border: 1px solid transparent;
+    border-radius: 8px; padding: 7px 9px; font-size: 14px; color: var(--c-text);
+    transition: background .12s, border-color .12s, box-shadow .12s;
+  }
+  .fld:hover { background: var(--c-hover); }
+  .fld:focus { outline: none; background: var(--c-focus-bg); border-color: var(--c-accent); box-shadow: 0 0 0 3px var(--c-accent-ring); color: var(--c-text); }
+  .fld::placeholder { color: var(--c-placeholder); }
+  .fld-boxed { border-color: var(--c-line); background: var(--c-hover); }
+  input, select, textarea { color: var(--c-text); }
+  option { background: var(--c-option-bg); color: var(--c-text); }
+  select.fld { -webkit-appearance: none; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23728699' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 26px; }
+
+  /* ---- Temperature cell: the signature element ---- */
+  .tcell { position: relative; }
+  .tcell .gauge {
+    position: absolute; left: 0; top: 6px; bottom: 6px; width: 3px;
+    border-radius: 3px; background: var(--c-line); transition: background .15s, box-shadow .15s;
+  }
+  .tcell[data-state="ok"]   .gauge { background: var(--c-accent); box-shadow: var(--glow-accent); }
+  .tcell[data-state="bad"]  .gauge { background: var(--c-alert);  box-shadow: var(--glow-alert); }
+  .tcell[data-state="hot"]  .gauge { background: var(--c-hot);    box-shadow: var(--glow-hot); }
+  .tinput {
+    width: 100%; background: transparent; border: 1px solid transparent; border-radius: 8px;
+    padding: 8px 8px 8px 13px; font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 14px;
+    font-variant-numeric: tabular-nums; color: var(--c-text); text-align: left;
+  }
+  .tinput:hover { background: var(--c-hover); }
+  .tinput:focus { outline: none; background: var(--c-focus-bg); border-color: var(--c-accent); box-shadow: 0 0 0 3px var(--c-accent-ring); }
+  .tcell[data-state="bad"] .tinput { background: var(--c-alert-soft); color: var(--c-alert); font-weight: 600; }
+  .tcell[data-state="bad"].unresolved .tinput { box-shadow: 0 0 0 2px var(--c-alert-ring); }
+  .tinput::-webkit-outer-spin-button, .tinput::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .tinput[type=number] { -moz-appearance: textfield; }
+
+  /* ---- Daily temperature grid: CSS Grid, not a table ----
+     Header and data cells are children of one grid, sharing one set of
+     column tracks by construction — there's no independently-sized
+     header section that can drift out of alignment with the readings
+     below it, which is what an HTML <thead>/<tbody> split allowed. */
+  .tgrid {
+    display: grid; border-top: 1px solid var(--c-line); border-left: 1px solid var(--c-line);
+  }
+  .tg-head, .tg-name, .tg-cell {
+    border-right: 1px solid var(--c-line); border-bottom: 1px solid var(--c-line);
+  }
+  .tg-head { min-height: 46px; background: var(--c-paper); }
+  .tg-name { min-height: 68px; background: var(--c-surface); }
+  .tg-cell { min-height: 68px; background: var(--c-surface); padding: 0; }
+  .tg-head.today-col, .tg-cell.today-col { background: var(--c-accent-soft); }
+
+  /* one temperature reading, sized to fill its whole grid cell so
+     there's no dead space around a small value — tap anywhere in the
+     cell and you're in the input. */
+  .tempwrap {
+    position: relative; display: flex; flex-direction: column; height: 100%;
+    box-shadow: inset 3px 0 0 var(--c-line); transition: box-shadow .15s, background .15s;
+  }
+  .tempwrap[data-state="ok"]  { box-shadow: inset 3px 0 0 var(--c-accent); }
+  .tempwrap[data-state="hot"] { box-shadow: inset 3px 0 0 var(--c-hot); }
+  .tempwrap[data-state="bad"] { box-shadow: inset 3px 0 0 var(--c-alert); background: var(--c-alert-soft); }
+  .tempwrap.unresolved { box-shadow: inset 3px 0 0 var(--c-alert), 0 0 0 2px var(--c-alert-ring); }
+  .tbox {
+    flex: 1 1 auto; width: 100%; min-height: 52px; background: transparent; border: none;
+    text-align: center; font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 15px;
+    font-variant-numeric: tabular-nums; color: var(--c-text); padding: 10px 6px;
+  }
+  .tbox:hover { background: var(--c-hover); }
+  .tbox:focus { outline: none; background: var(--c-focus-bg); box-shadow: inset 0 0 0 2px var(--c-accent-ring); }
+  .tbox::placeholder { color: var(--c-placeholder); }
+  .tempwrap[data-state="bad"] .tbox { color: var(--c-alert); font-weight: 600; }
+  .tbox::-webkit-outer-spin-button, .tbox::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .tbox[type=number] { -moz-appearance: textfield; }
+  .tempwrap .note {
+    flex: none; border: none; border-top: 1px solid var(--c-line); background: transparent;
+    font-family: "IBM Plex Sans", sans-serif; font-size: 11.5px; line-height: 1.35; color: var(--c-text);
+    padding: 6px 8px; resize: none;
+  }
+  .tempwrap .note::placeholder { color: var(--c-placeholder); }
+  .tempwrap .note:focus { outline: none; background: var(--c-hover); }
+  /* the bigger touch-friendly version used on the mobile day cards */
+  .tbox.big { font-size: 19px; min-height: 76px; padding: 14px 8px; }
+
+  /* ---- Strip chart ribbon ---- */
+  .tick { width: 100%; height: 5px; border-radius: 1px; background: var(--c-line); }
+  .tick.ok  { background: var(--c-accent); box-shadow: var(--glow-accent); }
+  .tick.hot { background: var(--c-hot);    box-shadow: var(--glow-hot); }
+  .tick.bad { background: var(--c-alert);  box-shadow: var(--glow-alert); }
+  .today-col { background: var(--c-accent-soft); }
+  th.today-col { animation: pulseGlow 3.4s ease-in-out infinite; }
+  @keyframes pulseGlow { 50% { filter: brightness(1.35); } }
+
+  /* ---- Rows ---- */
+  .rec-row:hover .row-tools { opacity: 1; }
+  .row-tools { opacity: 0; transition: opacity .12s; }
+  @media (hover: none) { .row-tools { opacity: 1; } }
+
+  table.grid th, table.grid td { border-bottom: 1px solid var(--c-line); }
+
+  /* Below xl (covers phones and iPad, both orientations) a 6-7 column
+     record table needs a horizontal scrollbar to read. Turn each row
+     into a self-contained card instead — nothing scrolls sideways. */
+  @media (max-width: 1279px) {
+    table.grid.responsive-cards, table.grid.responsive-cards tbody,
+    table.grid.responsive-cards tr, table.grid.responsive-cards td { display: block; width: 100%; }
+    table.grid.responsive-cards thead { display: none; }
+    table.grid.responsive-cards { padding: 14px; }
+    table.grid.responsive-cards tr.rec-row {
+      background: var(--c-row-tint); border: 1px solid var(--c-line);
+      border-radius: 14px; padding: 4px 14px; margin-bottom: 12px;
+    }
+    table.grid.responsive-cards td { border-bottom: none !important; padding: 9px 0 !important; }
+    table.grid.responsive-cards td:not(:last-child) { border-bottom: 1px solid var(--c-line) !important; }
+    table.grid.responsive-cards td[data-label]:not([data-label=""])::before {
+      content: attr(data-label); display: block; margin-bottom: 5px;
+      font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", sans-serif;
+      font-weight: 600; font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--c-text3);
+    }
+    table.grid.responsive-cards td[data-label=""] { padding-top: 4px !important; }
+  }
+  table.grid tbody tr:last-child td { border-bottom: 0; }
+
+  ::-webkit-scrollbar { height: 10px; width: 10px; }
+  ::-webkit-scrollbar-thumb { background: var(--c-scrollbar); border-radius: 10px; border: 3px solid transparent; background-clip: padding-box; }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  /* ---- Off-canvas ---- */
+  #sidebar { transition: transform .28s cubic-bezier(.4,0,.2,1); }
+  @media (max-width: 1023px) { #sidebar { transform: translateX(-100%); } #sidebar.open { transform: translateX(0); } }
+
+  .view { animation: rise .22s ease-out; }
+  @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .toast-in { animation: slide .25s cubic-bezier(.2,.8,.2,1); }
+  @keyframes slide { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+  :focus-visible { outline: 2px solid var(--c-accent); outline-offset: 2px; border-radius: 6px; }
+
+  /* ---- PDF document styling (off-screen render target) ---- */
+  #pdfstage { position: fixed; left: -10000px; top: 0; }
+  .pdfdoc { width: 190mm; padding: 0; background: #fff; color: #000;
+            font-family: "IBM Plex Sans", system-ui, sans-serif; font-size: 9.5pt; }
+  .pdfdoc.wide { width: 277mm; }
+  .pdfdoc h1 { font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", sans-serif; font-size: 15pt; font-weight: 700; letter-spacing: -.01em; margin: 0; }
+  .pdfdoc .rule { border-top: 2px solid #000; margin: 8px 0 0; }
+  .pdfdoc .hairline { border-top: 1px solid #000; margin: 3px 0 12px; }
+  .pdfdoc table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+  .pdfdoc th { background: #ECF1F4; border: .8px solid #333; padding: 5px 6px; text-align: left;
+               font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", sans-serif; font-size: 8pt; letter-spacing: .06em; text-transform: uppercase; }
+  .pdfdoc td { border: .8px solid #666; padding: 5px 6px; vertical-align: top; }
+  .pdfdoc td.num { font-family: "IBM Plex Mono", ui-monospace, monospace; text-align: right; white-space: nowrap; }
+  .pdfdoc td.flag { background: #F6E2E2; font-weight: 600; }
+  .pdfdoc .meta { font-size: 8.5pt; color: #333; }
+  .pdfdoc .sect { font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", sans-serif; font-size: 11pt; font-weight: 700;
+                  text-transform: uppercase; letter-spacing: .08em; margin: 16px 0 6px; }
+  .pdfdoc .sign { margin-top: 10px; font-size: 8.5pt; }
+  .pdfdoc .foot { margin-top: 14px; padding-top: 6px; border-top: 1px solid #999; font-size: 7.5pt; color: #444; }
+  .pagebreak { page-break-before: always; }
+</style>
+</head>
+<body class="font-sans text-fg antialiased">
+
+<!-- ══════════ SIDEBAR ══════════ -->
+<div id="scrim" class="fixed inset-0 bg-ink/60 backdrop-blur-[2px] z-40 hidden lg:hidden"></div>
+
+<aside id="sidebar" class="fixed inset-y-0 left-0 z-50 w-[270px] bg-ink/85 backdrop-blur-xl border-r border-line text-white flex flex-col">
+  <div class="px-6 pt-7 pb-6">
+    <div class="flex items-start justify-between">
+      <div>
+        <div class="eyebrow !text-white/55">Food Control Plan</div>
+        <div class="font-cond text-[26px] font-bold leading-none mt-1.5 tracking-tight">NP3 Records</div>
+      </div>
+      <button id="closeNav" class="lg:hidden -mr-1 -mt-1 p-2 text-white/50 hover:text-white" aria-label="Close menu">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div id="navBiz" class="mt-4 text-[12px] leading-snug text-white/75"></div>
+  </div>
+
+  <nav id="nav" class="flex-1 overflow-y-auto px-3 space-y-0.5"></nav>
+
+  <div class="px-6 py-5 border-t border-white/10">
+    <div class="eyebrow !text-white/50">Saved locally</div>
+    <div id="storeMeta" class="mt-1.5 text-[12px] text-white/75 font-mono"></div>
+    <button data-act="goSettings" class="mt-3 text-[12px] text-white/70 hover:text-white underline underline-offset-4 decoration-white/25">Back up your data</button>
+  </div>
+</aside>
+
+<!-- ══════════ MAIN ══════════ -->
+<div class="lg:pl-[270px] min-h-full flex flex-col">
+
+  <header class="sticky top-0 z-30 bg-paper/70 backdrop-blur-xl border-b border-line">
+    <div class="px-5 sm:px-8 py-3.5 flex items-center gap-3">
+      <button id="openNav" class="lg:hidden p-2 -ml-2 text-ink2 hover:text-fg" aria-label="Open menu">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 5.5h14M3 10h14M3 14.5h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>
+
+      <div class="min-w-0 flex-1">
+        <div class="eyebrow" id="crumb">Records</div>
+        <h1 id="viewTitle" class="font-cond text-[21px] sm:text-[24px] font-bold leading-tight tracking-tight truncate">—</h1>
+      </div>
+
+      <div id="weekNav" class="hidden sm:flex items-center gap-1 bg-surface border border-line rounded-xl p-1 shadow-panel">
+        <button data-act="weekPrev" class="p-2 rounded-lg text-ink2 hover:bg-white/5" aria-label="Previous week">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M9 2L4 7l5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="px-1.5 text-center">
+          <div class="eyebrow leading-none">Week commencing</div>
+          <input id="weekPick" type="date" class="font-mono text-[13px] font-medium bg-transparent border-0 p-0 mt-1 text-center focus:outline-none cursor-pointer" style="width:118px">
+        </div>
+        <button data-act="weekNext" class="p-2 rounded-lg text-ink2 hover:bg-white/5" aria-label="Next week">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M5 2l5 5-5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button data-act="weekToday" class="ml-0.5 px-3 py-2 rounded-lg text-[12px] font-medium text-chill hover:bg-chillsoft">This week</button>
+      </div>
+
+      <button id="themeToggle" data-act="toggleTheme" class="shrink-0 p-2.5 rounded-xl border border-line text-ink2 hover:text-fg hover:bg-white/5 transition" aria-label="Switch to dark theme">
+        <svg id="themeIcon" width="17" height="17" viewBox="0 0 20 20" fill="none"><path d="M10 3v2M10 15v2M17 10h-2M5 10H3M14.9 5.1l-1.4 1.4M6.5 13.5l-1.4 1.4M14.9 14.9l-1.4-1.4M6.5 6.5L5.1 5.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="10" cy="10" r="3.6" stroke="currentColor" stroke-width="1.6"/></svg>
+      </button>
+
+      <button data-act="exportView" id="exportBtn" class="shrink-0 inline-flex items-center gap-2 bg-chill text-onaccent rounded-xl px-3.5 sm:px-4 py-2.5 text-[13px] font-semibold hover:brightness-110 active:scale-[.98] transition shadow-glow">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1v8m0 0L4 6m3 3l3-3M1.5 10.5v1A1.5 1.5 0 003 13h8a1.5 1.5 0 001.5-1.5v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="hidden sm:inline">Download PDF</span>
+      </button>
+    </div>
+
+    <div id="weekNavMobile" class="sm:hidden px-5 pb-3 flex items-center gap-2">
+      <button data-act="weekPrev" class="px-3 py-2 bg-surface border border-line rounded-lg text-ink2" aria-label="Previous week">‹</button>
+      <input id="weekPickMobile" type="date" class="flex-1 fld fld-boxed font-mono text-[13px] text-center">
+      <button data-act="weekNext" class="px-3 py-2 bg-surface border border-line rounded-lg text-ink2" aria-label="Next week">›</button>
+    </div>
+  </header>
+
+  <main id="app" class="flex-1 px-5 sm:px-8 py-6 sm:py-8 max-w-[1500px] w-full"></main>
+
+  <footer class="px-5 sm:px-8 py-6 text-[11px] text-ink3 font-mono border-t border-line">
+    NP3 Records · records held on this device · <span id="lastSaved">—</span>
+  </footer>
+</div>
+
+<div id="pdfstage" aria-hidden="true"></div>
+<div id="toasts" class="fixed bottom-5 right-5 z-[80] space-y-2 pointer-events-none"></div>
+
+<!-- Confirm dialog -->
+<div id="confirmWrap" class="fixed inset-0 z-[90] hidden items-center justify-center p-5 bg-ink/70 backdrop-blur-[3px]">
+  <div class="bg-surface border border-line rounded-2xl shadow-pop w-full max-w-[400px] p-6">
+    <div class="eyebrow" id="confirmKind">Confirm</div>
+    <h3 id="confirmTitle" class="font-cond text-[20px] font-bold mt-1.5 leading-snug">Delete this record?</h3>
+    <p id="confirmBody" class="text-[13.5px] text-ink2 mt-2 leading-relaxed">This can't be undone.</p>
+    <div class="flex gap-2 mt-6">
+      <button id="confirmNo" class="flex-1 py-2.5 rounded-xl border border-line text-[13.5px] font-medium hover:bg-white/5">Keep it</button>
+      <button id="confirmYes" class="flex-1 py-2.5 rounded-xl bg-alert text-ondanger text-[13.5px] font-semibold hover:brightness-110">Delete</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ══════════════════════════════════════════════════════════════
+   1. STORAGE  —  everything lives under one key, versioned.
+   ══════════════════════════════════════════════════════════════ */
+const KEY = 'np3.records.v1';
+const DAYS = [
+  {k:'mon', s:'Mon', l:'Monday'},   {k:'tue', s:'Tue', l:'Tuesday'},
+  {k:'wed', s:'Wed', l:'Wednesday'},{k:'thu', s:'Thu', l:'Thursday'},
+  {k:'fri', s:'Fri', l:'Friday'},   {k:'sat', s:'Sat', l:'Saturday'},
+  {k:'sun', s:'Sun', l:'Sunday'}
+];
+
+const uid = () => Math.random().toString(36).slice(2, 10);
+
+function seed() {
+  return {
+    version: 1,
+    business: {
+      name:    'Naylor St Auto Services 2022 Ltd',
+      trading: 'Challenge Naylor Street',
+      address: '101 Naylor Street, Hamilton East 3216',
+      plan:    'National Programme 3'
+    },
+    equipment: [
+      { id: uid(), name: 'Pie Warmer',       mode: 'hot',     limit: 60,  note: 'Hot hold' },
+      { id: uid(), name: 'Display Cabinet',  mode: 'chilled', limit: 5,   note: '' },
+      { id: uid(), name: 'Milk Fridge',      mode: 'chilled', limit: 5,   note: '' },
+      { id: uid(), name: 'Cold Drinks Fridge', mode: 'chilled', limit: 5, note: 'Bottled juice, fizzy, Pepsi, water' },
+      { id: uid(), name: 'Food Freezer',     mode: 'frozen',  limit: -18, note: '' },
+      { id: uid(), name: 'Tip Top Freezer',  mode: 'frozen',  limit: -18, note: '' },
+      { id: uid(), name: 'Streets Freezer',  mode: 'frozen',  limit: -18, note: '' }
+    ],
+    suppliers: [],
+    menuItems: ['Barista Coffee (takeaway cup)', 'Hot Pies', 'Protein Ready-to-Eat Meals'],
+    calibration: [],
+    illness: [],
+    weeks: {},
+    savedAt: null
+  };
+}
+
+let db;
+try {
+  const raw = localStorage.getItem(KEY);
+  db = raw ? JSON.parse(raw) : seed();
+} catch (e) { db = seed(); }
+for (const k of Object.keys(seed())) if (db[k] === undefined) db[k] = seed()[k];
+
+let saveTimer = null;
+function save(quiet) {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    pruneEmptyWeeks();
+    db.savedAt = new Date().toISOString();
+    try {
+      localStorage.setItem(KEY, JSON.stringify(db));
+      stamp();
+    } catch (e) {
+      toast('Storage is full — export a backup, then clear old weeks.', 'bad');
+    }
+  }, quiet ? 400 : 120);
+}
+
+function pruneEmptyWeeks() {
+  for (const k of Object.keys(db.weeks)) {
+    const w = db.weeks[k];
+    const hasTemp = Object.values(w.temps || {}).some(d =>
+      Object.values(d).some(c => c && String(c.v == null ? '' : c.v) !== ''));
+    if (!hasTemp && !(w.reheat || []).length && !(w.deliveries || []).length && !String(w.doneBy || '').trim()) delete db.weeks[k];
+  }
+}
+
+function stamp() {
+  const t = db.savedAt ? new Date(db.savedAt) : null;
+  const txt = t ? 'Saved ' + t.toLocaleTimeString('en-NZ', {hour:'2-digit', minute:'2-digit'}) : 'Nothing saved yet';
+  $('#lastSaved').textContent = txt;
+  const bytes = new Blob([JSON.stringify(db)]).size;
+  const weeks = Object.keys(db.weeks).length;
+  $('#storeMeta').textContent = weeks + (weeks === 1 ? ' week' : ' weeks') + ' · ' + (bytes / 1024).toFixed(0) + ' KB';
+}
+
+/* ══════════════════════════════════════════════════════════════
+   2. DATES & WEEKS
+   ══════════════════════════════════════════════════════════════ */
+const pad = n => String(n).padStart(2, '0');
+const iso = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+
+function mondayOf(input) {
+  const d = (input instanceof Date) ? new Date(input) : new Date(input + 'T00:00:00');
+  if (isNaN(d)) return mondayOf(new Date());
+  const shift = (d.getDay() + 6) % 7;          // Sun=0 → 6
+  d.setDate(d.getDate() - shift);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+const weekKey = input => iso(mondayOf(input));
+function dayDate(wk, i) { const d = new Date(wk + 'T00:00:00'); d.setDate(d.getDate() + i); return d; }
+const nzDate = d => d.toLocaleDateString('en-NZ', {day:'2-digit', month:'2-digit', year:'numeric'});
+function weekLabel(wk) {
+  const a = dayDate(wk, 0), b = dayDate(wk, 6);
+  const same = a.getMonth() === b.getMonth();
+  return a.toLocaleDateString('en-NZ', {day:'numeric', month: same ? undefined : 'short'})
+       + ' – ' + b.toLocaleDateString('en-NZ', {day:'numeric', month:'short', year:'numeric'});
+}
+
+let current = weekKey(new Date());
+let mobileDay = todayKey();
+
+function week(wk) {
+  wk = wk || current;
+  if (!db.weeks[wk]) db.weeks[wk] = { temps: {}, doneBy: '', reheat: [], deliveries: [], notes: '' };
+  const w = db.weeks[wk];
+  w.temps = w.temps || {}; w.reheat = w.reheat || []; w.deliveries = w.deliveries || [];
+  return w;
+}
+const knownWeeks = () => Object.keys(db.weeks).sort().reverse();
+
+/* ══════════════════════════════════════════════════════════════
+   3. RANGES  —  what "in the safe zone" means per unit
+   ══════════════════════════════════════════════════════════════ */
+const MODES = {
+  chilled: { label: 'Chilled',  rule: '≤', dflt: 5,   blurb: 'Safe zone 5°C or less' },
+  frozen:  { label: 'Frozen',   rule: '≤', dflt: -18, blurb: 'Hard frozen, −18°C or less' },
+  hot:     { label: 'Hot hold', rule: '≥', dflt: 60,  blurb: 'Hot hold 60°C or above' }
+};
+function limitOf(eq) {
+  const n = Number(eq.limit);
+  return Number.isFinite(n) ? n : MODES[eq.mode || 'chilled'].dflt;
+}
+const limitText = eq => MODES[eq.mode || 'chilled'].rule + ' ' + limitOf(eq) + '°C';
+
+function tempState(val, eq) {
+  if (val === '' || val === null || val === undefined) return '';
+  const v = Number(val);
+  if (!Number.isFinite(v)) return '';
+  const lim = limitOf(eq);
+  const pass = (eq.mode === 'hot') ? v >= lim : v <= lim;
+  if (pass) return eq.mode === 'hot' ? 'hot' : 'ok';
+  return 'bad';
+}
+
+/* ══════════════════════════════════════════════════════════════
+   4. TINY DOM HELPERS
+   ══════════════════════════════════════════════════════════════ */
+const $  = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function toast(msg, kind) {
+  const tone = kind === 'bad'
+    ? 'bg-alert text-ondanger'
+    : kind === 'warn' ? 'bg-hot text-onwarn'
+    : 'bg-surface border border-line text-fg';
+  const el = document.createElement('div');
+  el.className = 'toast-in pointer-events-auto ' + tone + ' rounded-xl px-4 py-3 text-[13px] font-medium shadow-pop max-w-[320px]';
+  el.textContent = msg;
+  $('#toasts').appendChild(el);
+  setTimeout(() => { el.style.transition = 'opacity .25s, transform .25s'; el.style.opacity = '0'; el.style.transform = 'translateY(6px)'; }, 2600);
+  setTimeout(() => el.remove(), 2950);
+}
+
+let confirmFn = null;
+function confirmAction(opts, fn) {
+  $('#confirmKind').textContent  = opts.kind  || 'Confirm';
+  $('#confirmTitle').textContent = opts.title || 'Delete this record?';
+  $('#confirmBody').textContent  = opts.body  || "This can't be undone.";
+  $('#confirmYes').textContent   = opts.yes   || 'Delete';
+  $('#confirmNo').textContent    = opts.no    || 'Keep it';
+  $('#confirmYes').className = 'flex-1 py-2.5 rounded-xl text-[13.5px] font-semibold hover:brightness-110 ' + (opts.tone === 'ink' ? 'bg-chill text-onaccent' : 'bg-alert text-ondanger');
+  confirmFn = fn;
+  const w = $('#confirmWrap'); w.classList.remove('hidden'); w.classList.add('flex');
+  $('#confirmNo').focus();
+}
+function closeConfirm() { const w = $('#confirmWrap'); w.classList.add('hidden'); w.classList.remove('flex'); confirmFn = null; }
+$('#confirmNo').onclick  = closeConfirm;
+$('#confirmYes').onclick = () => { const f = confirmFn; closeConfirm(); if (f) f(); };
+$('#confirmWrap').addEventListener('click', e => { if (e.target.id === 'confirmWrap') closeConfirm(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeConfirm(); closeNav(); } });
+
+/* ══════════════════════════════════════════════════════════════
+   5. NAVIGATION
+   ══════════════════════════════════════════════════════════════ */
+const VIEWS = [
+  { id:'temps',   label:'Fridge temperatures', crumb:'Weekly record', weekly:true,
+    icon:'<path d="M8 2.5a2 2 0 014 0v6.2a3.5 3.5 0 11-4 0V2.5z" stroke="currentColor" stroke-width="1.4"/><path d="M10 6v5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>' },
+  { id:'reheat',  label:'Reheated food', crumb:'Weekly record', weekly:true,
+    icon:'<path d="M6 12c-1.5-2 1-3 0-5 2 1 4 3 3 5m3 0c1-1.5-.5-2.5 0-4 1 1.2 1.6 2.6 1 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.5 14.5h13" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>' },
+  { id:'goods',   label:'Incoming goods', crumb:'Weekly record', weekly:true,
+    icon:'<path d="M3 6.5l7-3.5 7 3.5v7L10 17l-7-3.5v-7z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M3 6.5L10 10l7-3.5M10 10v7" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>' },
+  { id:'calib',   label:'Thermometer calibration', crumb:'Six-monthly record', weekly:false,
+    icon:'<circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.4"/><path d="M10 5.5V10l3 2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>' },
+  { id:'illness', label:'Staff illnesses', crumb:'Ongoing record', weekly:false,
+    icon:'<circle cx="10" cy="6.5" r="2.8" stroke="currentColor" stroke-width="1.4"/><path d="M4 16c0-3 2.7-5 6-5s6 2 6 5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>' },
+  { id:'settings',label:'Settings & directory', crumb:'Setup', weekly:false,
+    icon:'<circle cx="10" cy="10" r="2.6" stroke="currentColor" stroke-width="1.4"/><path d="M10 2.5v2M10 15.5v2M17.5 10h-2M4.5 10h-2M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4M15.3 15.3l-1.4-1.4M6.1 6.1L4.7 4.7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>' }
+];
+
+let view = 'temps';
+
+function paintNav() {
+  $('#nav').innerHTML = VIEWS.map(v => {
+    const on = v.id === view;
+    return '<button data-nav="' + v.id + '" class="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13.5px] transition ' +
+      (on ? 'bg-white/12 text-white font-medium' : 'text-white/70 hover:text-white hover:bg-white/5') + '">' +
+      '<svg width="18" height="18" viewBox="0 0 20 20" fill="none" class="shrink-0 ' + (on ? 'text-white' : 'text-white/55') + '">' + v.icon + '</svg>' +
+      '<span class="truncate">' + v.label + '</span>' +
+      (on ? '<span class="ml-auto w-1.5 h-1.5 rounded-full bg-chill"></span>' : '') + '</button>';
+  }).join('');
+  const b = db.business;
+  $('#navBiz').innerHTML = esc(b.trading || b.name) + '<br><span class="text-white/50">' + esc(b.plan || 'National Programme 3') + '</span>';
+}
+
+function openNav()  { $('#sidebar').classList.add('open'); $('#scrim').classList.remove('hidden'); }
+function closeNav() { $('#sidebar').classList.remove('open'); $('#scrim').classList.add('hidden'); }
+$('#openNav').onclick = openNav;
+$('#closeNav').onclick = closeNav;
+$('#scrim').onclick = closeNav;
+
+function go(id) {
+  view = id;
+  location.hash = id;
+  paintNav(); render(); closeNav();
+  window.scrollTo({ top: 0, behavior: 'auto' });
+}
+
+document.addEventListener('click', e => {
+  const nav = e.target.closest('[data-nav]');
+  if (nav) return go(nav.dataset.nav);
+});
+
+/* ══════════════════════════════════════════════════════════════
+   6. SHARED UI PIECES
+   ══════════════════════════════════════════════════════════════ */
+function panel(title, sub, body, tools) {
+  return '<section class="bg-surface border border-line rounded-2xl shadow-panel overflow-hidden mb-6">' +
+    '<div class="px-5 sm:px-6 py-4 border-b border-line flex items-start gap-4 flex-wrap">' +
+      '<div class="min-w-0 flex-1"><h2 class="font-cond text-[17px] font-bold tracking-tight">' + title + '</h2>' +
+      (sub ? '<p class="text-[12.5px] text-ink2 mt-0.5 leading-snug">' + sub + '</p>' : '') + '</div>' +
+      (tools || '') + '</div>' + body + '</section>';
+}
+
+function addBtn(action, label) {
+  return '<button data-act="' + action + '" class="inline-flex items-center gap-2 text-[13px] font-medium text-chill bg-chillsoft ring-1 ring-inset ring-chill/25 hover:bg-chill hover:text-onaccent rounded-lg px-3.5 py-2 transition">' +
+    '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1.5v9M1.5 6h9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>' + label + '</button>';
+}
+
+function delBtn(action, id) {
+  return '<button data-act="' + action + '" data-id="' + id + '" class="row-tools p-2 rounded-lg text-ink3 hover:text-alert hover:bg-alertsoft transition" aria-label="Delete">' +
+    '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 3.5h9M5.5 3.5V2.4c0-.5.4-.9.9-.9h1.2c.5 0 .9.4.9.9v1.1M3.6 3.5l.5 8c0 .5.5.9 1 .9h3.8c.5 0 .9-.4 1-.9l.5-8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></button>';
+}
+
+function empty(headline, hint, action, label) {
+  return '<div class="px-6 py-14 text-center">' +
+    '<div class="font-cond text-[17px] font-semibold text-fg">' + headline + '</div>' +
+    '<p class="text-[13px] text-ink2 mt-1.5 max-w-[380px] mx-auto leading-relaxed">' + hint + '</p>' +
+    (action ? '<div class="mt-5">' + addBtn(action, label) + '</div>' : '') + '</div>';
+}
+
+/* ══════════════════════════════════════════════════════════════
+   7. VIEW — FRIDGE TEMPERATURES (weekly grid + strip chart)
+   ══════════════════════════════════════════════════════════════ */
+function viewTemps() {
+  const w = week();
+  const eqs = db.equipment;
+  if (!eqs.length) {
+    return panel('Daily temperature checks', 'Nothing to check yet.',
+      empty('Add your fridges and freezers first', 'Every column in this grid comes from your equipment list, so start there and the week builds itself.', 'goSettings', 'Open Settings & directory'));
+  }
+
+  return '<div id="ribbon">' + tempsRibbon() + '</div>' + tempsPanel();
+}
+
+/* --- strip chart: one tick per unit, per day. Refreshes on its own
+       so typing a temperature never redraws the grid underneath. --- */
+function tempsRibbon() {
+  const w = week();
+  const eqs = db.equipment;
+  if (!eqs.length) return '';
+  let filled = 0, breach = 0, open = 0;
+  const strip = DAYS.map((d, i) => {
+    const ticks = eqs.map(eq => {
+      const c = (w.temps[eq.id] || {})[d.k] || {};
+      const st = tempState(c.v, eq);
+      if (st) filled++;
+      if (st === 'bad') { breach++; if (!String(c.action || '').trim()) open++; }
+      return '<div class="tick ' + st + '"></div>';
+    }).join('');
+    const dt = dayDate(current, i);
+    const today = iso(dt) === iso(new Date());
+    return '<div class="flex-1 min-w-0">' +
+      '<div class="space-y-[3px]">' + ticks + '</div>' +
+      '<div class="mt-2 text-[10px] font-mono ' + (today ? 'text-chill font-semibold' : 'text-ink3') + '">' + d.s + '</div></div>';
+  }).join('');
+
+  const total = eqs.length * 7;
+  const ribbon =
+    '<div class="bg-surface border border-line rounded-2xl shadow-panel p-5 sm:p-6 mb-6">' +
+      '<div class="flex items-end justify-between gap-6 flex-wrap">' +
+        '<div><div class="eyebrow">Week at a glance</div>' +
+        '<div class="font-cond text-[19px] font-bold mt-1 tracking-tight">' + weekLabel(current) + '</div></div>' +
+        '<div class="flex gap-7">' +
+          '<div><div class="eyebrow">Recorded</div><div class="font-mono text-[19px] mt-0.5">' + filled + '<span class="text-ink3 text-[13px]">/' + total + '</span></div></div>' +
+          '<div><div class="eyebrow">Out of range</div><div class="font-mono text-[19px] mt-0.5 ' + (breach ? 'text-alert font-semibold' : '') + '">' + breach + '</div></div>' +
+          '<div><div class="eyebrow">Action needed</div><div class="font-mono text-[19px] mt-0.5 ' + (open ? 'text-alert font-semibold' : 'text-safe') + '">' + open + '</div></div>' +
+        '</div></div>' +
+      '<div class="flex gap-1.5 mt-5">' + strip + '</div>' +
+      (open ? '<div class="mt-4 flex items-start gap-2.5 bg-alertsoft text-alert rounded-xl px-4 py-3 text-[13px]">' +
+        '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" class="mt-px shrink-0"><path d="M8 5.5v3.2M8 11h.01M7.1 2.3L1.4 12.1a1 1 0 00.9 1.5h11.4a1 1 0 00.9-1.5L8.9 2.3a1 1 0 00-1.8 0z" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+        '<span><strong>' + open + (open === 1 ? ' reading is' : ' readings are') + ' outside the safe zone with no corrective action recorded.</strong> Write what you did in the red boxes below — an unexplained breach is the first thing a verifier looks for.</span></div>' : '') +
+    '</div>';
+  return ribbon;
+}
+
+function tempsPanel() {
+  const w = week();
+  const eqs = db.equipment;
+
+  /* CSS Grid instead of a <table>: header cells and data cells are the
+     same grid, sharing the same column tracks by construction. There is
+     no longer a second, independently-sized set of columns that can
+     drift out of line with the first — that's what a <thead>/<tbody>
+     split in a table let happen once real fonts and sticky columns were
+     in the mix. Columns stay narrow (90px minimum) so all 7 days plus
+     the unit column comfortably fit an xl+ (1280px) viewport with no
+     horizontal scrollbar. */
+  const gridCols = 'minmax(150px,190px) repeat(7, minmax(90px,1fr))';
+
+  const headCells = '<div class="tg-head flex items-center px-4"><span class="eyebrow">Unit</span></div>' +
+    DAYS.map((d, i) => {
+      const dt = dayDate(current, i);
+      const today = iso(dt) === iso(new Date());
+      /* the highlight for "today" lives on the cell background only —
+         the heading itself stays plain bold text either way, so it
+         reads as a proper column heading rather than a tinted label */
+      return '<div class="tg-head flex items-center justify-center' + (today ? ' today-col' : '') + '">' +
+        '<span class="font-cond font-bold text-[14px] text-fg whitespace-nowrap">' + d.s + ' ' + pad(dt.getDate()) + '/' + pad(dt.getMonth() + 1) + '</span></div>';
+    }).join('');
+
+  const bodyCells = eqs.map(eq => {
+    const nameCell = '<div class="tg-name flex flex-col justify-center px-4 py-3">' +
+      '<input class="fld !py-1 !px-0 font-medium text-[13.5px]" value="' + esc(eq.name) + '" data-eqname="' + eq.id + '" aria-label="Unit name">' +
+      '<div class="flex items-center gap-1.5 mt-1">' +
+        '<span class="w-1.5 h-1.5 rounded-full ' + (eq.mode === 'hot' ? 'bg-hot' : eq.mode === 'frozen' ? 'bg-chill' : 'bg-chill/60') + '"></span>' +
+        '<span class="font-mono text-[11px] text-ink3">' + limitText(eq) + '</span></div></div>';
+    const dayCells = DAYS.map((d, i) => {
+      const c = (w.temps[eq.id] || {})[d.k] || {};
+      const today = iso(dayDate(current, i)) === iso(new Date());
+      return '<div class="tg-cell' + (today ? ' today-col' : '') + '">' + tempCellHTML(eq, d, c) + '</div>';
+    }).join('');
+    return nameCell + dayCells;
+  }).join('');
+
+  const desktop = '<div class="hidden xl:block">' +
+    '<div class="tgrid" style="grid-template-columns:' + gridCols + '">' + headCells + bodyCells + '</div></div>';
+
+  /* below xl (covers phones and iPad in both orientations) a matrix of
+     8 columns doesn't fit without a horizontal scrollbar, so swap it for
+     one day at a time: tap a day, see every unit stacked full-width. */
+  if (!DAYS.some(d => d.k === mobileDay)) mobileDay = 'mon';
+  const dayTabs = '<div class="grid grid-cols-7 gap-1.5">' + DAYS.map((d, i) => {
+    const dt = dayDate(current, i);
+    const today = iso(dt) === iso(new Date());
+    const on = d.k === mobileDay;
+    return '<button data-act="pickDay" data-day="' + d.k + '" class="rounded-xl py-2.5 text-center transition ' +
+      (on ? 'bg-chill text-onaccent' : today ? 'bg-chillsoft ring-1 ring-inset ring-chill/30 text-fg' : 'bg-white/5 text-fg') + '">' +
+      '<div class="font-cond font-bold text-[13px] leading-none">' + d.s + '</div>' +
+      '<div class="font-mono text-[11px] font-semibold mt-1 opacity-80">' + pad(dt.getDate()) + '/' + pad(dt.getMonth() + 1) + '</div></button>';
+  }).join('') + '</div>';
+
+  const cards = eqs.map(eq => {
+    const c = (w.temps[eq.id] || {})[mobileDay] || {};
+    return '<div class="bg-white/[.03] border border-line rounded-2xl p-4">' +
+      '<div class="flex items-center gap-1.5 mb-2.5">' +
+        '<input class="fld !py-1 !px-1.5 font-medium text-[15px] flex-1 min-w-0" value="' + esc(eq.name) + '" data-eqname="' + eq.id + '" aria-label="Unit name">' +
+      '</div>' +
+      '<div class="flex items-center gap-1.5 px-1.5 mb-2">' +
+        '<span class="w-1.5 h-1.5 rounded-full ' + (eq.mode === 'hot' ? 'bg-hot' : eq.mode === 'frozen' ? 'bg-chill' : 'bg-chill/60') + '"></span>' +
+        '<span class="font-mono text-[11.5px] text-ink3">' + limitText(eq) + '</span></div>' +
+      tempCellHTML(eq, { k: mobileDay, l: DAYS.find(d => d.k === mobileDay).l }, c, true) +
+    '</div>';
+  }).join('');
+
+  const mobile = '<div class="xl:hidden p-5 sm:p-6 space-y-4">' + dayTabs +
+    (eqs.length ? '<div class="space-y-3 pt-1">' + cards + '</div>' : '') + '</div>';
+
+  const footer = '<div class="px-5 sm:px-6 py-4 border-t border-line flex items-center gap-4 flex-wrap bg-paper/40">' +
+    '<label class="eyebrow" for="doneBy">Task done by</label>' +
+    '<input id="doneBy" class="fld fld-boxed max-w-[300px] !py-2" placeholder="Name of the person who checked" value="' + esc(w.doneBy || '') + '">' +
+    '<span class="text-[12px] text-ink3 sm:ml-auto font-mono">' + limitLegend() + '</span></div>';
+
+  return panel('Daily temperature checks',
+    'Check a food item or a container of water in each unit with a calibrated thermometer, then record it here. Anything outside its safe zone turns red and asks for the corrective action you took.',
+    desktop + mobile + footer, addBtn('goSettings', 'Manage units'));
+}
+
+/* one temperature reading, as a single click/tap target: the input
+   fills the whole cell so there's no dead space around a small value,
+   and — only when out of range — the corrective-action note appears
+   below it. Shared by the desktop grid cell and the mobile day card
+   so the two views can never drift out of sync. */
+function tempCellHTML(eq, day, c, big) {
+  const st = tempState(c.v, eq);
+  const need = st === 'bad' && !String(c.action || '').trim();
+  return '<div class="tempwrap' + (big ? ' rounded-xl border border-line' : '') + (need ? ' unresolved' : '') + '" data-state="' + st + '">' +
+      '<input type="number" step="0.1" inputmode="decimal" class="tbox' + (big ? ' big' : '') + '" placeholder="—°C" ' +
+        'data-temp="' + eq.id + '" data-day="' + day.k + '" value="' + esc(c.v == null ? '' : c.v) + '" ' +
+        'aria-label="' + esc(eq.name) + ' ' + day.l + '">' +
+    (st === 'bad'
+      ? '<textarea rows="2" class="note" data-action="' + eq.id + '" data-day="' + day.k + '" placeholder="Corrective action taken…">' + esc(c.action || '') + '</textarea>'
+      : '') + '</div>';
+}
+
+function limitLegend() {
+  return 'Chilled ≤ 5°C · Frozen ≤ −18°C · Hot hold ≥ 60°C';
+}
+
+/* ══════════════════════════════════════════════════════════════
+   8. VIEW — REHEATED FOOD
+   ══════════════════════════════════════════════════════════════ */
+const REHEAT_METHODS = ['Pie warmer', 'Oven', 'Microwave', 'Grill / hot plate', 'Bain-marie', 'Espresso machine steam', 'Other'];
+
+function viewReheat() {
+  const w = week();
+  const rows = w.reheat;
+  if (!rows.length) {
+    return panel('Reheated food checks', 'Reheated food must reach at least 75°C before it goes out.',
+      empty('No reheat checks this week', 'Add a check each time you reheat something for sale. Probe the thickest part and record what the thermometer actually said.', 'addReheat', 'Add a reheat check'));
+  }
+
+  const opts = db.menuItems.map(m => '<option value="' + esc(m) + '">').join('');
+  const body =
+    '<datalist id="menuList">' + opts + '</datalist>' +
+    '<div class="overflow-x-auto"><table class="grid responsive-cards w-full border-collapse"><thead class="border-b border-line"><tr>' +
+      th('Day', 'min-w-[120px] pl-5 sm:pl-6') + th('Menu item', 'min-w-[210px]') + th('How reheated', 'min-w-[170px]') +
+      th('Start time', 'min-w-[110px]') + th('Temp', 'min-w-[104px]') + th('Actions taken if required', 'min-w-[240px]') + th('', 'w-[52px]') +
+    '</tr></thead><tbody>' +
+    rows.map(r => {
+      const bad = r.temp !== '' && r.temp != null && Number(r.temp) < 75;
+      return '<tr class="rec-row align-top">' +
+        '<td data-label="Day" class="pl-5 sm:pl-6 pr-2 py-2">' + daySelect(r.day, 'reheat', r.id) + '</td>' +
+        '<td data-label="Menu item" class="px-2 py-2"><input list="menuList" class="fld" value="' + esc(r.item) + '" data-f="reheat.item" data-id="' + r.id + '" placeholder="Pick or type an item"></td>' +
+        '<td data-label="How reheated" class="px-2 py-2">' + selectOf(REHEAT_METHODS, r.method, 'reheat.method', r.id, 'How?') + '</td>' +
+        '<td data-label="Start time" class="px-2 py-2"><input type="time" class="fld font-mono !text-[13px]" value="' + esc(r.start) + '" data-f="reheat.start" data-id="' + r.id + '"></td>' +
+        '<td data-label="Temp" class="px-2 py-2"><div class="tcell" data-state="' + (r.temp === '' || r.temp == null ? '' : bad ? 'bad' : 'hot') + '">' +
+            '<div class="gauge"></div><input type="number" step="0.1" inputmode="decimal" class="tinput" placeholder="—°C" value="' + esc(r.temp) + '" data-f="reheat.temp" data-id="' + r.id + '"></div>' +
+            (bad ? '<div class="font-mono text-[10.5px] text-alert mt-1 px-1">Below 75°C</div>' : '') + '</td>' +
+        '<td data-label="Actions taken if required" class="px-2 py-2"><textarea rows="1" class="fld !text-[13px] ' + (bad ? 'bg-alertsoft border-alert/30' : '') + '" placeholder="' + (bad ? 'Reheated further? Discarded?' : 'Only if something needed doing') + '" data-f="reheat.actions" data-id="' + r.id + '">' + esc(r.actions) + '</textarea></td>' +
+        '<td data-label="" class="pr-4 py-3 text-right">' + delBtn('delReheat', r.id) + '</td></tr>';
+    }).join('') + '</tbody></table></div>' +
+    '<div class="px-5 sm:px-6 py-4 border-t border-line bg-paper/40">' + addBtn('addReheat', 'Add a reheat check') + '</div>';
+
+  return panel('Reheated food checks', 'Reheated food must reach at least 75°C. Anything below that turns red and needs a note saying what you did about it.', body,
+    '<span class="font-mono text-[12px] text-ink3 self-center">Target ≥ 75°C</span>');
+}
+
+/* ══════════════════════════════════════════════════════════════
+   9. VIEW — INCOMING GOODS
+   ══════════════════════════════════════════════════════════════ */
+function viewGoods() {
+  const w = week();
+  const rows = w.deliveries;
+  if (!rows.length) {
+    return panel('Incoming goods', 'Check at least one chilled and one frozen item on every delivery.',
+      empty('No deliveries logged this week', 'Log every delivery and pick-up. Probe one chilled item and one frozen item, and write down what the thermometer said.', 'addDelivery', 'Log a delivery'));
+  }
+
+  const body = '<div class="overflow-x-auto"><table class="grid responsive-cards w-full border-collapse"><thead class="border-b border-line"><tr>' +
+      th('Day', 'min-w-[120px] pl-5 sm:pl-6') + th('Supplier', 'min-w-[180px]') + th('Type', 'min-w-[130px]') +
+      th('Items delivered', 'min-w-[220px]') + th('Temp', 'min-w-[104px]') + th('Notes', 'min-w-[200px]') + th('', 'w-[52px]') +
+    '</tr></thead><tbody>' +
+    rows.map(r => {
+      const frozen = r.type === 'Frozen';
+      const lim = frozen ? -15 : 5;
+      const has = r.temp !== '' && r.temp != null;
+      const bad = has && Number(r.temp) > lim;
+      return '<tr class="rec-row align-top">' +
+        '<td data-label="Day" class="pl-5 sm:pl-6 pr-2 py-2">' + daySelect(r.day, 'deliveries', r.id) + '</td>' +
+        '<td data-label="Supplier" class="px-2 py-2">' + supplierSelect(r.supplier, r.id) + '</td>' +
+        '<td data-label="Type" class="px-2 py-2">' + selectOf(['Chilled', 'Frozen'], r.type, 'deliveries.type', r.id, 'Type') + '</td>' +
+        '<td data-label="Items delivered" class="px-2 py-2"><input class="fld" value="' + esc(r.items) + '" data-f="deliveries.items" data-id="' + r.id + '" placeholder="e.g. Pies, protein meals, milk"></td>' +
+        '<td data-label="Temp" class="px-2 py-2"><div class="tcell" data-state="' + (!has ? '' : bad ? 'bad' : 'ok') + '">' +
+            '<div class="gauge"></div><input type="number" step="0.1" inputmode="decimal" class="tinput" placeholder="—°C" value="' + esc(r.temp) + '" data-f="deliveries.temp" data-id="' + r.id + '"></div>' +
+            (bad ? '<div class="font-mono text-[10.5px] text-alert mt-1 px-1">Above ' + lim + '°C</div>' : '') + '</td>' +
+        '<td data-label="Notes" class="px-2 py-2"><textarea rows="1" class="fld !text-[13px] ' + (bad ? 'bg-alertsoft border-alert/30' : '') + '" placeholder="' + (bad ? 'Rejected? Accepted with a note?' : 'Anything worth recording') + '" data-f="deliveries.notes" data-id="' + r.id + '">' + esc(r.notes) + '</textarea></td>' +
+        '<td data-label="" class="pr-4 py-3 text-right">' + delBtn('delDelivery', r.id) + '</td></tr>';
+    }).join('') + '</tbody></table></div>' +
+    '<div class="px-5 sm:px-6 py-4 border-t border-line bg-paper/40 flex items-center gap-3 flex-wrap">' + addBtn('addDelivery', 'Log a delivery') +
+      '<span class="text-[12px] text-ink3 font-mono">Chilled ≤ 5°C · Frozen ≤ −15°C on arrival</span></div>';
+
+  return panel('Incoming goods', 'One chilled and one frozen check on every delivery or supplier pick-up. Suppliers come from your directory in Settings.', body,
+    addBtn('goSettings', 'Manage suppliers'));
+}
+
+/* ══════════════════════════════════════════════════════════════
+   10. VIEW — THERMOMETER CALIBRATION  (six-monthly, not weekly)
+   ══════════════════════════════════════════════════════════════ */
+function viewCalib() {
+  const rows = db.calibration;
+  const last = rows.length ? rows.map(r => r.date).filter(Boolean).sort().pop() : null;
+  let due = '';
+  if (last) {
+    const d = new Date(last + 'T00:00:00'); d.setMonth(d.getMonth() + 6);
+    const overdue = d < new Date();
+    due = '<div class="px-5 sm:px-6 py-3.5 border-b border-line text-[13px] flex items-center gap-2.5 ' +
+      (overdue ? 'bg-alertsoft text-alert' : 'bg-chillsoft text-chill') + '">' +
+      '<span class="font-medium">' + (overdue ? 'Overdue.' : 'Next check due') + '</span>' +
+      '<span class="font-mono">' + nzDate(d) + '</span>' +
+      (overdue ? '<span class="text-alert/80">Calibrate now — every temperature you record depends on it.</span>' : '') + '</div>';
+  }
+
+  if (!rows.length) {
+    return panel('Thermometer calibration', 'Check every thermometer at least once every six months.',
+      empty('No calibration checks recorded', 'Ice point should read within 1°C of 0. Boil point within 1°C of 100. If a thermometer fails both, replace it and note that here.', 'addCalib', 'Add a calibration check'));
+  }
+
+  const body = due + '<div class="overflow-x-auto"><table class="grid responsive-cards w-full border-collapse"><thead class="border-b border-line"><tr>' +
+      th('Date', 'min-w-[140px] pl-5 sm:pl-6') + th('Thermometer', 'min-w-[190px]') + th('Type', 'min-w-[130px]') +
+      th('Ice point (0°C ±1)', 'min-w-[130px]') + th('Boil point (100°C ±1)', 'min-w-[140px]') + th('Actions taken if required', 'min-w-[220px]') + th('', 'w-[52px]') +
+    '</tr></thead><tbody>' +
+    rows.map(r => {
+      const iceBad  = r.ice  !== '' && r.ice  != null && Math.abs(Number(r.ice) - 0) > 1;
+      const boilBad = r.boil !== '' && r.boil != null && Math.abs(Number(r.boil) - 100) > 1;
+      const fail = iceBad || boilBad;
+      return '<tr class="rec-row align-top">' +
+        '<td data-label="Date" class="pl-5 sm:pl-6 pr-2 py-2"><input type="date" class="fld font-mono !text-[13px]" value="' + esc(r.date) + '" data-f="calibration.date" data-id="' + r.id + '"></td>' +
+        '<td data-label="Thermometer" class="px-2 py-2"><input class="fld" value="' + esc(r.name) + '" data-f="calibration.name" data-id="' + r.id + '" placeholder="e.g. Kitchen probe #1"></td>' +
+        '<td data-label="Type" class="px-2 py-2">' + selectOf(['Probe', 'Infrared (IR)'], r.type, 'calibration.type', r.id, 'Type') + '</td>' +
+        '<td data-label="Ice point (0°C ±1)" class="px-2 py-2"><div class="tcell" data-state="' + (r.ice === '' || r.ice == null ? '' : iceBad ? 'bad' : 'ok') + '">' +
+          '<div class="gauge"></div><input type="number" step="0.1" inputmode="decimal" class="tinput" placeholder="—°C" value="' + esc(r.ice) + '" data-f="calibration.ice" data-id="' + r.id + '"></div></td>' +
+        '<td data-label="Boil point (100°C ±1)" class="px-2 py-2"><div class="tcell" data-state="' + (r.boil === '' || r.boil == null ? '' : boilBad ? 'bad' : 'hot') + '">' +
+          '<div class="gauge"></div><input type="number" step="0.1" inputmode="decimal" class="tinput" placeholder="—°C" value="' + esc(r.boil) + '" data-f="calibration.boil" data-id="' + r.id + '"></div></td>' +
+        '<td data-label="Actions taken if required" class="px-2 py-2"><textarea rows="1" class="fld !text-[13px] ' + (fail ? 'bg-alertsoft border-alert/30' : '') + '" placeholder="' + (fail ? 'Adjusted, replaced, taken out of use?' : 'Only if something needed doing') + '" data-f="calibration.actions" data-id="' + r.id + '">' + esc(r.actions) + '</textarea></td>' +
+        '<td data-label="" class="pr-4 py-3 text-right">' + delBtn('delCalib', r.id) + '</td></tr>';
+    }).join('') + '</tbody></table></div>' +
+    '<div class="px-5 sm:px-6 py-4 border-t border-line bg-paper/40">' + addBtn('addCalib', 'Add a calibration check') + '</div>';
+
+  return panel('Thermometer calibration', 'Kept as a running record rather than a weekly one, because this is a six-monthly check.', body);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   11. VIEW — STAFF ILLNESSES  (ongoing, not weekly)
+   ══════════════════════════════════════════════════════════════ */
+function viewIllness() {
+  const rows = db.illness;
+  if (!rows.length) {
+    return panel('Staff illnesses', 'Anyone with vomiting or diarrhoea must stay away from food for 48 hours after their last symptom.',
+      empty('No illnesses recorded', 'Record anyone who reports vomiting or diarrhoea, what you did about it, and the date they came back to work.', 'addIllness', 'Record an illness'));
+  }
+
+  const open = rows.filter(r => !r.returned).length;
+  const body = (open ? '<div class="px-5 sm:px-6 py-3.5 border-b border-line bg-hotsoft text-hot text-[13px]"><strong>' + open + (open === 1 ? ' person has' : ' people have') + ' no return-to-work date yet.</strong> They stay off food handling until 48 hours after the last symptom.</div>' : '') +
+    '<div class="overflow-x-auto"><table class="grid responsive-cards w-full border-collapse"><thead class="border-b border-line"><tr>' +
+      th('Name', 'min-w-[170px] pl-5 sm:pl-6') + th('Symptoms', 'min-w-[190px]') + th('Actions taken', 'min-w-[240px]') +
+      th('Final symptom', 'min-w-[140px]') + th('Returned to work', 'min-w-[150px]') + th('', 'w-[52px]') +
+    '</tr></thead><tbody>' +
+    rows.map(r => {
+      let tooSoon = false;
+      if (r.final && r.returned) {
+        const f = new Date(r.final + 'T00:00:00'), b = new Date(r.returned + 'T00:00:00');
+        tooSoon = (b - f) / 36e5 < 48;
+      }
+      return '<tr class="rec-row align-top">' +
+        '<td data-label="Name" class="pl-5 sm:pl-6 pr-2 py-2"><input class="fld font-medium" value="' + esc(r.name) + '" data-f="illness.name" data-id="' + r.id + '" placeholder="Staff member"></td>' +
+        '<td data-label="Symptoms" class="px-2 py-2">' + selectOf(['Vomiting', 'Diarrhoea', 'Vomiting and diarrhoea', 'Other'], r.symptoms, 'illness.symptoms', r.id, 'Symptoms') + '</td>' +
+        '<td data-label="Actions taken" class="px-2 py-2"><textarea rows="1" class="fld !text-[13px]" placeholder="Sent home, excluded from food handling…" data-f="illness.actions" data-id="' + r.id + '">' + esc(r.actions) + '</textarea></td>' +
+        '<td data-label="Final symptom" class="px-2 py-2"><input type="date" class="fld font-mono !text-[13px]" value="' + esc(r.final) + '" data-f="illness.final" data-id="' + r.id + '"></td>' +
+        '<td data-label="Returned to work" class="px-2 py-2"><input type="date" class="fld font-mono !text-[13px] ' + (tooSoon ? 'bg-alertsoft border-alert/30 text-alert' : '') + '" value="' + esc(r.returned) + '" data-f="illness.returned" data-id="' + r.id + '">' +
+          (tooSoon ? '<div class="font-mono text-[10.5px] text-alert mt-1 px-1">Under 48 hours</div>' : '') + '</td>' +
+        '<td data-label="" class="pr-4 py-3 text-right">' + delBtn('delIllness', r.id) + '</td></tr>';
+    }).join('') + '</tbody></table></div>' +
+    '<div class="px-5 sm:px-6 py-4 border-t border-line bg-paper/40">' + addBtn('addIllness', 'Record an illness') + '</div>';
+
+  return panel('Staff illnesses', 'A running record, not a weekly one — an illness usually crosses weeks. The return date is flagged if it falls inside 48 hours of the last symptom.', body);
+}
+
+/* --- small field builders shared by the record tables --- */
+function th(label, cls) {
+  return '<th class="' + (cls || '') + ' px-2 py-3 text-left"><span class="eyebrow">' + label + '</span></th>';
+}
+function selectOf(list, val, field, id, ph) {
+  return '<select class="fld" data-f="' + field + '" data-id="' + id + '">' +
+    '<option value="">' + esc(ph) + '</option>' +
+    list.map(o => '<option' + (o === val ? ' selected' : '') + '>' + esc(o) + '</option>').join('') + '</select>';
+}
+function daySelect(val, coll, id) {
+  return '<select class="fld font-mono !text-[13px]" data-f="' + coll + '.day" data-id="' + id + '">' +
+    DAYS.map((d, i) => '<option value="' + d.k + '"' + (d.k === val ? ' selected' : '') + '>' + d.s + ' ' + pad(dayDate(current, i).getDate()) + '/' + pad(dayDate(current, i).getMonth() + 1) + '</option>').join('') + '</select>';
+}
+function supplierSelect(val, id) {
+  if (!db.suppliers.length) {
+    return '<input class="fld" value="' + esc(val) + '" data-f="deliveries.supplier" data-id="' + id + '" placeholder="Type a supplier">';
+  }
+  const known = db.suppliers.some(s => s.name === val);
+  return '<select class="fld" data-f="deliveries.supplier" data-id="' + id + '">' +
+    '<option value="">Pick a supplier</option>' +
+    db.suppliers.map(s => '<option' + (s.name === val ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('') +
+    (val && !known ? '<option selected>' + esc(val) + '</option>' : '') + '</select>';
+}
+
+/* ══════════════════════════════════════════════════════════════
+   12. VIEW — SETTINGS & DIRECTORY
+   ══════════════════════════════════════════════════════════════ */
+const SUPPLY_CATS = ['Chilled', 'Frozen', 'Ambient / dry', 'Pies & bakery', 'Dairy', 'Coffee', 'Drinks', 'Ice cream', 'Packaging'];
+
+function viewSettings() {
+  const b = db.business;
+
+  /* --- business --- */
+  const biz = panel('Business details', 'These print at the top of every PDF you download, so a verifier can see whose records they are.',
+    '<div class="p-5 sm:p-6 grid sm:grid-cols-2 gap-4">' +
+      field('Legal name', 'business.name', b.name, 'Registered company name') +
+      field('Trading as', 'business.trading', b.trading, 'Name above the door') +
+      field('Address', 'business.address', b.address, 'Street, suburb, postcode') +
+      field('Programme', 'business.plan', b.plan, 'e.g. National Programme 3') +
+    '</div>');
+
+  /* --- equipment --- */
+  const eqBody = db.equipment.length
+    ? '<div class="divide-y divide-line">' + db.equipment.map((eq, i) =>
+        '<div class="rec-row px-5 sm:px-6 py-3.5 grid grid-cols-12 gap-3 items-center">' +
+          '<div class="col-span-12 sm:col-span-5"><input class="fld font-medium" value="' + esc(eq.name) + '" data-f="equipment.name" data-id="' + eq.id + '" placeholder="Unit name"></div>' +
+          '<div class="col-span-6 sm:col-span-3">' +
+            '<select class="fld" data-f="equipment.mode" data-id="' + eq.id + '">' +
+              Object.keys(MODES).map(m => '<option value="' + m + '"' + (eq.mode === m ? ' selected' : '') + '>' + MODES[m].label + '</option>').join('') +
+            '</select></div>' +
+          '<div class="col-span-4 sm:col-span-2 flex items-center gap-1">' +
+            '<span class="font-mono text-[13px] text-ink3">' + MODES[eq.mode || 'chilled'].rule + '</span>' +
+            '<input type="number" step="1" class="fld font-mono !text-[13px]" value="' + esc(limitOf(eq)) + '" data-f="equipment.limit" data-id="' + eq.id + '" aria-label="Limit">' +
+            '<span class="font-mono text-[13px] text-ink3">°C</span></div>' +
+          '<div class="col-span-2 sm:col-span-2 flex justify-end items-center gap-1">' +
+            moveBtns('equipment', eq.id, i, db.equipment.length) + delBtn('delEquip', eq.id) + '</div>' +
+          (eq.note ? '<div class="col-span-12 -mt-1 px-1.5 text-[12px] text-ink3">' + esc(eq.note) + '</div>' : '') +
+        '</div>').join('') + '</div>'
+    : empty('No units yet', 'Add every fridge, freezer, cabinet and warmer you check. Each one becomes a row in the weekly grid.', 'addEquip', 'Add a unit');
+
+  const eq = panel('Equipment', 'Each unit here becomes a row in the weekly temperature grid. The mode sets what counts as safe, so a pie warmer is judged on 60°C and up rather than 5°C and down.',
+    eqBody + '<div class="px-5 sm:px-6 py-4 border-t border-line bg-paper/40">' + addBtn('addEquip', 'Add a unit') + '</div>');
+
+  /* --- suppliers --- */
+  const supBody = db.suppliers.length
+    ? '<div class="divide-y divide-line">' + db.suppliers.map(s =>
+        '<div class="rec-row px-5 sm:px-6 py-4">' +
+          '<div class="grid sm:grid-cols-12 gap-3">' +
+            '<div class="sm:col-span-4"><input class="fld font-medium" value="' + esc(s.name) + '" data-f="suppliers.name" data-id="' + s.id + '" placeholder="Supplier name"></div>' +
+            '<div class="sm:col-span-4"><input class="fld" value="' + esc(s.address) + '" data-f="suppliers.address" data-id="' + s.id + '" placeholder="Address"></div>' +
+            '<div class="sm:col-span-3"><input class="fld" value="' + esc(s.contact) + '" data-f="suppliers.contact" data-id="' + s.id + '" placeholder="Phone or email"></div>' +
+            '<div class="sm:col-span-1 flex justify-end">' + delBtn('delSupplier', s.id) + '</div>' +
+          '</div>' +
+          '<div class="mt-2.5 flex flex-wrap gap-1.5 px-1.5">' +
+            SUPPLY_CATS.map(c => {
+              const on = (s.cats || []).includes(c);
+              return '<button data-act="toggleCat" data-id="' + s.id + '" data-cat="' + esc(c) + '" class="text-[11.5px] font-medium rounded-full px-2.5 py-1 border transition ' +
+                (on ? 'bg-chill text-onaccent border-chill font-semibold' : 'border-line text-ink2 hover:border-ink2') + '">' + esc(c) + '</button>';
+            }).join('') + '</div>' +
+        '</div>').join('') + '</div>'
+    : empty('No suppliers yet', 'Add who you buy from. They fill the supplier dropdown on the incoming goods sheet.', 'addSupplier', 'Add a supplier');
+
+  const sup = panel('Suppliers', 'Your directory of who delivers what.',
+    supBody + '<div class="px-5 sm:px-6 py-4 border-t border-line bg-paper/40">' + addBtn('addSupplier', 'Add a supplier') + '</div>');
+
+  /* --- menu items --- */
+  const menu = panel('Reheated menu items', 'These fill the menu dropdown on the reheat sheet. You can still type anything not on the list.',
+    '<div class="p-5 sm:p-6 flex flex-wrap gap-2">' +
+      db.menuItems.map((m, i) =>
+        '<span class="inline-flex items-center gap-1.5 bg-white/5 border border-line rounded-full pl-3 pr-1.5 py-1.5 text-[13px]">' + esc(m) +
+        '<button data-act="delMenu" data-i="' + i + '" class="p-1 rounded-full text-ink3 hover:text-alert hover:bg-alertsoft" aria-label="Remove ' + esc(m) + '">' +
+        '<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button></span>').join('') +
+      '<div class="flex items-center gap-2"><input id="newMenu" class="fld fld-boxed !py-1.5 w-[220px]" placeholder="Add a menu item">' +
+      '<button data-act="addMenu" class="text-[13px] font-medium text-chill hover:underline">Add</button></div></div>');
+
+  /* --- weeks --- */
+  const wks = knownWeeks();
+  const weeksBody = wks.length
+    ? '<div class="divide-y divide-line max-h-[280px] overflow-y-auto">' + wks.map(k => {
+        const w = db.weeks[k];
+        let n = 0; Object.values(w.temps || {}).forEach(d => Object.values(d).forEach(c => { if (c && c.v !== '' && c.v != null) n++; }));
+        return '<div class="rec-row px-5 sm:px-6 py-3 flex items-center gap-4">' +
+          '<button data-act="openWeek" data-week="' + k + '" class="text-left flex-1 min-w-0">' +
+            '<div class="font-mono text-[13px] ' + (k === current ? 'text-chill font-semibold' : '') + '">' + weekLabel(k) + '</div>' +
+            '<div class="text-[11.5px] text-ink3 mt-0.5">' + n + ' temperature readings · ' + (w.reheat || []).length + ' reheat · ' + (w.deliveries || []).length + ' deliveries</div>' +
+          '</button>' +
+          (k === current ? '<span class="eyebrow !text-chill">Open</span>' : '') + delBtn('delWeek', k) + '</div>';
+      }).join('') + '</div>'
+    : empty('No weeks saved yet', 'A week is created the moment you type your first temperature into it.');
+
+  const weeks = panel('Saved weeks', 'Every week is stored separately. Deleting one removes that week\'s temperatures, reheat checks and deliveries.', weeksBody);
+
+  /* --- backup --- */
+  const backup = panel('Backup & restore',
+    'These records live in this browser only. Clearing your browsing data deletes them, so download a backup regularly and keep it somewhere safe.',
+    '<div class="p-5 sm:p-6 flex flex-wrap gap-3">' +
+      '<button data-act="exportJSON" class="inline-flex items-center gap-2 bg-chill text-onaccent rounded-xl px-4 py-2.5 text-[13px] font-semibold hover:brightness-110 shadow-glow">Download backup file</button>' +
+      '<button data-act="importJSON" class="inline-flex items-center gap-2 border border-line rounded-xl px-4 py-2.5 text-[13px] font-medium hover:bg-white/5">Restore from a backup</button>' +
+      '<button data-act="exportYear" class="inline-flex items-center gap-2 border border-line rounded-xl px-4 py-2.5 text-[13px] font-medium hover:bg-white/5">Download all weeks as PDF</button>' +
+      '<button data-act="wipe" class="ml-auto text-[13px] font-medium text-alert hover:underline">Erase everything</button>' +
+      '<input type="file" id="importFile" accept="application/json,.json" class="hidden">' +
+    '</div>');
+
+  return biz + eq + sup + menu + weeks + backup;
+}
+
+function field(label, f, val, ph) {
+  return '<label class="block"><span class="eyebrow">' + label + '</span>' +
+    '<input class="fld fld-boxed mt-1.5" value="' + esc(val) + '" data-f="' + f + '" placeholder="' + esc(ph) + '"></label>';
+}
+function moveBtns(coll, id, i, n) {
+  const btn = (dir, dis, path) => '<button data-act="move" data-coll="' + coll + '" data-id="' + id + '" data-dir="' + dir + '" ' +
+    (dis ? 'disabled class="p-1.5 text-line"' : 'class="p-1.5 rounded-lg text-ink3 hover:text-fg hover:bg-white/5"') + ' aria-label="Move ' + (dir < 0 ? 'up' : 'down') + '">' +
+    '<svg width="12" height="12" viewBox="0 0 12 12" fill="none">' + path + '</svg></button>';
+  return '<span class="row-tools flex">' +
+    btn(-1, i === 0, '<path d="M2.5 7.5L6 4l3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>') +
+    btn(1, i === n - 1, '<path d="M2.5 4.5L6 8l3.5-3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>') + '</span>';
+}
+
+/* ══════════════════════════════════════════════════════════════
+   13. RENDER
+   ══════════════════════════════════════════════════════════════ */
+const RENDERERS = { temps: viewTemps, reheat: viewReheat, goods: viewGoods, calib: viewCalib, illness: viewIllness, settings: viewSettings };
+
+function render() {
+  const meta = VIEWS.find(v => v.id === view) || VIEWS[0];
+  $('#viewTitle').textContent = meta.label;
+  $('#crumb').textContent = meta.weekly ? meta.crumb + ' · ' + weekLabel(current) : meta.crumb;
+  $('#weekNav').classList.toggle('sm:flex', meta.weekly);
+  $('#weekNavMobile').classList.toggle('hidden', !meta.weekly);
+  $('#weekPick').value = current;
+  $('#weekPickMobile').value = current;
+
+  const active = document.activeElement;
+  const focusKey = active && active.dataset && (active.dataset.f || active.dataset.temp || active.dataset.action)
+    ? [active.dataset.f || '', active.dataset.temp || '', active.dataset.action || '', active.dataset.id || '', active.dataset.day || ''].join('|')
+    : null;
+
+  $('#app').innerHTML = '<div class="view">' + RENDERERS[view]() + '</div>';
+  stamp();
+
+  if (focusKey) {
+    const back = $$('#app [data-f], #app [data-temp], #app [data-action]').find(el =>
+      el.offsetParent !== null &&
+      [el.dataset.f || '', el.dataset.temp || '', el.dataset.action || '', el.dataset.id || '', el.dataset.day || ''].join('|') === focusKey);
+    if (back) { back.focus(); if (back.setSelectionRange && back.type !== 'number' && back.type !== 'date' && back.type !== 'time') { const n = back.value.length; try { back.setSelectionRange(n, n); } catch (e) {} } }
+  }
+}
+function paintRibbon() { const el = $('#ribbon'); if (el) el.innerHTML = tempsRibbon(); }
+
+/* ══════════════════════════════════════════════════════════════
+   14. EDITING  —  every field writes straight through to storage
+   ══════════════════════════════════════════════════════════════ */
+function collOf(name) {
+  if (name === 'reheat' || name === 'deliveries') return week()[name];
+  if (name === 'calibration') return db.calibration;
+  if (name === 'illness')     return db.illness;
+  if (name === 'equipment')   return db.equipment;
+  if (name === 'suppliers')   return db.suppliers;
+  return null;
+}
+const eqById = id => db.equipment.find(e => e.id === id);
+
+function cellOf(eqId, day) {
+  const w = week();
+  if (!w.temps[eqId]) w.temps[eqId] = {};
+  if (!w.temps[eqId][day]) w.temps[eqId][day] = { v: '', action: '' };
+  return w.temps[eqId][day];
+}
+
+$('#app').addEventListener('input', e => {
+  const el = e.target;
+
+  /* temperature grid */
+  if (el.dataset.temp) {
+    const eq = eqById(el.dataset.temp);
+    const cell = cellOf(el.dataset.temp, el.dataset.day);
+    cell.v = el.value;
+    syncTempCell(el, eq, cell);
+    paintRibbon(); save(true);
+    return;
+  }
+  if (el.dataset.action) {
+    const cell = cellOf(el.dataset.action, el.dataset.day);
+    cell.action = el.value;
+    const tc = el.parentElement.querySelector('.tcell');
+    if (tc) tc.classList.toggle('unresolved', !el.value.trim());
+    paintRibbon(); save(true);
+    return;
+  }
+  if (el.id === 'doneBy') { week().doneBy = el.value; save(true); return; }
+
+  /* everything else: data-f="collection.field" or "business.field" */
+  const f = el.dataset.f;
+  if (!f) return;
+  const [coll, key] = f.split('.');
+
+  if (coll === 'business') {
+    db.business[key] = el.value;
+    if (key === 'trading' || key === 'name' || key === 'plan') paintNav();
+    save(true); return;
+  }
+  const list = collOf(coll);
+  if (!list) return;
+  const rec = list.find(r => r.id === el.dataset.id);
+  if (!rec) return;
+  rec[key] = el.value;
+
+  /* live restyle of numeric fields without a full re-render */
+  const tc = el.closest('.tcell');
+  if (tc) {
+    if (coll === 'reheat')      tc.dataset.state = el.value === '' ? '' : (Number(el.value) < 75 ? 'bad' : 'hot');
+    if (coll === 'deliveries')  tc.dataset.state = el.value === '' ? '' : (Number(el.value) > (rec.type === 'Frozen' ? -15 : 5) ? 'bad' : 'ok');
+    if (coll === 'calibration' && key === 'ice')  tc.dataset.state = el.value === '' ? '' : (Math.abs(Number(el.value)) > 1 ? 'bad' : 'ok');
+    if (coll === 'calibration' && key === 'boil') tc.dataset.state = el.value === '' ? '' : (Math.abs(Number(el.value) - 100) > 1 ? 'bad' : 'hot');
+  }
+  if (coll === 'equipment' && (key === 'name' || key === 'limit')) paintRibbon();
+  save(true);
+});
+
+/* selects and dates commit on change → safe to redraw */
+$('#app').addEventListener('change', e => {
+  const el = e.target;
+  if (el.dataset.f && (el.tagName === 'SELECT' || el.type === 'date')) render();
+});
+
+/* the grid's own name field lives outside data-f */
+$('#app').addEventListener('input', e => {
+  if (!e.target.dataset.eqname) return;
+  const eq = eqById(e.target.dataset.eqname);
+  if (eq) { eq.name = e.target.value; save(true); }
+});
+
+function syncTempCell(input, eq, cell) {
+  const wrap = input.closest('.tempwrap');
+  const state = tempState(cell.v, eq);
+  wrap.dataset.state = state;
+  let ta = wrap.querySelector('textarea[data-action]');
+  if (state === 'bad' && !ta) {
+    ta = document.createElement('textarea');
+    ta.rows = 2;
+    ta.className = 'note';
+    ta.dataset.action = eq.id; ta.dataset.day = input.dataset.day;
+    ta.placeholder = 'Corrective action taken…';
+    ta.value = cell.action || '';
+    wrap.appendChild(ta);
+  } else if (state !== 'bad' && ta) {
+    ta.remove(); cell.action = '';
+  }
+  wrap.classList.toggle('unresolved', state === 'bad' && !String(cell.action || '').trim());
+}
+
+/* ══════════════════════════════════════════════════════════════
+   15. ACTIONS
+   ══════════════════════════════════════════════════════════════ */
+const ACTIONS = {
+  goSettings: () => go('settings'),
+  pickDay: el => { mobileDay = el.dataset.day; render(); },
+  toggleTheme: () => applyTheme(!document.documentElement.classList.contains('dark')),
+
+  weekPrev: () => { const d = mondayOf(current); d.setDate(d.getDate() - 7); current = iso(d); mobileDay = todayKey(); render(); },
+  weekNext: () => { const d = mondayOf(current); d.setDate(d.getDate() + 7); current = iso(d); mobileDay = todayKey(); render(); },
+  weekToday: () => { current = weekKey(new Date()); mobileDay = todayKey(); render(); toast('Back to this week'); },
+  openWeek: el => { current = el.dataset.week; mobileDay = todayKey(); go('temps'); },
+  delWeek: el => {
+    const k = el.dataset.week;
+    confirmAction({ title: 'Delete this week?', body: weekLabel(k) + ' — temperatures, reheat checks and deliveries all go. Download a PDF first if you need it.' },
+      () => { delete db.weeks[k]; if (current === k) current = weekKey(new Date()); save(); render(); toast('Week deleted'); });
+  },
+
+  addEquip: () => { db.equipment.push({ id: uid(), name: '', mode: 'chilled', limit: 5, note: '' }); save(); render(); toast('Unit added'); },
+  delEquip: el => {
+    const eq = eqById(el.dataset.id);
+    confirmAction({ title: 'Delete ' + (eq.name || 'this unit') + '?', body: 'Its column comes out of every week, and the temperatures recorded against it are removed too.' },
+      () => {
+        db.equipment = db.equipment.filter(e => e.id !== el.dataset.id);
+        Object.values(db.weeks).forEach(w => { if (w.temps) delete w.temps[el.dataset.id]; });
+        save(); render(); toast('Unit deleted');
+      });
+  },
+
+  addSupplier: () => { db.suppliers.push({ id: uid(), name: '', address: '', contact: '', cats: [] }); save(); render(); toast('Supplier added'); },
+  delSupplier: el => {
+    const s = db.suppliers.find(x => x.id === el.dataset.id);
+    confirmAction({ title: 'Delete ' + (s.name || 'this supplier') + '?', body: 'Deliveries already logged against them keep the name — only the directory entry goes.' },
+      () => { db.suppliers = db.suppliers.filter(x => x.id !== el.dataset.id); save(); render(); toast('Supplier deleted'); });
+  },
+  toggleCat: el => {
+    const s = db.suppliers.find(x => x.id === el.dataset.id);
+    s.cats = s.cats || [];
+    const c = el.dataset.cat;
+    s.cats = s.cats.includes(c) ? s.cats.filter(x => x !== c) : s.cats.concat(c);
+    save(); render();
+  },
+
+  addMenu: () => {
+    const inp = $('#newMenu'); const v = inp.value.trim();
+    if (!v) { inp.focus(); return; }
+    if (db.menuItems.includes(v)) { toast('Already on the list', 'warn'); return; }
+    db.menuItems.push(v); save(); render(); toast('Menu item added');
+  },
+  delMenu: el => { db.menuItems.splice(Number(el.dataset.i), 1); save(); render(); },
+
+  addReheat: () => { week().reheat.push({ id: uid(), day: todayKey(), item: '', method: '', start: '', temp: '', actions: '' }); save(); render(); },
+  delReheat: el => confirmAction({ title: 'Delete this reheat check?' }, () => {
+    const w = week(); w.reheat = w.reheat.filter(r => r.id !== el.dataset.id); save(); render(); toast('Check deleted'); }),
+
+  addDelivery: () => { week().deliveries.push({ id: uid(), day: todayKey(), supplier: '', type: 'Chilled', items: '', temp: '', notes: '' }); save(); render(); },
+  delDelivery: el => confirmAction({ title: 'Delete this delivery?' }, () => {
+    const w = week(); w.deliveries = w.deliveries.filter(r => r.id !== el.dataset.id); save(); render(); toast('Delivery deleted'); }),
+
+  addCalib: () => { db.calibration.unshift({ id: uid(), date: iso(new Date()), name: '', type: 'Probe', ice: '', boil: '', actions: '' }); save(); render(); },
+  delCalib: el => confirmAction({ title: 'Delete this calibration check?' }, () => {
+    db.calibration = db.calibration.filter(r => r.id !== el.dataset.id); save(); render(); toast('Check deleted'); }),
+
+  addIllness: () => { db.illness.unshift({ id: uid(), name: '', symptoms: '', actions: '', final: '', returned: '' }); save(); render(); },
+  delIllness: el => confirmAction({ title: 'Delete this illness record?', body: 'Illness records support your staff exclusion decisions. Keep them unless this one was entered by mistake.' },
+    () => { db.illness = db.illness.filter(r => r.id !== el.dataset.id); save(); render(); toast('Record deleted'); }),
+
+  move: el => {
+    const list = collOf(el.dataset.coll);
+    const i = list.findIndex(r => r.id === el.dataset.id);
+    const j = i + Number(el.dataset.dir);
+    if (j < 0 || j >= list.length) return;
+    [list[i], list[j]] = [list[j], list[i]];
+    save(); render();
+  },
+
+  exportView: () => exportSection(view),
+  exportYear: () => exportEverything(),
+  exportJSON: () => {
+    const blob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'NP3-backup-' + iso(new Date()) + '.json';
+    a.click(); URL.revokeObjectURL(a.href);
+    toast('Backup downloaded');
+  },
+  importJSON: () => $('#importFile').click(),
+  wipe: () => confirmAction({ title: 'Erase every record?', body: 'All weeks, suppliers, equipment and illness records are removed from this browser. Download a backup first if you might want any of it back.', yes: 'Erase everything' },
+    () => { db = seed(); current = weekKey(new Date()); save(); paintNav(); render(); toast('Everything erased'); })
+};
+
+function todayKey() {
+  const t = new Date();
+  return (weekKey(t) === current) ? DAYS[(t.getDay() + 6) % 7].k : 'mon';
+}
+
+document.addEventListener('click', e => {
+  const btn = e.target.closest('[data-act]');
+  if (!btn) return;
+  const fn = ACTIONS[btn.dataset.act];
+  if (fn) { e.preventDefault(); fn(btn); }
+});
+
+$('#weekPick').addEventListener('change', e => { if (e.target.value) { current = weekKey(e.target.value); render(); } });
+$('#weekPickMobile').addEventListener('change', e => { if (e.target.value) { current = weekKey(e.target.value); render(); } });
+
+document.addEventListener('change', e => {
+  if (e.target.id !== 'importFile') return;
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    let data;
+    try { data = JSON.parse(reader.result); } catch (err) { toast("That file isn't a readable backup.", 'bad'); return; }
+    if (!data || typeof data !== 'object' || (!data.weeks && !data.equipment)) { toast("That file isn't an NP3 backup.", 'bad'); return; }
+    confirmAction({ kind: 'Restore', title: 'Replace what\'s here with this backup?', body: 'Everything currently in this browser is overwritten by the contents of ' + file.name + '.', yes: 'Restore backup', tone: 'ink' },
+      () => {
+        db = Object.assign(seed(), data);
+        current = weekKey(new Date());
+        save(); paintNav(); render(); toast('Backup restored');
+      });
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+/* ══════════════════════════════════════════════════════════════
+   0. THEME  —  light by default; .dark on <html> switches every
+   colour token in the file at once (see the :root / html.dark
+   variable blocks in <style>). The pre-paint script in <head>
+   already applied any stored choice before this ever runs.
+   ══════════════════════════════════════════════════════════════ */
+const SUN_ICON  = '<path d="M10 2.5v2M10 15.5v2M17.5 10h-2M4.5 10h-2M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4M15.3 15.3l-1.4-1.4M6.1 6.1L4.7 4.7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="10" cy="10" r="3.6" stroke="currentColor" stroke-width="1.6"/>';
+const MOON_ICON = '<path d="M16.5 12.4A7 7 0 018 4c0-.6.06-1.1.16-1.6A7.5 7.5 0 1017.9 12a7 7 0 01-1.4.4z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>';
+
+function applyTheme(dark) {
+  document.documentElement.classList.toggle('dark', dark);
+  try { localStorage.setItem('np3.theme', dark ? 'dark' : 'light'); } catch (e) {}
+  $('#themeIcon').innerHTML = dark ? SUN_ICON : MOON_ICON;
+  $('#themeToggle').setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
+}
+function docHead(title, sub) {
+  const b = db.business;
+  return '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:20px">' +
+      '<div><h1>' + esc(title) + '</h1>' +
+        '<div class="meta" style="margin-top:3px">' + esc(b.trading || b.name) +
+        (b.trading && b.name && b.trading !== b.name ? ' &nbsp;·&nbsp; ' + esc(b.name) : '') + '</div>' +
+        '<div class="meta">' + esc(b.address) + '</div></div>' +
+      '<div class="meta" style="text-align:right;white-space:nowrap">' +
+        '<div><strong>' + esc(b.plan || 'National Programme 3') + '</strong></div>' +
+        (sub ? '<div>' + esc(sub) + '</div>' : '') +
+        '<div>Printed ' + nzDate(new Date()) + '</div></div></div>' +
+    '<div class="rule"></div><div class="hairline"></div>';
+}
+function docFoot(signedBy) {
+  return '<div class="foot">' +
+    (signedBy ? 'Checks recorded by <strong>' + esc(signedBy) + '</strong>. ' : '') +
+    'Record generated from NP3 Records for ' + esc(db.business.trading || db.business.name) + '. ' +
+    'Retain for at least 4 years.</div>';
+}
+const cellTxt = v => (v === '' || v === null || v === undefined) ? '—' : esc(v);
+
+function sectionDoc(id, wk) {
+  const w = wk ? (db.weeks[wk] || { temps: {}, reheat: [], deliveries: [], doneBy: '' }) : null;
+  const sub = wk ? 'Week commencing ' + nzDate(dayDate(wk, 0)) : '';
+
+  if (id === 'temps') {
+    const head = '<tr><th>Unit</th><th>Safe zone</th>' + DAYS.map((d, i) =>
+      '<th>' + d.s + '<br><span style="font-weight:400;text-transform:none;letter-spacing:0">' + pad(dayDate(wk, i).getDate()) + '/' + pad(dayDate(wk, i).getMonth() + 1) + '</span></th>').join('') + '</tr>';
+    const body = db.equipment.map(eq => '<tr><td><strong>' + esc(eq.name) + '</strong></td><td class="num">' + limitText(eq) + '</td>' +
+      DAYS.map(d => {
+        const c = ((w.temps || {})[eq.id] || {})[d.k] || {};
+        const st = tempState(c.v, eq);
+        const val = (c.v === '' || c.v == null) ? '—' : c.v + '°C';
+        return '<td class="num' + (st === 'bad' ? ' flag' : '') + '">' + esc(val) +
+          (st === 'bad' ? '<div style="font-family:inherit;text-align:left;font-size:7pt;font-weight:400;margin-top:2px">' + (c.action ? esc(c.action) : 'NO ACTION RECORDED') + '</div>' : '') + '</td>';
+      }).join('') + '</tr>').join('');
+    return { title: 'Daily fridge temperature monitoring', sub, wide: true,
+      html: '<div class="sect">Temperature checks</div><table><thead>' + head + '</thead><tbody>' + body + '</tbody></table>' +
+        '<div class="sign">Task done by: <strong>' + (w.doneBy ? esc(w.doneBy) : '________________________') + '</strong>' +
+        '<span style="margin-left:28px">Signature: ________________________</span></div>', signedBy: w.doneBy };
+  }
+
+  if (id === 'reheat') {
+    const rows = (w.reheat || []);
+    return { title: 'Reheated food temperature monitoring', sub, wide: true,
+      html: '<div class="sect">Reheat checks · target 75°C or above</div>' +
+        (rows.length ? '<table><thead><tr><th>Day</th><th>Menu item</th><th>How reheated</th><th>Start time</th><th>Temperature</th><th>Actions taken if required</th></tr></thead><tbody>' +
+          rows.map(r => '<tr><td>' + dayName(r.day, wk) + '</td><td>' + cellTxt(r.item) + '</td><td>' + cellTxt(r.method) + '</td>' +
+            '<td class="num">' + cellTxt(r.start) + '</td>' +
+            '<td class="num' + (r.temp !== '' && Number(r.temp) < 75 ? ' flag' : '') + '">' + (r.temp === '' ? '—' : esc(r.temp) + '°C') + '</td>' +
+            '<td>' + cellTxt(r.actions) + '</td></tr>').join('') + '</tbody></table>'
+          : '<p class="meta">No reheat checks recorded for this week.</p>') +
+        '<div class="sign">Task done by: <strong>' + (w.doneBy ? esc(w.doneBy) : '________________________') + '</strong></div>', signedBy: w.doneBy };
+  }
+
+  if (id === 'goods') {
+    const rows = (w.deliveries || []);
+    return { title: 'Incoming goods', sub, wide: true,
+      html: '<div class="sect">Delivery temperature checks</div>' +
+        (rows.length ? '<table><thead><tr><th>Day</th><th>Supplier</th><th>Type</th><th>Items delivered</th><th>Temperature</th><th>Notes</th></tr></thead><tbody>' +
+          rows.map(r => {
+            const lim = r.type === 'Frozen' ? -15 : 5;
+            const bad = r.temp !== '' && r.temp != null && Number(r.temp) > lim;
+            return '<tr><td>' + dayName(r.day, wk) + '</td><td>' + cellTxt(r.supplier) + '</td><td>' + cellTxt(r.type) + '</td>' +
+              '<td>' + cellTxt(r.items) + '</td><td class="num' + (bad ? ' flag' : '') + '">' + (r.temp === '' ? '—' : esc(r.temp) + '°C') + '</td><td>' + cellTxt(r.notes) + '</td></tr>';
+          }).join('') + '</tbody></table>'
+          : '<p class="meta">No deliveries recorded for this week.</p>'), signedBy: w.doneBy };
+  }
+
+  if (id === 'calib') {
+    return { title: 'Thermometer calibration', sub: 'Six-monthly record', wide: false,
+      html: '<div class="sect">Calibration checks</div>' +
+        (db.calibration.length ? '<table><thead><tr><th>Date</th><th>Thermometer</th><th>Type</th><th>Ice point<br><span style="font-weight:400;text-transform:none">within 1 of 0°C</span></th><th>Boil point<br><span style="font-weight:400;text-transform:none">within 1 of 100°C</span></th><th>Actions taken</th></tr></thead><tbody>' +
+          db.calibration.map(r => {
+            const iceBad = r.ice !== '' && Math.abs(Number(r.ice)) > 1;
+            const boilBad = r.boil !== '' && Math.abs(Number(r.boil) - 100) > 1;
+            return '<tr><td class="num">' + (r.date ? nzDate(new Date(r.date + 'T00:00:00')) : '—') + '</td><td>' + cellTxt(r.name) + '</td><td>' + cellTxt(r.type) + '</td>' +
+              '<td class="num' + (iceBad ? ' flag' : '') + '">' + (r.ice === '' ? '—' : esc(r.ice) + '°C') + '</td>' +
+              '<td class="num' + (boilBad ? ' flag' : '') + '">' + (r.boil === '' ? '—' : esc(r.boil) + '°C') + '</td>' +
+              '<td>' + cellTxt(r.actions) + '</td></tr>';
+          }).join('') + '</tbody></table>'
+          : '<p class="meta">No calibration checks recorded.</p>') };
+  }
+
+  if (id === 'illness') {
+    return { title: 'Staff illnesses', sub: 'Ongoing record', wide: false,
+      html: '<div class="sect">Illness register</div>' +
+        (db.illness.length ? '<table><thead><tr><th>Name</th><th>Symptoms</th><th>Actions taken</th><th>Date of final symptom</th><th>Date returned to work</th></tr></thead><tbody>' +
+          db.illness.map(r => '<tr><td>' + cellTxt(r.name) + '</td><td>' + cellTxt(r.symptoms) + '</td><td>' + cellTxt(r.actions) + '</td>' +
+            '<td class="num">' + (r.final ? nzDate(new Date(r.final + 'T00:00:00')) : '—') + '</td>' +
+            '<td class="num">' + (r.returned ? nzDate(new Date(r.returned + 'T00:00:00')) : 'Not yet returned') + '</td></tr>').join('') + '</tbody></table>'
+          : '<p class="meta">No illnesses recorded.</p>') };
+  }
+
+  /* settings → the directory itself is a record worth printing */
+  return { title: 'Equipment & supplier directory', sub: '', wide: false,
+    html: '<div class="sect">Equipment</div><table><thead><tr><th>Unit</th><th>Mode</th><th>Safe zone</th><th>Note</th></tr></thead><tbody>' +
+      db.equipment.map(eq => '<tr><td>' + esc(eq.name) + '</td><td>' + MODES[eq.mode || 'chilled'].label + '</td><td class="num">' + limitText(eq) + '</td><td>' + cellTxt(eq.note) + '</td></tr>').join('') +
+      '</tbody></table><div class="sect">Suppliers</div>' +
+      (db.suppliers.length ? '<table><thead><tr><th>Name</th><th>Address</th><th>Contact</th><th>Supplies</th></tr></thead><tbody>' +
+        db.suppliers.map(s => '<tr><td>' + cellTxt(s.name) + '</td><td>' + cellTxt(s.address) + '</td><td>' + cellTxt(s.contact) + '</td><td>' + cellTxt((s.cats || []).join(', ')) + '</td></tr>').join('') + '</tbody></table>'
+        : '<p class="meta">No suppliers recorded.</p>') };
+}
+
+function dayName(k, wk) {
+  const i = DAYS.findIndex(d => d.k === k);
+  if (i < 0) return '—';
+  return DAYS[i].s + ' ' + pad(dayDate(wk, i).getDate()) + '/' + pad(dayDate(wk, i).getMonth() + 1);
+}
+
+let busy = false;
+function makePDF(inner, filename, wide) {
+  if (busy) return;
+  busy = true;
+  const t = document.createElement('div');
+  t.className = 'toast-in pointer-events-auto bg-surface border border-line text-fg rounded-xl px-4 py-3 text-[13px] font-medium shadow-pop';
+  t.textContent = 'Building your PDF…';
+  $('#toasts').appendChild(t);
+
+  const stage = $('#pdfstage');
+  stage.innerHTML = '<div class="pdfdoc' + (wide ? ' wide' : '') + '" id="pdftarget">' + inner + '</div>';
+
+  html2pdf().set({
+    margin: wide ? [8, 10, 10, 10] : [10, 12, 12, 12],
+    filename: filename,
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: wide ? 'landscape' : 'portrait' },
+    pagebreak: { mode: ['css', 'legacy'] }
+  }).from($('#pdftarget')).save()
+    .then(() => { t.remove(); stage.innerHTML = ''; busy = false; toast('PDF downloaded'); })
+    .catch(() => { t.remove(); stage.innerHTML = ''; busy = false; toast("The PDF didn't build. Try again.", 'bad'); });
+}
+
+function safeName(s) { return String(s).replace(/[^\w\s-]/g, '').replace(/\s+/g, '-'); }
+
+function exportSection(id) {
+  const meta = VIEWS.find(v => v.id === id);
+  const wk = meta.weekly ? current : null;
+  const d = sectionDoc(id, wk);
+  const name = 'NP3-' + safeName(d.title) + (wk ? '-wc-' + wk : '') + '.pdf';
+  makePDF(docHead(d.title, d.sub) + d.html + docFoot(d.signedBy), name, d.wide);
+}
+
+function exportEverything() {
+  const wks = knownWeeks().slice().reverse();
+  if (!wks.length) { toast('Nothing recorded yet', 'warn'); return; }
+  let html = '';
+  wks.forEach((wk, i) => {
+    ['temps', 'reheat', 'goods'].forEach((id, j) => {
+      const d = sectionDoc(id, wk);
+      html += '<div' + (i + j > 0 ? ' class="pagebreak"' : '') + '>' + docHead(d.title, d.sub) + d.html + docFoot(d.signedBy) + '</div>';
+    });
+  });
+  ['calib', 'illness', 'settings'].forEach(id => {
+    const d = sectionDoc(id, null);
+    html += '<div class="pagebreak">' + docHead(d.title, d.sub) + d.html + docFoot() + '</div>';
+  });
+  makePDF(html, 'NP3-full-record-' + iso(new Date()) + '.pdf', true);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   17. START
+   ══════════════════════════════════════════════════════════════ */
+const hash = location.hash.replace('#', '');
+if (VIEWS.some(v => v.id === hash)) view = hash;
+window.addEventListener('hashchange', () => {
+  const h = location.hash.replace('#', '');
+  if (VIEWS.some(v => v.id === h) && h !== view) { view = h; paintNav(); render(); }
+});
+
+paintNav();
+applyTheme(document.documentElement.classList.contains('dark'));
+render();
+stamp();
+</script>
+</body>
+</html>
