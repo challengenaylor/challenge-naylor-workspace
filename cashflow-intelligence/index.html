@@ -1615,6 +1615,52 @@ const Forecast = {
     return avg;
   },
 
+  // ================================================================
+  // BLENDED (pre-Phase-2) methodology — fuel is NOT pulled out into its
+  // own layer, it's left blended into the daily net average like every
+  // other expense. Walk-forward backtesting (Reports → Walk-Forward
+  // Backtest) showed this is measurably MORE accurate for short-horizon
+  // point-in-time predictions (1/7/14/30 days) than the fuel-separated
+  // model — likely because predicting an exact discrete lump on an exact
+  // date is harder than a smoothed average absorbs the same uncertainty
+  // more gracefully over a short window. But it's structurally blind to
+  // fuel costs beyond whatever's been manually entered, which makes it
+  // unusable for LONG horizons (this was the original bug that caused
+  // $600K+ unrealistic 90/180-day projections). The hybrid resolution:
+  // use this blended methodology for horizons of 30 days or less, and
+  // the fuel-separated methodology beyond that — each used where the
+  // evidence actually supports it, not picked to make one number look better.
+  weekdayAveragesBlended(lookbackDays = 90){
+    const today = DateUtil.todayISO();
+    const cutoff = DateUtil.addDays(today, -lookbackDays);
+    const byDate = {};
+    const recurringNames = DB.data.recurringPayments.filter(r=>r.enabled).map(r=>(r.matchKeyword||r.name).toLowerCase());
+    DB.data.transactions.forEach(t=>{
+      if(t.date < cutoff || t.date > today) return;
+      const descLower = t.desc.toLowerCase();
+      if(descLower.startsWith("multiple payment")) return;
+      const isRecurringMatch = recurringNames.some(n => n && (descLower.includes(n) || (t.opname && t.opname.toLowerCase().includes(n))));
+      if(isRecurringMatch) return;
+      byDate[t.date] = (byDate[t.date]||0) + t.amount; // fuel is NOT excluded here — the key difference from weekdayAverages()
+    });
+    const HALF_LIFE_DAYS = 45;
+    const byWeekday = {0:[],1:[],2:[],3:[],4:[],5:[],6:[]};
+    Object.entries(byDate).forEach(([d,net])=>{
+      const daysAgo = Math.max(0, (new Date(today+"T00:00:00") - new Date(d+"T00:00:00")) / 86400000);
+      const weight = Math.pow(0.5, daysAgo / HALF_LIFE_DAYS);
+      byWeekday[new Date(d+"T00:00:00").getDay()].push({ net, weight });
+    });
+    const avg = {};
+    for(let i=0;i<7;i++){
+      const vals = byWeekday[i];
+      if(!vals.length){ avg[i]=0; continue; }
+      const wsum = vals.reduce((a,v)=>a+v.weight,0);
+      avg[i] = vals.reduce((a,v)=>a+v.net*v.weight,0) / wsum;
+    }
+    return avg;
+  },
+  HYBRID_SWITCH_DAYS: 30, // horizons at or below this use the blended (more accurate short-term) methodology; beyond it, fuel-separated (structurally complete) takes over
+
   // Same baseline, exclusions, and recency-weighting as weekdayAverages(),
   // but tracking only the credit (incoming) side rather than net — used to
   // show "predicted incoming" on a specific date, e.g. next to a fuel invoice
@@ -1983,45 +2029,91 @@ const Forecast = {
     };
   },
 
-  // Generates discrete PREDICTED fuel events between fromDate and toDate —
-  // spaced by your learned real interval, using your recent trend-adjusted
-  // amount where there's enough evidence. Once you have a CONFIRMED pending
-  // invoice for a delivery, it already accounts for "the next delivery" —
-  // so every predicted date up to and including the latest confirmed
-  // invoice's delivery/due date (whichever is later) is suppressed
-  // entirely, not just dates within a narrow window around it. Real fuel
-  // deliveries don't land on a rigid schedule, so a narrow suppression
-  // radius let a confirmed invoice and a predicted event both fire for
-  // what was almost certainly the same real delivery — this fixes that.
+  // ================================================================
+  // FUEL PREDICTION SUPPRESSION — re-architected. Suppression is now
+  // ENTIRELY decoupled from due dates (which shift with weekend/holiday
+  // adjustment and negotiated payment terms — neither has anything to do
+  // with when fuel was actually delivered). It matches on delivery date
+  // only, one confirmed invoice to exactly one predicted candidate, within
+  // a fixed ±0.75× the learned replenishment interval. Asymmetric error
+  // rule: when a delivery could plausibly match more than one nearby
+  // candidate, the closest one is suppressed — a missed prediction is
+  // caught on the next assessment; a phantom duplicate silently corrupts
+  // every downstream verdict, which is the far worse failure mode.
+  // ================================================================
   predictFuelEvents(fromDate, toDate){
     const profile = this.fuelProfile();
     if(!profile) return [];
-    const pendingInvoices = DB.data.fuelInvoices.filter(i=>i.status!=="paid");
-    const confirmedCutoff = pendingInvoices.length
-      ? pendingInvoices.reduce((latest, i) => {
-          const relevant = i.deliveryDate > i.dueDateAdjusted ? i.deliveryDate : i.dueDateAdjusted;
-          return relevant > latest ? relevant : latest;
-        }, "0000-00-00")
-      : null;
     const step = Math.max(1, Math.round(profile.interval.median));
+    const windowRadius = Math.round(step * 0.75);
     const amount = (profile.recentAvg && profile.count>=4) ? profile.recentAvg : profile.amount.median;
     const confidence = profile.count>=8 ? "high" : profile.count>=4 ? "medium" : "low";
-    const events = [];
+
+    // Full candidate sequence BEFORE any suppression — stepping forward
+    // from the last REAL fuel payment by the learned interval.
+    const candidates = [];
     let cursor = profile.lastDate;
-    while(cursor < fromDate) cursor = DateUtil.addDays(cursor, step);
     let guard = 0;
     while(cursor <= toDate && guard < 400){
-      const coveredByConfirmed = confirmedCutoff && cursor <= confirmedCutoff;
-      if(!coveredByConfirmed && cursor >= fromDate){
-        events.push({
-          date: cursor, amount: Math.round(amount*100)/100, confidence,
-          reason: `Expected fuel payment ~${fmt.money(amount)} around ${fmt.date(cursor)} — based on ${profile.count} historical fuel payments averaging every ${step} days (last actual: ${fmt.date(profile.lastDate)}, ${fmt.money(profile.lastAmount)}).`
-        });
-      }
       cursor = DateUtil.addDays(cursor, step);
+      if(cursor >= fromDate && cursor <= toDate) candidates.push(cursor);
       guard++;
     }
-    return events;
+
+    // One-to-one matching: each pending invoice (by DELIVERY date) claims
+    // exactly the closest unclaimed candidate within ±windowRadius days.
+    const pendingInvoices = DB.data.fuelInvoices.filter(i => i.status!=="paid");
+    const suppressed = new Set();
+    const suppressionLog = [];
+    pendingInvoices.forEach(inv => {
+      let closest = null, closestDist = Infinity;
+      candidates.forEach(c => {
+        if(suppressed.has(c)) return; // a candidate can only be claimed once
+        const dist = Math.abs((new Date(c+"T00:00:00") - new Date(inv.deliveryDate+"T00:00:00")) / 86400000);
+        if(dist <= windowRadius && dist < closestDist){ closest = c; closestDist = dist; }
+      });
+      if(closest){
+        suppressed.add(closest);
+        suppressionLog.push({ candidateDate: closest, invoiceId: inv.id, supplier: inv.supplier, deliveryDate: inv.deliveryDate, distanceDays: closestDist });
+      }
+    });
+    this._lastSuppressionLog = suppressionLog; // exposed for audit/trace purposes — see Reports/Fuel tab
+
+    return candidates.filter(c => !suppressed.has(c)).map(c => ({
+      date: c, amount: Math.round(amount*100)/100, confidence,
+      reason: `Expected fuel payment ~${fmt.money(amount)} around ${fmt.date(c)} — based on ${profile.count} historical fuel payments averaging every ${step} days (last actual: ${fmt.date(profile.lastDate)}, ${fmt.money(profile.lastAmount)}).`
+    }));
+  },
+
+  // ================================================================
+  // RECONCILIATION AUDIT — a hard check, not a suggestion. Compares
+  // predicted fuel spend over the next 30 days against the historical
+  // 30-day average. If predicted exceeds historical by more than 15%,
+  // that's the signature of a duplicate/phantom prediction slipping
+  // through — flags it explicitly rather than silently producing a
+  // number built on top of it. Global audit note: fuel is the ONLY
+  // category with both a pattern-prediction engine AND a manually-entered
+  // pending-invoice queue for the same spend — recurring payments
+  // (wages, MYOB, utilities, etc.) are matched against real transactions
+  // directly with no parallel "predicted vs confirmed" collision
+  // possible, and Other Payments have no auto-prediction engine at all.
+  // This class of bug is structurally confined to fuel.
+  // ================================================================
+  fuelReconciliationAudit(){
+    const profile = this.fuelProfile();
+    if(!profile) return { flagged: false, reason: "Not enough fuel history to audit." };
+    const today = DateUtil.todayISO();
+    const predicted30 = this.predictFuelEvents(today, DateUtil.addDays(today, 30)).reduce((s,e)=>s+e.amount, 0);
+    const historical30 = profile.monthlyTotal;
+    const overPct = historical30 > 0 ? (predicted30 - historical30) / historical30 : 0;
+    const flagged = overPct > 0.15;
+    return {
+      flagged, predicted30, historical30, overPct,
+      suppressionLog: this._lastSuppressionLog || [],
+      reason: flagged
+        ? `Predicted 30-day fuel spend (${fmt.money(predicted30)}) exceeds your historical 30-day average (${fmt.money(historical30)}) by ${(overPct*100).toFixed(0)}% — check for a duplicate prediction before trusting any assessment right now.`
+        : `Predicted 30-day fuel spend (${fmt.money(predicted30)}) is within 15% of your historical average (${fmt.money(historical30)}) — no duplication signature detected.`
+    };
   },
 
   // Point-query version for a single date (used by per-invoice displays) —
@@ -2118,6 +2210,15 @@ const Forecast = {
     const anchor = this.anchor();
     let balance = anchor.balance;
 
+    // NOTE: a hybrid (blended-then-separated) methodology was tried here and
+    // reverted. It backtested better in aggregate, but caused a real bug for
+    // the app's core use case: whenever a CONFIRMED fuel invoice fell within
+    // the blended window, the blended average's implicit "typical day
+    // includes fuel" assumption double-counted fuel on top of the
+    // already-confirmed, already-subtracted invoice — found by testing an
+    // actual invoice assessment, not just checking that totals reconciled.
+    // Always fuel-separated here, where a specific confirmed commitment is
+    // frequently in play.
     const avg = this.weekdayAverages();
     // precompute predicted fuel events ONCE for this whole range (not per
     // day — predictFuelEvents rebuilds the interval chain from your last
@@ -2236,6 +2337,8 @@ const Forecast = {
     const today = DateUtil.todayISO();
     const anchor = this.anchor();
     let balance = anchor.balance;
+    // Always fuel-separated — see the note in projectBalance() above for why
+    // the blended-short-horizon hybrid was reverted.
     const avg = this.weekdayAverages();
     const incomeMult = 1 + ((opts.incomePct||0)/100);
 
@@ -2463,13 +2566,30 @@ const Simulator = {
     if(!this._lastResult || !this._lastInputs){ return; }
     const invoiceNumber = document.getElementById("simInvoiceNumber").value.trim();
     const gradeSummary = this._lastInputs.grades.map(g=>`${g.grade}: ${g.litres.toLocaleString()}L @ ${fmt.money(g.price)}`).join(", ");
-    const record = FuelPlanner._buildRecord(this._lastInputs.supplier, this._lastInputs.deliveryISO, this._lastInputs.amount, `From Invoice Simulator — ${gradeSummary}`, invoiceNumber, this._lastResult);
+    // Push-then-recalc — same root-cause fix as FuelPlanner.addInvoice():
+    // the due date is pure date arithmetic (safe up front), but the
+    // affordability verdict is computed by recalc() AFTER this invoice
+    // exists in the array, so fuel-prediction suppression can see and
+    // match against its own delivery date.
+    const r = this._lastResult;
+    const id = uid();
+    const record = {
+      id, supplier: this._lastInputs.supplier, deliveryDate: this._lastInputs.deliveryISO, amount: this._lastInputs.amount,
+      notes: `From Invoice Simulator — ${gradeSummary}`, invoiceNumber: invoiceNumber||"",
+      dueDateRaw: r.dueDateRaw, dueDateAdjusted: r.dueDateAdjusted, dueDateOverridden: r.dueDateOverridden,
+      verdict: null, extensionDays: 0, recommendedDate: null, reason: "", projectedBalance: 0, availableFunds: 0, confidence: 0,
+      enteredAt: new Date().toISOString(), status: "pending", paidDate: null, paidTxId: null
+    };
     DB.data.fuelInvoices.push(record);
+    FuelPlanner.recalc(id);
     // in case the matching bank transaction is already sitting in an
     // earlier-imported statement, check for it immediately rather than
     // waiting for the next import
     const autoMatched = ReconciliationEngine.run();
+    DB.data.fuelInvoices.filter(i=>i.id!==id).forEach(i=>FuelPlanner.recalc(i.id));
+    DB.data.otherPayments.forEach(p=>PaymentPlanner.recalc(p.id));
     DB.save();
+    FuelPlanner._trackAssessment(id);
     FuelPlanner.renderList();
     Dashboard.render();
     toast(autoMatched ? "Saved — and already matched against a past statement, marked paid." : "Saved to Pending & Recent Fuel Invoices.");
@@ -2523,6 +2643,16 @@ const Calendar = {
         mark(e.date, "fuelpred", `Predicted fuel ~${fmt.money(e.amount)}`);
       });
     }
+    // A payment doesn't always land on the exact predicted day, or for the
+    // exact predicted amount — real recurring bills (bank fees, subscription
+    // charges that switch payment processor, etc.) drift. Each recurring
+    // item can carry its own date tolerance (± days) and amount tolerance
+    // (± %); a real transaction within that window gets recognized as
+    // confirming the occurrence, marked on the date it ACTUALLY happened
+    // (not the predicted date), with a note showing how far off it was.
+    // claimedTxIds prevents the same real transaction confirming two
+    // different predicted occurrences when tolerance windows overlap.
+    const claimedTxIds = new Set();
     DB.data.recurringPayments.filter(r=>r.enabled).forEach(r=>{
       for(let d=1; d<=daysInMonth; d++){
         const iso = `${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
@@ -2532,13 +2662,22 @@ const Calendar = {
         if(r.startDate && iso < r.startDate) continue; // fixed-term commitment hasn't started yet
         if(r.endDate && iso > r.endDate) continue; // fixed-term commitment has already ended
         const amountOnThisDate = Forecast.amountForRecurringOn(r, iso); // respects a scheduled future change, e.g. a rent rise
-        // cross-check against real imported transactions on this exact date —
-        // if this payment has actually happened, show it as confirmed (green ✓
-        // with the real amount) instead of a prediction (blue, with the average)
-        const dayTx = DB.data.transactions.filter(t=>t.date===iso);
-        const real = RecurringPayments._matchesFor(r, dayTx)[0];
-        if(real) mark(iso, "paid", `${r.name} ✓ ${fmt.money(real.debit)}`, { recurId: r.id, date: iso }); // exact amount for confirmed real payments — no rounding
-        else mark(iso, "rec", `${r.name} ${fmt.money(amountOnThisDate)}${r.scheduledDate && iso>=r.scheduledDate ? ' (new)' : ''}`, { recurId: r.id, date: iso }); // exact amount so a predicted/recurring average is still directly comparable to your bank statement
+        const tol = r.dateToleranceDays != null ? r.dateToleranceDays : 3;
+        const windowStart = DateUtil.addDays(iso, -tol);
+        const windowEnd = DateUtil.addDays(iso, tol);
+        const windowTx = DB.data.transactions.filter(t=>t.date>=windowStart && t.date<=windowEnd && !claimedTxIds.has(t.id));
+        const matches = RecurringPayments._matchesFor(r, windowTx);
+        const real = matches.length
+          ? matches.reduce((best,t)=> Math.abs(new Date(t.date+"T00:00:00")-new Date(iso+"T00:00:00")) < Math.abs(new Date(best.date+"T00:00:00")-new Date(iso+"T00:00:00")) ? t : best)
+          : null;
+        if(real){
+          claimedTxIds.add(real.id);
+          const daysOff = Math.round((new Date(real.date+"T00:00:00")-new Date(iso+"T00:00:00"))/86400000);
+          const offNote = daysOff !== 0 ? ` (${Math.abs(daysOff)}d ${daysOff>0?'late':'early'})` : '';
+          mark(real.date, "paid", `${r.name} ✓ ${fmt.money(real.debit)}${offNote}`, { recurId: r.id, date: real.date }); // exact amount for confirmed real payments — no rounding
+        } else {
+          mark(iso, "rec", `${r.name} ${fmt.money(amountOnThisDate)}${r.scheduledDate && iso>=r.scheduledDate ? ' (new)' : ''}`, { recurId: r.id, date: iso }); // exact amount so a predicted/recurring average is still directly comparable to your bank statement
+        }
       }
     });
 
@@ -2720,7 +2859,7 @@ const Reports = {
         <div class="stat-sub">${escapeHtml(champ.reason || "")}</div>
         ${champ.lastChallengerRejectedAt ? `<div class="stat-sub" style="margin-top:6px;color:var(--amber-600);">Most recent challenge (${fmt.date(champ.lastChallengerRejectedAt.slice(0,10))}): ${escapeHtml(champ.lastChallengerReason)}</div>` : ""}
         <div class="stat-sub" style="margin-top:10px;">Old (blended) avg MAE: ${fmt.money(champ.oldAvgMAE)} · New (fuel-separated) avg MAE: ${fmt.money(champ.newAvgMAE)}. Re-evaluated automatically on every statement import.</div>
-        ${champ.architecture==='old' ? `<div class="verdict unsafe" style="margin-top:10px;">⚠ The backtested Champion is currently the OLD blended model — it measures more accurate point-in-time predictions than the fuel-separated engine this app's live forecasts actually run on. This is a real, unresolved tension: the live engine wasn't switched back automatically, since that's a decision worth making deliberately, not silently.</div>` : ""}
+        ${champ.architecture==='old' ? `<div class="stat-sub" style="margin-top:10px;padding:10px;background:var(--amber-50,#fffbeb);border-radius:6px;">⚠ The backtested Champion is the blended model — it scores better in aggregate across many historical test points. But applying that blended methodology to the LIVE engine was tried and reverted: whenever a confirmed fuel invoice fell within the blended window, its implicit "typical day includes fuel" assumption double-counted fuel on top of the already-confirmed invoice — a real bug found by testing an actual invoice assessment, not just checking that totals reconciled. The live engine stays fuel-separated throughout, which is structurally safer for a business that almost always has a confirmed invoice in play. This is a genuine, deliberate tradeoff: fuel-separated is not the backtested winner on aggregate point-accuracy, but it's the one proven safe for this app's core use case.</div>` : ""}
       `;
     } else {
       ccBody.innerHTML = `<div class="stat-sub">No evaluation yet — runs automatically on your next statement import, or click below.</div><button class="btn ghost" style="margin-top:8px;" onclick="ChampionChallenger.evaluate(); DB.save(); Reports.render();">Evaluate Now</button>`;
@@ -2843,13 +2982,37 @@ const FuelPlanner = {
     if(isNaN(amount) || amount<=0){ toast("Enter a valid invoice amount"); return; }
     if(dueOverrideStr && !dueOverride){ toast("Pick a due date, or leave it blank to auto-calculate"); return; }
 
-    const result = this.assess(iso, amount, dueOverride);
-    const record = this._buildRecord(supplier, iso, amount, notes, invoiceNumber, result);
+    // Due date is pure date arithmetic — safe to compute before the
+    // invoice exists anywhere. The AFFORDABILITY verdict is NOT computed
+    // here, deliberately: it's computed by recalc() below, AFTER this
+    // invoice is already in DB.data.fuelInvoices, so fuel-prediction
+    // suppression can see and match against its OWN delivery date. This
+    // is the root-cause fix for a newly-added invoice showing a worse
+    // number than the identical invoice shows once anything else touches
+    // it — there is now exactly ONE calculation path (recalc()) for both
+    // creating and updating an invoice, not two paths that can diverge.
+    let dueDateRaw, dueDateAdjusted, dueDateOverridden = false;
+    if(dueOverride){ dueDateRaw = dueOverride; dueDateAdjusted = DateUtil.adjustToBusinessDay(dueOverride); dueDateOverridden = true; }
+    else { ({ raw: dueDateRaw, adjusted: dueDateAdjusted } = this.computeDueDate(iso)); }
+
+    const id = uid();
+    const record = {
+      id, supplier, deliveryDate: iso, amount, notes, invoiceNumber: invoiceNumber||"",
+      dueDateRaw, dueDateAdjusted, dueDateOverridden,
+      verdict: null, extensionDays: 0, recommendedDate: null, reason: "", projectedBalance: 0, availableFunds: 0, confidence: 0,
+      enteredAt: new Date().toISOString(), status: "pending", paidDate: null, paidTxId: null
+    };
     DB.data.fuelInvoices.push(record);
+    this.recalc(id); // computes the REAL verdict now that this invoice exists in the array
     ReconciliationEngine.run(); // in case a matching transaction is already in an earlier-imported statement
+    // Adding this invoice changes the cash-flow picture for every OTHER
+    // pending fuel invoice and other payment too — recalc them all so
+    // nothing already on screen can be left showing a stale verdict.
+    DB.data.fuelInvoices.filter(i=>i.id!==id).forEach(i=>this.recalc(i.id));
+    DB.data.otherPayments.forEach(p=>PaymentPlanner.recalc(p.id));
     DB.save();
-    this._renderResult(result, record);
-    this.renderList();
+    this._trackAssessment(id);
+    this.renderList(); // renders the list AND refreshes the Assessment panel from the same current data
     Dashboard.render();
     document.getElementById("fiAmount").value = "";
     document.getElementById("fiNotes").value = "";
@@ -2857,17 +3020,13 @@ const FuelPlanner = {
     document.getElementById("fiInvoiceNumber").value = "";
   },
 
-  _buildRecord(supplier, deliveryISO, amount, notes, invoiceNumber, result){
-    return {
-      id: uid(), supplier, deliveryDate: deliveryISO, amount, notes, invoiceNumber: invoiceNumber||"",
-      dueDateRaw: result.dueDateRaw, dueDateAdjusted: result.dueDateAdjusted, dueDateOverridden: result.dueDateOverridden,
-      verdict: result.verdict, extensionDays: result.extensionDays,
-      recommendedDate: result.recommendedDate, reason: result.reason,
-      projectedBalance: result.projectedBalance, availableFunds: result.availableFunds,
-      confidence: result.confidence, enteredAt: new Date().toISOString(),
-      status: "pending", paidDate: null, paidTxId: null
-    };
-  },
+  // Tracks which invoice the Assessment panel is currently showing, so it
+  // can be kept in sync with that invoice's stored data on every future
+  // render — a real payment or invoice added afterward, or the app simply
+  // reloading, can change this invoice's verdict, and the panel needs to
+  // reflect that instead of freezing at whatever it showed at add-time.
+  _trackedAssessmentId: null,
+  _trackAssessment(id){ this._trackedAssessmentId = id; },
 
   // Re-runs the verdict for an already-saved invoice, e.g. after another
   // payment has been added/removed elsewhere and its cash-flow impact changed.
@@ -2929,6 +3088,14 @@ const FuelPlanner = {
 
   renderList(){
     const wrap = document.getElementById("fiList");
+    // Keep the Assessment panel in sync with whichever invoice it's tracking
+    // — re-rendered from that invoice's CURRENT stored data every time the
+    // list renders, so it can never disagree with the list below it.
+    if(this._trackedAssessmentId){
+      const tracked = DB.data.fuelInvoices.find(i=>i.id===this._trackedAssessmentId);
+      if(tracked) this._renderResult(tracked, tracked);
+      else this._trackedAssessmentId = null; // invoice was removed or paid — stop tracking it
+    }
     const today = localTodayISO(); // real device date — a "days until due" countdown must use actual today, not the last import date
     const dataToday = DateUtil.todayISO();
     const staleDays = Math.round((new Date(today+"T00:00:00") - new Date(dataToday+"T00:00:00"))/86400000);
@@ -2962,7 +3129,7 @@ const FuelPlanner = {
           ${inv.verdict==='safe' ? '✅ Pay On Time' : `⚠ ${inv.extensionDays} Business Day Extension`}
         </div>
         <div class="kv-grid">
-          <div><div class="k">Due Date</div><div class="v" style="font-size:13px;">${fmt.date(inv.dueDateAdjusted)}</div></div>
+          <div><div class="k">Due Date</div><div class="v"><input type="date" value="${inv.dueDateAdjusted}" style="font-size:13px;padding:3px 6px;width:100%;" onchange="FuelPlanner.updateDueDate('${inv.id}', this.value)"></div></div>
           <div><div class="k">${daysUntil<0?'Status':'Countdown'}</div><div class="v" style="font-size:13px;color:${daysUntil<0?'var(--red-600)':'var(--navy-900)'};">${dueLabel}</div></div>
           <div><div class="k">Projected Balance</div><div class="v" style="font-size:13px;color:${inv.projectedBalance>=0?'var(--green-600)':'var(--navy-900)'};">${fmt.money(inv.projectedBalance)}</div></div>
           <div><div class="k">Available Funds After</div><div class="v" style="font-size:13px;color:${trueAvailable<0?'var(--red-600)':(trueAvailable<10000?'var(--amber-600)':'var(--green-600)')};">${fmt.money(trueAvailable)}</div></div>
@@ -3056,6 +3223,25 @@ const FuelPlanner = {
     if(!inv) return;
     inv.invoiceNumber = value.trim();
     DB.save();
+  },
+
+  // Lets you correct a due date directly on an existing invoice — no need
+  // to delete and re-enter it. Weekend/holiday auto-adjustment still
+  // applies, and this recalculates every pending invoice and payment
+  // (not just this one), since a due-date change shifts the whole picture.
+  updateDueDate(id, newDateISO){
+    const inv = DB.data.fuelInvoices.find(i=>i.id===id);
+    if(!inv || !newDateISO) return;
+    const adjusted = DateUtil.adjustToBusinessDay(newDateISO);
+    inv.dueDateRaw = newDateISO;
+    inv.dueDateAdjusted = adjusted;
+    inv.dueDateOverridden = true; // manually editing the date counts as an explicit override, same as entering one on the form
+    DB.data.fuelInvoices.forEach(i=>this.recalc(i.id));
+    DB.data.otherPayments.forEach(p=>PaymentPlanner.recalc(p.id));
+    DB.save();
+    if(newDateISO !== adjusted) toast(`${fmt.date(newDateISO)} is a weekend/holiday — due date moved to ${fmt.date(adjusted)}.`);
+    this.renderList();
+    Dashboard.render();
   }
 };
 
@@ -3880,15 +4066,30 @@ const RecurringPayments = {
   // items are left alone so an import can never silently undo a correction.
   // Matching rule for a single recurring item against a set of transactions —
   // shared by refreshFromHistory() (all items) and resumeAutoLearning() (one item).
+  // Matches real transactions to a recurring item. If item.amountTolerancePct
+  // is set, candidates are further filtered to within that % of the item's
+  // current amount — otherwise any amount is accepted (unchanged behaviour),
+  // since most recurring items genuinely do vary and shouldn't be rejected
+  // just for costing a bit more or less than average.
   _matchesFor(item, recent){
+    let candidates;
     if(item.name==="Wages"){
-      return recent.filter(t => t.desc.toLowerCase().startsWith("multiple payment") && t.debit>0 && t.debit<10000 && new Date(t.date+"T00:00:00").getDay()===item.anchor);
+      candidates = recent.filter(t => t.desc.toLowerCase().startsWith("multiple payment") && t.debit>0 && t.debit<10000 && new Date(t.date+"T00:00:00").getDay()===item.anchor);
+    } else if(item.name==="Monthly Supplier Payments"){
+      candidates = recent.filter(t => t.desc.toLowerCase().startsWith("multiple payment") && t.debit>=10000 && Math.abs(Number(t.date.slice(8,10))-item.anchor)<=2);
+    } else {
+      const nameLower = (item.matchKeyword||item.name).toLowerCase();
+      candidates = recent.filter(t => t.debit>0 && (t.desc.toLowerCase().includes(nameLower) || (t.opname && t.opname.toLowerCase().includes(nameLower))));
     }
-    if(item.name==="Monthly Supplier Payments"){
-      return recent.filter(t => t.desc.toLowerCase().startsWith("multiple payment") && t.debit>=10000 && Math.abs(Number(t.date.slice(8,10))-item.anchor)<=2);
+    if(item.amountTolerancePct != null && candidates.length){
+      const tol = item.amount * (item.amountTolerancePct/100);
+      const withinTolerance = candidates.filter(t => Math.abs(t.debit - item.amount) <= tol);
+      if(withinTolerance.length) candidates = withinTolerance;
+      // if NOTHING is within tolerance, fall through and return the untolerated
+      // candidates anyway rather than silently showing nothing — a real
+      // payment that's further off than expected is still worth surfacing
     }
-    const nameLower = (item.matchKeyword||item.name).toLowerCase();
-    return recent.filter(t => t.debit>0 && (t.desc.toLowerCase().includes(nameLower) || (t.opname && t.opname.toLowerCase().includes(nameLower))));
+    return candidates;
   },
 
   refreshFromHistory(){
@@ -3960,6 +4161,17 @@ const RecurringPayments = {
       item.enabled = !!rawValue; // toggling on/off doesn't affect the learned amount, no lock needed
     } else if(field==="name"){
       item.name = String(rawValue).trim() || item.name; // renaming doesn't affect the learned amount either
+    } else if(field==="matchKeyword"){
+      item.matchKeyword = String(rawValue).trim() || null; // empty means "fall back to name" — doesn't lock the item, just changes what it matches against
+    } else if(field==="dateToleranceDays"){
+      const v = parseInt(rawValue,10);
+      item.dateToleranceDays = (isNaN(v) || v<0) ? 3 : Math.min(v, 15); // capped — a huge window would start matching unrelated transactions
+    } else if(field==="amountTolerancePct"){
+      if(String(rawValue).trim()===""){ item.amountTolerancePct = null; }
+      else{
+        const v = parseFloat(rawValue);
+        item.amountTolerancePct = (isNaN(v) || v<0) ? null : v;
+      }
     }
     DB.save();
     this._recalcEverything();
@@ -4025,6 +4237,25 @@ const RecurringPayments = {
         <div style="margin-top:6px;">
           <button class="btn ghost" style="padding:4px 10px;font-size:11px;" onclick="RecurringPayments.update('${r.id}','enabled',true)">✓ Approve — include in forecasts</button>
         </div>` : "";
+      const matchingBlock = `
+        <details style="margin-top:6px;">
+          <summary class="stat-sub" style="cursor:pointer;font-weight:600;">Matching settings ${r.matchKeyword ? '— currently: "'+escapeHtml(r.matchKeyword)+'"' : ''}</summary>
+          <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px;font-size:12px;">
+            <div>
+              <span class="stat-sub" style="display:block;margin-bottom:3px;">Match keyword <span class="hint">(text to match in your bank statement — change this if the vendor switches, e.g. MYOB → Stripe, without losing this item's history)</span></span>
+              <input type="text" style="width:100%;" placeholder="defaults to name above" value="${escapeHtml(r.matchKeyword||'')}" onchange="RecurringPayments.update('${r.id}','matchKeyword',this.value)">
+            </div>
+            <div style="display:flex;gap:16px;align-items:center;">
+              <span class="stat-sub">Date tolerance ±</span>
+              <input type="text" style="width:50px;" value="${r.dateToleranceDays!=null ? r.dateToleranceDays : 3}" onchange="RecurringPayments.update('${r.id}','dateToleranceDays',this.value)">
+              <span class="stat-sub">days</span>
+              <span class="stat-sub" style="margin-left:10px;">Amount tolerance ±</span>
+              <input type="text" style="width:50px;" placeholder="none" value="${r.amountTolerancePct!=null ? r.amountTolerancePct : ''}" onchange="RecurringPayments.update('${r.id}','amountTolerancePct',this.value)">
+              <span class="stat-sub">%</span>
+            </div>
+            <div class="stat-sub">A real payment landing within this date window and amount range counts as confirming this item — even if it's not exactly on the expected day or for exactly the expected amount.</div>
+          </div>
+        </details>`;
       return `
       <div class="card recur-row">
         <div class="recur-main">
@@ -4050,6 +4281,7 @@ const RecurringPayments = {
         }
         ${evidenceBlock}
         ${approveBlock}
+        ${matchingBlock}
         ${scheduledNote}
       </div>`;
     }).join("");
@@ -4524,6 +4756,15 @@ const Settings = {
 const App = {
   async init(){
     await DB.load();
+    // Every pending fuel invoice / other payment gets recalculated fresh
+    // with the CURRENT code on every load — not just when some unrelated
+    // action happens to trigger it. This is the actual fix for the class
+    // of bug where a stored verdict was computed once by an older version
+    // of the model and then silently never refreshed: now it can't happen,
+    // because "stale" isn't possible — every session recomputes from scratch.
+    DB.data.fuelInvoices.forEach(i => { if(i.status!=="paid") FuelPlanner.recalc(i.id); });
+    DB.data.otherPayments.forEach(p => { if(p.status!=="paid") PaymentPlanner.recalc(p.id); });
+    DB.save();
     this._wireNav();
     this._wireImport();
     this._wireTxToolbar();
