@@ -406,6 +406,14 @@ tailwind.config = {
     <div id="navBiz" class="mt-4 text-[12px] leading-snug text-white/75"></div>
   </div>
 
+  <div class="px-4 pb-3">
+    <button data-act="exportWeeklyReport" class="w-full inline-flex items-center justify-center gap-2 bg-chill text-onaccent rounded-xl px-4 py-3 text-[13px] font-semibold hover:brightness-110 active:scale-[.98] transition shadow-glow">
+      <svg width="15" height="15" viewBox="0 0 14 14" fill="none"><path d="M7 1v8m0 0L4 6m3 3l3-3M1.5 10.5v1A1.5 1.5 0 003 13h8a1.5 1.5 0 001.5-1.5v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Download Weekly Report
+    </button>
+    <div class="text-[10.5px] text-white/40 mt-1.5 px-0.5 leading-snug">Temperatures + incoming goods, one PDF</div>
+  </div>
+
   <nav id="nav" class="flex-1 overflow-y-auto px-3 space-y-0.5"></nav>
 
   <div class="px-6 py-5 border-t border-white/10">
@@ -1422,6 +1430,7 @@ const ACTIONS = {
 
   exportView: () => exportSection(view),
   exportYear: () => exportEverything(),
+  exportWeeklyReport: () => exportWeeklyReport(),
   exportJSON: () => {
     const blob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -1543,18 +1552,16 @@ function drawPdfPageNumber(doc, page, total) {
   doc.text('Page ' + page + ' of ' + total, pageW - margin.right, pageH - 8, { align: 'right' });
 }
 
-/* the table (or empty-state message) and, for weekly logs, the
-   signature line. Columns auto-fit the page width via autoTable, and
-   a table too long for one page continues with the header row
-   repeated — both are autoTable's core, guaranteed behaviour as long
-   as the reserved top margin (pdfMargin().top) is respected, which is
-   why the letterhead is stamped in a separate pass afterward rather
-   than through a per-page draw hook (see buildCombinedDoc). */
-function drawPdfTable(doc, data) {
+/* the actual autoTable call (or empty-state message), factored out so
+   both the per-section export (fixed startY/margin, one table per
+   page) and the weekly report (tables flowing one after another,
+   sharing pages when they fit) can drive it with their own Y
+   positions instead of duplicating the column/styling setup twice. */
+function runPdfAutoTable(doc, data, startY, marginTop) {
   const margin = pdfMargin();
   if (!data.rows.length) {
     doc.setFont('helvetica', 'italic'); doc.setFontSize(10); doc.setTextColor(120, 120, 120);
-    doc.text(pdfSafe(data.emptyMessage || 'No records for this period.'), margin.left, margin.top + 4);
+    doc.text(pdfSafe(data.emptyMessage || 'No records for this period.'), margin.left, startY + 4);
     return;
   }
   // sanitize every cell centrally here — a "!"-flagged cell keeps its
@@ -1567,8 +1574,8 @@ function drawPdfTable(doc, data) {
     return (flagged ? '!' : '') + pdfSafe(flagged ? raw.slice(1) : raw);
   }));
   doc.autoTable({
-    startY: margin.top,
-    margin: { left: margin.left, right: margin.right, top: margin.top, bottom: margin.bottom },
+    startY,
+    margin: { left: margin.left, right: margin.right, top: marginTop, bottom: margin.bottom },
     head: [data.columns.map(pdfSafe)],
     body,
     theme: 'grid',
@@ -1583,10 +1590,27 @@ function drawPdfTable(doc, data) {
       }
     }
   });
+}
+
+function drawPdfSignoff(doc, y, signedBy) {
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(20, 20, 20);
+  doc.text('Task done by: ' + pdfSafe(signedBy || '________________________'), pdfMargin().left, y);
+}
+
+/* the table (or empty-state message) and, for weekly logs, the
+   signature line. Columns auto-fit the page width via autoTable, and
+   a table too long for one page continues with the header row
+   repeated — both are autoTable's core, guaranteed behaviour as long
+   as the reserved top margin (pdfMargin().top) is respected, which is
+   why the letterhead is stamped in a separate pass afterward rather
+   than through a per-page draw hook (see buildCombinedDoc). */
+function drawPdfTable(doc, data) {
+  const margin = pdfMargin();
+  runPdfAutoTable(doc, data, margin.top, margin.top);
+  if (!data.rows.length) return;
   if (data.showSignoff) {
     const finalY = doc.lastAutoTable ? doc.lastAutoTable.finalY : margin.top + 10;
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(20, 20, 20);
-    doc.text('Task done by: ' + pdfSafe(data.signedBy || '________________________'), margin.left, finalY + 8);
+    drawPdfSignoff(doc, finalY + 8, data.signedBy);
   }
 }
 
@@ -1624,6 +1648,76 @@ function buildCombinedDoc(sections) {
   const total = doc.internal.getNumberOfPages();
   for (let p = 1; p <= total; p++) { doc.setPage(p); drawPdfPageNumber(doc, p, total); }
   return doc;
+}
+
+/* Temperature log + Incoming goods together in one PDF, flowing as one
+   document rather than each forcing its own page (that's what
+   buildCombinedDoc is for). One letterhead, at the very top of page 1
+   only; Incoming Goods either continues right below the temperature
+   table on the same page if there's reasonably room, or starts fresh
+   at the top of a new page with its own heading if not — and either
+   way, autoTable's normal page-break/repeated-header behaviour is
+   what actually protects a long table from ever being cut mid-row. */
+function buildWeeklyReportDoc(tempsData, goodsData) {
+  const { jsPDF } = window.jspdf;
+  const margin = pdfMargin();
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const pageH = doc.internal.pageSize.getHeight();
+  const contTop = 16; // lean top margin for pages that are pure table continuation
+
+  // one letterhead, page 1 only — its bold title doubles as the first
+  // section's own heading, so nothing else needs to introduce "Daily
+  // fridge temperature monitoring" a second time
+  drawPdfLetterhead(doc, tempsData.title, tempsData.sub);
+
+  runPdfAutoTable(doc, tempsData, margin.top, contTop);
+  let y = doc.lastAutoTable ? doc.lastAutoTable.finalY : margin.top + 10;
+  if (tempsData.showSignoff && tempsData.rows.length) {
+    y += 8;
+    drawPdfSignoff(doc, y, tempsData.signedBy);
+  }
+  y += 12; // breathing room before the next section heading
+
+  // enough room left on this page for a heading plus a non-cramped
+  // first slice of the goods table? if not, start goods clean on a
+  // new page instead of squeezing in a heading with nothing under it
+  const neededForGoods = goodsData.rows.length ? 32 : 14;
+  if (pageH - margin.bottom - y < neededForGoods) {
+    doc.addPage('a4', 'landscape');
+    y = 20;
+  }
+
+  // "Incoming Goods" heading, styled to match the letterhead's own
+  // title exactly (same weight/size/colour) — that's the "first
+  // section heading" the goods heading is matching
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(10, 15, 20);
+  doc.text(pdfSafe(goodsData.title), margin.left, y);
+  y += 6;
+
+  runPdfAutoTable(doc, goodsData, y, contTop);
+  let goodsY = doc.lastAutoTable ? doc.lastAutoTable.finalY : y + 10;
+  if (goodsData.showSignoff && goodsData.rows.length) {
+    goodsY += 8;
+    drawPdfSignoff(doc, goodsY, goodsData.signedBy);
+  }
+
+  // footer + page numbers on every page, once the whole document
+  // (however many pages either table ended up needing) is final
+  const total = doc.internal.getNumberOfPages();
+  for (let p = 1; p <= total; p++) {
+    doc.setPage(p);
+    drawPdfFooterLeft(doc, tempsData.sub);
+    drawPdfPageNumber(doc, p, total);
+  }
+  return doc;
+}
+
+function exportWeeklyReport() {
+  const tempsData = sectionPdfData('temps', current);
+  const goodsData = sectionPdfData('goods', current);
+  const doc = buildWeeklyReportDoc(tempsData, goodsData);
+  doc.save('NP3-Weekly-Report-wc-' + current + '.pdf');
+  toast('PDF downloaded');
 }
 
 /* one function per section, returning plain {title, sub, columns, rows,
