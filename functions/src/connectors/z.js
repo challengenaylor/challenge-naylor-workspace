@@ -48,8 +48,17 @@ class ZConnector extends SupplierConnector {
       const line = raw.trim();
       if (!line) continue;
 
-      if (/^effective date/i.test(line)) {
-        const date = parseEffectiveDate(line);
+      // Was anchored to the START of the line (/^effective date/i) — broke
+      // on a real page-boundary quirk found 25 Aug 2026 while building a
+      // proper fixture corpus from the real uploaded PDF: page 1's trailing
+      // boilerplate text and page 2's "Effective Date: ..." line had no
+      // line break between them in the extracted text, so the second block
+      // was silently never detected. Searching anywhere in the line for
+      // the real header shape (the label followed by an actual date) finds
+      // it regardless of what came before it on the same line.
+      if (/effective date:?\s*\d{1,2}\/\d{1,2}\/\d{2,4}/i.test(line)) {
+        const match = line.match(/effective date:?\s*\d{1,2}\/\d{1,2}\/\d{2,4}[^\n]*/i);
+        const date = parseEffectiveDate(match ? match[0] : line);
         current = { effectiveDate: date, rows: [] };
         blocks.push(current);
         lastLocation = null;

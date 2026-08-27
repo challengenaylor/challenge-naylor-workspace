@@ -188,10 +188,28 @@
   function renderReviewBanner() {
     const banner = el('#review-banner');
     const needsReview = data.errors.filter((e) => e.status === 'Needs Review');
-    if (!needsReview.length) { banner.hidden = true; return; }
+    const filtered = data.filteredCounts || { errors: 0, reviews: 0 };
+    const filteredTotal = filtered.errors + filtered.reviews;
+    // Makes the recency-based filtering auditable rather than a silent
+    // black box — if this count ever looks wrong (too high, or present
+    // when nothing was actually fixed), that's the signal something in the
+    // filter itself needs checking, not just trusting it quietly.
+    const filteredNote = filteredTotal > 0
+      ? `<div style="font-size:.78rem;color:var(--muted);margin-top:4px">${filteredTotal} older item${filteredTotal > 1 ? 's' : ''} automatically hidden — resolved by a more recent successful run for that supplier.</div>`
+      : '';
+
+    if (!needsReview.length) {
+      if (filteredTotal > 0) {
+        banner.hidden = false;
+        banner.innerHTML = `<span>✓</span><span>No current items need review.${filteredNote}</span>`;
+      } else {
+        banner.hidden = true;
+      }
+      return;
+    }
     banner.hidden = false;
     banner.innerHTML = `<span>⚠</span><span><strong>${needsReview.length} item${needsReview.length > 1 ? 's' : ''} need review.</strong> `
-      + needsReview.map((e) => esc(e.message)).join(' ') + ' See Automation &amp; errors.</span>';
+      + needsReview.map((e) => esc(e.message)).join(' ') + ' See Automation &amp; errors.' + filteredNote + '</span>';
   }
 
   // ============================================================== HISTORY
@@ -331,34 +349,38 @@
   }
   el('#cf-price').addEventListener('input', updateChallengePreview);
 
-  // Corrections are keyed by the id they correct, so both the original row
-  // and its correction render together instead of the correction looking
-  // like an unrelated new entry.
+  // Corrections/edits are keyed by the id they apply to, so the original
+  // and its full edit history render together, not as unrelated entries.
   async function renderChallenge() {
     const list = await storage.getChallengePrices();
     const byCorrectionOf = {};
     list.forEach((c) => { if (c.correctionOf) (byCorrectionOf[c.correctionOf] = byCorrectionOf[c.correctionOf] || []).push(c); });
     const originals = list.filter((c) => !c.correctionOf);
 
-    // Resolve each original entry to its DISPLAYED value — the latest
-    // correction if one exists, otherwise the entry itself.
+    // Resolve each original entry to its DISPLAYED state — every field
+    // (terminal, product, date, price, notes) comes from the latest edit if
+    // one exists, not just price as before. A deleted entry (latest edit
+    // has isDeletion:true) is dropped entirely — soft-deleted, never
+    // removed from Firestore, just hidden here.
     const effective = originals.map((c) => {
-      const corrections = byCorrectionOf[c.id] || [];
-      const latestCorrection = corrections.length ? corrections[corrections.length - 1] : null;
+      const edits = byCorrectionOf[c.id] || [];
+      const latest = edits.length ? edits[edits.length - 1] : null;
+      const isDeleted = !!(latest && latest.isDeletion);
+      const src = latest || c;
       return {
-        id: c.id, regionId: c.regionId, productId: c.productId,
-        effectiveDate: c.effectiveDate, enteredAt: c.enteredAt, notes: c.notes,
-        finalPrice: latestCorrection ? latestCorrection.finalPrice : c.finalPrice,
-        preGstPrice: latestCorrection ? latestCorrection.preGstPrice : c.preGstPrice,
-        wasCorrected: !!latestCorrection,
-        correctionReason: latestCorrection ? latestCorrection.correctionReason : null,
-        originalFinalPrice: c.finalPrice,
+        id: c.id, regionId: src.regionId, productId: src.productId,
+        effectiveDate: src.effectiveDate, enteredAt: src.enteredAt, notes: src.notes,
+        finalPrice: src.finalPrice, preGstPrice: src.preGstPrice,
+        wasEdited: !!latest, isDeleted,
+        editReason: latest ? latest.correctionReason : null,
+        originalRegionId: c.regionId, originalProductId: c.productId,
+        originalFinalPrice: c.finalPrice, originalEffectiveDate: c.effectiveDate,
       };
-    });
+    }).filter((e) => !e.isDeleted);
 
-    // Group by terminal+product — this is the comparison unit: "how has
-    // Mount Maunganui Diesel moved from one entry to the next", not a flat
-    // list of every entry ever made.
+    // Group by the RESOLVED (possibly-edited) terminal+product — if an edit
+    // moved an entry to a different terminal or product, it now correctly
+    // groups under its new home, not where it originally landed.
     const groups = {};
     effective.forEach((e) => {
       const key = e.regionId + '::' + e.productId;
@@ -388,8 +410,8 @@
         const dirClass = change === null ? 'dir-flat' : change > 0 ? 'dir-up' : change < 0 ? 'dir-down' : 'dir-flat';
         const arrow = change === null ? '' : change > 0 ? '▲' : change < 0 ? '▼' : '→';
         const changeText = change === null ? 'first entry' : `${arrow} ${dpl(Math.abs(change))}`;
-        const correctionNote = latest.wasCorrected
-          ? `<div class="sub-cell">Corrected from ${dpl(latest.originalFinalPrice)} — "${esc(latest.correctionReason)}"</div>` : '';
+        const editNote = latest.wasEdited
+          ? `<div class="sub-cell">Edited — "${esc(latest.editReason)}"</div>` : '';
         const historyCount = entries.length - 1;
         const latestBeforeLevies = beforeLevies(latest);
 
@@ -398,14 +420,43 @@
           <td>${esc(product ? product.label : latest.productId)}</td>
           <td class="num-center">${latestBeforeLevies !== null ? dpl(latestBeforeLevies) : '—'}</td>
           <td class="num-center">${typeof latest.preGstPrice === 'number' ? dpl(latest.preGstPrice) : '—'}</td>
-          <td class="num-center">${dpl(latest.finalPrice)}${correctionNote}</td>
+          <td class="num-center">${dpl(latest.finalPrice)}${editNote}</td>
           <td class="num ${dirClass}">${changeText}</td>
           <td>${fmtDate(latest.effectiveDate)}</td>
           <td>${fmtDateTime(latest.enteredAt)}</td>
           <td class="sub-cell">${esc(latest.notes || '—')}</td>
           <td style="white-space:nowrap">
-            <button class="btn ghost cp-correct" style="padding:4px 8px;font-size:.72rem">Correct…</button>
+            <button class="btn ghost cp-edit" style="padding:4px 8px;font-size:.72rem">Edit…</button>
+            <button class="btn ghost cp-delete" style="padding:4px 8px;font-size:.72rem">Delete</button>
             ${historyCount > 0 ? `<button class="btn ghost cp-history-toggle" style="padding:4px 8px;font-size:.72rem" data-key="${esc(key)}">History (${historyCount})</button>` : ''}
+          </td>
+        </tr>
+        <tr class="cp-edit-row" data-id="${esc(latest.id)}" hidden>
+          <td colspan="10" style="background:var(--surface-2);padding:14px 16px">
+            <form class="form-grid cp-edit-form" data-id="${esc(latest.id)}">
+              <label>Terminal
+                <select class="cp-edit-region" required></select>
+              </label>
+              <label>Product
+                <select class="cp-edit-product" required></select>
+              </label>
+              <label>Price before GST ($/L)
+                <input type="number" class="cp-edit-price" step="0.0001" min="0.01" max="9.9999" required value="${typeof latest.preGstPrice === 'number' ? (latest.preGstPrice / 100).toFixed(4) : ''}">
+              </label>
+              <label>Effective date
+                <input type="date" class="cp-edit-date" required value="${esc(latest.effectiveDate)}">
+              </label>
+              <label style="grid-column:1/-1">Notes
+                <textarea class="cp-edit-notes">${esc(latest.notes || '')}</textarea>
+              </label>
+              <label style="grid-column:1/-1">Reason for this edit
+                <input type="text" class="cp-edit-reason" required placeholder="e.g. wrong terminal selected, typo in price…">
+              </label>
+              <div class="form-actions">
+                <button type="submit" class="btn">Save edit</button>
+                <button type="button" class="btn ghost cp-edit-cancel">Cancel</button>
+              </div>
+            </form>
           </td>
         </tr>
         <tr class="cp-history-row" data-key="${esc(key)}" hidden>
@@ -528,10 +579,13 @@
     }
   });
 
-  // A correction is create-only: it prompts for the new value and a reason,
-  // then adds a NEW record referencing the original. There is no edit-in-place
-  // and no delete — matching the real backend's ChallengePriceRepository,
-  // which has no update() or delete() method at all.
+  // Editing and deleting are both create-only under the hood: an edit adds
+  // a new record referencing the original with the full new state, a
+  // delete adds a new record flagged isDeletion:true — the original is
+  // never mutated or removed, matching the real backend's
+  // ChallengePriceRepository, which has no update() or delete() method at
+  // all. Both are fully recoverable by design: nothing is ever actually
+  // erased from Firestore.
   el('#challenge-rows').addEventListener('click', async (e) => {
     if (e.target.classList.contains('cp-history-toggle')) {
       const key = e.target.dataset.key;
@@ -542,25 +596,69 @@
       }
       return;
     }
-    if (!e.target.classList.contains('cp-correct')) return;
-    const row = e.target.closest('tr[data-id]');
-    if (!row) return;
-    const id = row.dataset.id;
-    const list = await storage.getChallengePrices();
-    const original = list.find((c) => c.id === id);
-    if (!original) return;
 
-    const currentPreGst = typeof original.preGstPrice === 'number' ? (original.preGstPrice / 100).toFixed(4) : '';
-    const newValueRaw = prompt(`Corrected price BEFORE GST for ${fmtDate(original.effectiveDate)} (was $${currentPreGst}):`, currentPreGst);
-    if (newValueRaw === null) return;
-    const newPreGstDollars = Number(newValueRaw);
-    if (!Number.isFinite(newPreGstDollars) || newPreGstDollars <= 0) { alert('Enter a valid positive number.'); return; }
-    const reason = prompt('Reason for this correction:');
-    if (!reason || !reason.trim()) { alert('A correction requires a reason.'); return; }
+    if (e.target.classList.contains('cp-edit')) {
+      const row = e.target.closest('tr[data-id]');
+      const id = row.dataset.id;
+      const editRow = document.querySelector(`.cp-edit-row[data-id="${CSS.escape(id)}"]`);
+      if (!editRow) return;
+      const form = editRow.querySelector('.cp-edit-form');
+      fillOptions(form.querySelector('.cp-edit-region'), activeRegions, { value: (r) => r.id, label: (r) => r.label });
+      fillOptions(form.querySelector('.cp-edit-product'), config.products, { value: (p) => p.id, label: (p) => p.label });
+      const list = await storage.getChallengePrices();
+      const byCorrectionOf = {};
+      list.forEach((c) => { if (c.correctionOf) (byCorrectionOf[c.correctionOf] = byCorrectionOf[c.correctionOf] || []).push(c); });
+      const original = list.find((c) => c.id === id);
+      const edits = byCorrectionOf[id] || [];
+      const current = edits.length ? edits[edits.length - 1] : original;
+      form.querySelector('.cp-edit-region').value = current.regionId;
+      form.querySelector('.cp-edit-product').value = current.productId;
+      editRow.hidden = false;
+      return;
+    }
 
+    if (e.target.classList.contains('cp-edit-cancel')) {
+      const editRow = e.target.closest('.cp-edit-row');
+      if (editRow) editRow.hidden = true;
+      return;
+    }
+
+    if (e.target.classList.contains('cp-delete')) {
+      const row = e.target.closest('tr[data-id]');
+      const id = row.dataset.id;
+      const reason = prompt('Reason for deleting this entry (it stays recoverable — nothing is permanently erased):');
+      if (!reason || !reason.trim()) return;
+      try {
+        await storage.deleteChallengePrice(id, reason);
+        await renderChallenge();
+      } catch (err) {
+        alert(err.message);
+      }
+      return;
+    }
+  });
+
+  el('#challenge-rows').addEventListener('submit', async (e) => {
+    if (!e.target.classList.contains('cp-edit-form')) return;
+    e.preventDefault();
+    const form = e.target;
+    const id = form.dataset.id;
+    const preGstDollars = Number(form.querySelector('.cp-edit-price').value);
+    if (!Number.isFinite(preGstDollars) || preGstDollars <= 0) { alert('Enter a positive price before GST.'); return; }
+    const reason = form.querySelector('.cp-edit-reason').value.trim();
+    if (!reason) { alert('An edit requires a reason.'); return; }
+
+    const preGstCents = preGstDollars * 100;
+    const edits = {
+      regionId: form.querySelector('.cp-edit-region').value,
+      productId: form.querySelector('.cp-edit-product').value,
+      preGstPrice: preGstCents,
+      finalPrice: preGstCents * (1 + GST_RATE),
+      effectiveDate: form.querySelector('.cp-edit-date').value,
+      notes: form.querySelector('.cp-edit-notes').value.trim(),
+    };
     try {
-      const newFinalCents = newPreGstDollars * 100 * (1 + GST_RATE);
-      await storage.correctChallengePrice(id, newFinalCents, reason, newPreGstDollars * 100);
+      await storage.editChallengePrice(id, edits, reason);
       await renderChallenge();
     } catch (err) {
       alert(err.message);

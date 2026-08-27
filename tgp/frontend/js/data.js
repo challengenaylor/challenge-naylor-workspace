@@ -169,7 +169,7 @@
       const r = d.data();
       return {
         id: r.id, severity: 'WARNING', supplierId: r.supplierId,
-        date: (r.effectiveDate || r.queuedAt || '').slice(0, 10),
+        date: (r.effectiveDate || r.queuedAt || '').slice(0, 10), queuedAt: r.queuedAt || null,
         message: `${r.terminalRaw || '?'} / ${r.productRaw || '?'}: ${(r.validationErrors || []).join(', ')}`,
         status: 'Needs Review', resolution: null,
       };
@@ -216,10 +216,30 @@
         const latestSuccess = latestSuccessBySupplier[e.supplierId];
         return !latestSuccess || !e.timestamp || e.timestamp > latestSuccess;
       });
+      // Same principle applied to review entries — this is what should have
+      // caught the real 20 Aug 2026 case: a review item whose terminal name
+      // ("TNZ TNZ Mt Maunganui") didn't match anything the current, fixed
+      // code would ever produce, so it could never auto-resolve by exact
+      // match. Filtering by recency catches this whole CLASS of leftover
+      // debris, not just the one exact-string case the other fix already
+      // handles.
+      const currentReviewErrors = reviewErrors.filter((r) => {
+        const latestSuccess = latestSuccessBySupplier[r.supplierId];
+        return !latestSuccess || !r.queuedAt || r.queuedAt > latestSuccess;
+      });
+      // This filtering has a real failure mode if it's ever wrong: a
+      // genuinely current problem could theoretically be hidden without
+      // anyone noticing. Rather than hide silently, the counts of what got
+      // filtered are kept and surfaced in the dashboard — this makes the
+      // filtering auditable instead of an invisible black box.
+      global.TGP.data.filteredCounts = {
+        errors: connectorErrors.length - currentConnectorErrors.length,
+        reviews: reviewErrors.length - currentReviewErrors.length,
+      };
 
       global.TGP.data.currentPrices = currentPrices;
       global.TGP.data.documents = documents;
-      global.TGP.data.errors = [...currentConnectorErrors, ...reviewErrors];
+      global.TGP.data.errors = [...currentConnectorErrors, ...currentReviewErrors];
       global.TGP.data.aipPrices = aipPrices;
       global.TGP.data.priceHistory = []; // history charting against live history is a follow-up piece, not wired yet
       global.TGP.data.automationRuns = SUPPLIERS.map((s) => {
