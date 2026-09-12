@@ -218,8 +218,6 @@
   .sync-pill.saving{background:var(--accent-tint); color:var(--accent-dk);}
   .sync-pill.error{background:var(--warn-bg); color:var(--warn-tx);}
   .sync-pill.ok{opacity:0;}
-
-  /* ---------- Mobile layout ---------- */
   @media (max-width:820px){
     #app{ flex-direction:column; }
     #sidebar{
@@ -243,34 +241,6 @@
     .kpi{ min-width:130px; padding:14px 14px; }
     .kpi .value{ font-size:22px; }
   }
-</style>
-
-<!-- ===================================================================
-     FIREBASE — this is what lets the roster be the same on every device.
-     Paste your OWN project's config here (Firebase console → Project
-     settings → General → "Your apps" → SDK setup and configuration).
-     =================================================================== -->
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
-<script>
-  const firebaseConfig = {
-    apiKey: "AIzaSyAPwS1GFwqj6KR4dQgxifykh9HS5km6OX4",
-    authDomain: "alpha-7fce5.firebaseapp.com",
-    projectId: "alpha-7fce5",
-    storageBucket: "alpha-7fce5.firebasestorage.app",
-    messagingSenderId: "10647816245",
-    appId: "1:10647816245:web:fbfb982260cf2eef97097c"
-  };
-  firebase.initializeApp(firebaseConfig);
-  const auth = firebase.auth();
-  const db = firebase.firestore();
-  // Everyone who opens this page reads/writes the same single document.
-  const rosterDocRef = db.collection("rosterApp").doc("main");
-  // Which entry in a person's "tools" list unlocks THIS tool.
-  const REQUIRED_TOOL_KEY = "roster";
-</script>
-<style>
   #authGate{
     position:fixed; inset:0; background:#F5F3EE; z-index:5000;
     display:flex; align-items:center; justify-content:center;
@@ -296,6 +266,25 @@
     color:#6B6455; cursor:pointer;
   }
 </style>
+
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyAPwS1GFwqj6KR4dQgxifykh9HS5km6OX4",
+    authDomain: "alpha-7fce5.firebaseapp.com",
+    projectId: "alpha-7fce5",
+    storageBucket: "alpha-7fce5.firebasestorage.app",
+    messagingSenderId: "10647816245",
+    appId: "1:10647816245:web:fbfb982260cf2eef97097c"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
+  const rosterDocRef = db.collection("rosterApp").doc("main");
+  const REQUIRED_TOOL_KEY = "roster";
+</script>
 </head>
 <body>
 <div id="authGate">
@@ -337,53 +326,6 @@
     <div class="page" id="page-settings"></div>
   </div>
 </div>
-<script>
-  const gateEmail = document.getElementById('gateEmail');
-  const gatePassword = document.getElementById('gatePassword');
-  const gateMsg = document.getElementById('gateMsg');
-  const authGate = document.getElementById('authGate');
-  const logoutCorner = document.getElementById('logoutCorner');
-  const appDiv = document.getElementById('app');
-
-  document.getElementById('gateBtn').addEventListener('click', async () => {
-    gateMsg.textContent = '';
-    try {
-      await auth.signInWithEmailAndPassword(gateEmail.value.trim(), gatePassword.value);
-    } catch (e) {
-      gateMsg.textContent = 'Incorrect email or password.';
-    }
-  });
-  logoutCorner.addEventListener('click', () => auth.signOut());
-
-  let appHasStarted = false;
-  auth.onAuthStateChanged(async (user) => {
-    if (!user) {
-      authGate.style.display = 'flex';
-      logoutCorner.style.display = 'none';
-      appDiv.style.display = 'none';
-      return;
-    }
-    let allowed = false;
-    try {
-      const snap = await db.collection('users').doc(user.uid).get();
-      if (snap.exists) {
-        const data = snap.data();
-        allowed = data.role === 'admin' || (data.tools || []).includes(REQUIRED_TOOL_KEY);
-      }
-    } catch (e) { console.error(e); }
-
-    if (!allowed) {
-      gateMsg.textContent = "You don't have access to this tool.";
-      auth.signOut();
-      return;
-    }
-
-    authGate.style.display = 'none';
-    logoutCorner.style.display = 'block';
-    appDiv.style.display = 'flex';
-    if (!appHasStarted) { appHasStarted = true; startApp(); }
-  });
-</script>
 <div class="toast" id="toast"></div>
 <script>
 /* =========================================================================
@@ -489,8 +431,6 @@ function setSyncPill(mode){
   else { p.textContent = "Saved"; p.classList.add("ok"); }
 }
 
-// Loads the shared roster from Firebase. Every device that opens this page
-// reads from the same document, which is what keeps them all in sync.
 async function loadState(){
   setSyncPill("loading");
   try{
@@ -509,7 +449,6 @@ async function loadState(){
   }
 }
 
-// Saves the shared roster to Firebase so every other device sees the update.
 async function saveState(){
   setSyncPill("saving");
   try{
@@ -820,6 +759,7 @@ RENDERERS.roster = function(){
       <button class="navbtn" id="nextWeekBtn" title="Next week">&#8594;</button>
       <input type="date" id="jumpDate" value="${weekStart}" style="width:150px;">
       <button class="btn primary" id="newWeekBtn">+ Next week</button>
+      <button class="btn" id="copyLastWeekBtn">Copy last week's shifts</button>
       <button class="btn" id="clearWeekBtn">Clear this week</button>
       <button class="btn" id="printRosterBtn">Print this week</button>
     </div>
@@ -930,6 +870,9 @@ RENDERERS.roster = function(){
   document.getElementById("newWeekBtn").addEventListener("click", ()=>{
     goToWeek(addDays(STATE.currentWeek, 7));
   });
+  document.getElementById("copyLastWeekBtn").addEventListener("click", ()=>{
+    copyFromPreviousWeek(weekStart);
+  });
   document.getElementById("clearWeekBtn").addEventListener("click", ()=>{
     if(confirm("Clear every shift in this week? This can't be undone.")){
       ensureWeek(weekStart).shifts = {};
@@ -945,23 +888,52 @@ function mondayOnOrBeforeIso(iso){
   return isoDate(mondayOnOrBefore(new Date(iso+"T00:00:00")));
 }
 
-// Navigate to a week. If it's brand new (no shifts saved yet) and moving
-// forward in time, automatically bring across the previous week's shifts
-// so most weeks need little more than a few tweaks.
-function goToWeek(target){
+// Ensures a week exists; if it's brand new (never touched before, anywhere in
+// the app) and the previous week has shifts, copies them across automatically.
+// Returns true if a copy happened. This is the single source of truth for
+// "auto-bring-last-week's-shifts" — every place that can navigate to a future
+// week (Roster nav, Team Roster nav, + Next week) must go through this, or a
+// week can get silently "claimed" empty by one page before another page ever
+// gets a chance to populate it.
+function ensureWeekWithAutoCopy(target){
   const alreadyExists = !!STATE.weeks[target];
   ensureWeek(target);
   if(!alreadyExists){
     const prev = addDays(target, -7);
     if(STATE.weeks[prev] && STATE.weeks[prev].shifts && Object.keys(STATE.weeks[prev].shifts).length){
       STATE.weeks[target].shifts = JSON.parse(JSON.stringify(STATE.weeks[prev].shifts));
-      showToast("Brought last week's shifts across — adjust as needed");
+      return true;
     }
   }
+  return false;
+}
+
+// Navigate the Roster page to a week, auto-copying last week's shifts in.
+function goToWeek(target){
+  const copied = ensureWeekWithAutoCopy(target);
+  if(copied) showToast("Brought last week's shifts across — adjust as needed");
   STATE.currentWeek = target;
   saveState();
   RENDERERS.roster();
 }
+
+// Manually pull last week's shifts into any week (overwrites what's there) —
+// the fix for weeks that got stuck empty before this bug was patched, and a
+// handy button any time you want to re-copy on purpose.
+function copyFromPreviousWeek(target){
+  const prev = addDays(target, -7);
+  const hasPrevData = STATE.weeks[prev] && STATE.weeks[prev].shifts && Object.keys(STATE.weeks[prev].shifts).length;
+  if(!hasPrevData){
+    alert("No shifts found for the previous week (" + fmtDate(prev) + ") to copy from.");
+    return;
+  }
+  if(!confirm("Copy last week's shifts into this week? This will overwrite anything already entered here.")) return;
+  ensureWeek(target).shifts = JSON.parse(JSON.stringify(STATE.weeks[prev].shifts));
+  saveState();
+  showToast("Copied last week's shifts");
+  RENDERERS.roster();
+}
+
 
 /* ---- Copy a shift to other days (modal) ---- */
 let copySource = null;
@@ -1193,8 +1165,8 @@ RENDERERS.team = function(){
     </div>
   `;
 
-  document.getElementById("teamPrevBtn").addEventListener("click", ()=>{ teamSelectedWeek = addDays(weekStart,-7); ensureWeek(teamSelectedWeek); RENDERERS.team(); });
-  document.getElementById("teamNextBtn").addEventListener("click", ()=>{ teamSelectedWeek = addDays(weekStart,7); ensureWeek(teamSelectedWeek); RENDERERS.team(); });
+  document.getElementById("teamPrevBtn").addEventListener("click", ()=>{ teamSelectedWeek = addDays(weekStart,-7); ensureWeekWithAutoCopy(teamSelectedWeek); saveState(); RENDERERS.team(); });
+  document.getElementById("teamNextBtn").addEventListener("click", ()=>{ teamSelectedWeek = addDays(weekStart,7); ensureWeekWithAutoCopy(teamSelectedWeek); saveState(); RENDERERS.team(); });
   document.getElementById("teamWeekSelect").addEventListener("change", e=>{ teamSelectedWeek = e.target.value; RENDERERS.team(); });
   document.getElementById("showTotalsChk").addEventListener("change", e=>{
     STATE.settings.showTotalsOnTeamRoster = e.target.checked;
@@ -1650,6 +1622,54 @@ async function startApp(){
   await loadState();
   showPage("dashboard");
 }
+</script>
+
+<script>
+  const gateEmail = document.getElementById('gateEmail');
+  const gatePassword = document.getElementById('gatePassword');
+  const gateMsg = document.getElementById('gateMsg');
+  const authGate = document.getElementById('authGate');
+  const logoutCorner = document.getElementById('logoutCorner');
+  const appDiv = document.getElementById('app');
+
+  document.getElementById('gateBtn').addEventListener('click', async () => {
+    gateMsg.textContent = '';
+    try {
+      await auth.signInWithEmailAndPassword(gateEmail.value.trim(), gatePassword.value);
+    } catch (e) {
+      gateMsg.textContent = 'Incorrect email or password.';
+    }
+  });
+  logoutCorner.addEventListener('click', () => auth.signOut());
+
+  let appHasStarted = false;
+  auth.onAuthStateChanged(async (user) => {
+    if (!user) {
+      authGate.style.display = 'flex';
+      logoutCorner.style.display = 'none';
+      appDiv.style.display = 'none';
+      return;
+    }
+    let allowed = false;
+    try {
+      const snap = await db.collection('users').doc(user.uid).get();
+      if (snap.exists) {
+        const data = snap.data();
+        allowed = data.role === 'admin' || (data.tools || []).includes(REQUIRED_TOOL_KEY);
+      }
+    } catch (e) { console.error(e); }
+
+    if (!allowed) {
+      gateMsg.textContent = "You don't have access to this tool.";
+      auth.signOut();
+      return;
+    }
+
+    authGate.style.display = 'none';
+    logoutCorner.style.display = 'block';
+    appDiv.style.display = 'flex';
+    if (!appHasStarted) { appHasStarted = true; startApp(); }
+  });
 </script>
 </body>
 </html>
