@@ -130,13 +130,6 @@
         .btn-chip:hover{ border-color:var(--forest); color:var(--forest); background:var(--paper-panel); }
         .btn-chip.danger:hover{ border-color:var(--rust); color:var(--rust); }
 
-        @media (max-width:640px){
-            .btn-chip span, .btn-chip{ font-size:0.75rem; padding:7px 11px; }
-            header h1{ font-size:1.35rem !important; }
-            #drop-zone{ flex-direction:column; text-align:center; }
-            .dz-title, .dz-sub{ text-align:center; }
-        }
-
         /* Theme toggle */
         .theme-toggle{
             width:40px; height:40px; border-radius:12px; flex-shrink:0;
@@ -206,6 +199,31 @@
         .desc-input:hover{ border-color:var(--rule-strong); }
         .desc-input:focus{ border-color:var(--forest); background:var(--paper-panel); outline:none; box-shadow:0 0 0 3px var(--accent-soft); }
         .account-select{ border:1px solid var(--rule-strong); color:var(--ink); background:var(--paper-panel); font-family:var(--font-body); }
+
+        /* Searchable account picker (replaces a plain long dropdown for a big chart of accounts) */
+        .acc-combo{ position:relative; }
+        .account-search-input{
+            width:100%; border-radius:8px; padding:8px 10px; font-size:0.8125rem;
+            border:1px solid var(--rule-strong); background:var(--paper-panel); color:var(--ink);
+            outline:none; cursor:pointer; font-family:var(--font-body);
+        }
+        .account-search-input:focus{ border-color:var(--forest); box-shadow:0 0 0 3px var(--accent-soft); cursor:text; }
+        .acc-combo-panel{
+            position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:40; min-width:280px;
+            background:var(--paper-panel); border:1px solid var(--rule-strong); border-radius:10px;
+            box-shadow:0 14px 32px rgba(0,0,0,0.22); max-height:320px; overflow-y:auto; padding:5px;
+        }
+        .acc-combo-item{
+            display:flex; align-items:center; gap:8px; padding:7px 8px; border-radius:7px;
+            font-size:0.8125rem; cursor:pointer;
+        }
+        .acc-combo-item:hover, .acc-combo-item.active{ background:var(--accent-soft); }
+        .acc-combo-item .dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+        .acc-combo-item .code{ font-family:var(--font-mono); font-weight:600; color:var(--ink); flex-shrink:0; }
+        .acc-combo-item .name{ color:var(--ink-soft); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex-grow:1; }
+        .acc-combo-item .cat-tag{ font-size:9.5px; text-transform:uppercase; letter-spacing:0.04em; color:var(--ink-soft); background:var(--panel-alt); padding:2px 6px; border-radius:999px; flex-shrink:0; }
+        .acc-combo-empty{ padding:16px 10px; text-align:center; color:var(--ink-soft); font-size:0.8125rem; }
+        .acc-combo-count{ padding:4px 8px 6px; font-size:10.5px; color:var(--ink-soft); border-bottom:1px solid var(--rule); margin-bottom:4px; }
         .account-select:focus{ border-color:var(--forest); outline:none; }
         .amount-input{ border:1px solid var(--rule-strong); color:var(--ink); font-family:var(--font-mono); background:var(--paper-panel); }
         .amount-input:focus{ border-color:var(--forest); outline:none; }
@@ -227,6 +245,7 @@
         .conf-med{ color:var(--brass); }
         .conf-low{ color:var(--rust); background:var(--danger-soft); }
         .conf-manual{ color:var(--ink-soft); }
+        .conf-excluded{ color:var(--ink-soft); border-style:dashed; }
 
         .confirm-btn{
             width:24px; height:24px; border-radius:7px; flex-shrink:0;
@@ -259,69 +278,8 @@
 
         .hide{ display:none !important; }
     </style>
-<!-- ===================================================================
-     FIREBASE — lets your learned categorization rules and custom chart
-     of accounts sync across every device, using the same project as
-     your other tools.
-     =================================================================== -->
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
-<script>
-  const firebaseConfig = {
-    apiKey: "AIzaSyAPwS1GFwqj6KR4dQgxifykh9HS5km6OX4",
-    authDomain: "alpha-7fce5.firebaseapp.com",
-    projectId: "alpha-7fce5",
-    storageBucket: "alpha-7fce5.firebasestorage.app",
-    messagingSenderId: "10647816245",
-    appId: "1:10647816245:web:fbfb982260cf2eef97097c"
-  };
-  firebase.initializeApp(firebaseConfig);
-  const auth = firebase.auth();
-  const db = firebase.firestore();
-  const smartCoderDocRef = db.collection("smartCoderApp").doc("main");
-  const REQUIRED_TOOL_KEY = "expenses";
-</script>
-<style>
-  #authGate{
-    position:fixed; inset:0; background:#F5F6FB; z-index:5000;
-    display:flex; align-items:center; justify-content:center;
-  }
-  #authGate .box{
-    width:100%; max-width:360px; background:#fff; border:1px solid #E3E6EF;
-    border-radius:10px; padding:30px 26px; text-align:center; font-family:sans-serif;
-  }
-  #authGate h2{margin:0 0 6px; font-size:1.2rem; color:#12141C;}
-  #authGate p{margin:0 0 20px; font-size:.85rem; color:#6B7280;}
-  #authGate input{
-    width:100%; padding:10px 12px; margin-bottom:10px; border:1px solid #E3E6EF;
-    border-radius:6px; font-size:.9rem; box-sizing:border-box;
-  }
-  #authGate button{
-    width:100%; padding:11px; background:#6D5EF5; color:#fff; border:none;
-    border-radius:6px; font-weight:700; cursor:pointer; margin-top:4px;
-  }
-  #authGate .msg{font-size:.8rem; margin-top:12px; color:#E0362C;}
-  #logoutCorner{
-    position:fixed; bottom:14px; left:14px; z-index:900; font-size:11px;
-    background:#fff; border:1px solid #E3E6EF; padding:5px 10px; border-radius:20px;
-    color:#6B7280; cursor:pointer;
-  }
-</style>
 </head>
 <body class="p-4 md:p-8">
-<div id="authGate">
-  <div class="box">
-    <h2>Sign in</h2>
-    <p>Enter your login to access Expense SmartCoder.</p>
-    <input type="email" id="gateEmail" placeholder="Email">
-    <input type="password" id="gatePassword" placeholder="Password">
-    <button id="gateBtn">Sign in</button>
-    <div class="msg" id="gateMsg"></div>
-  </div>
-</div>
-<div id="logoutCorner" style="display:none;">Log out</div>
-<div id="appWrap" style="display:none;">
     <div class="max-w-7xl mx-auto">
 
         <header class="mb-6 flex justify-between items-center flex-wrap gap-4">
@@ -435,6 +393,7 @@
                 </button>
             </div>
             <div class="p-5 overflow-y-auto flex-grow">
+                <input type="text" id="account-manager-search" placeholder="Search codes or names to filter this list..." autocomplete="off" class="w-full rounded-md p-2.5 text-sm outline-none mb-3" style="border:1px solid var(--rule-strong); background:var(--paper-panel); color:var(--ink);">
                 <div class="grid grid-cols-12 gap-2 text-xs font-semibold uppercase field-label mb-2 px-1">
                     <span class="col-span-1"></span>
                     <span class="col-span-3">Account Code</span>
@@ -456,57 +415,69 @@
             </div>
         </div>
     </div>
-    </div><!-- /#appWrap -->
 
-    <script>
-        const gateEmail = document.getElementById('gateEmail');
-        const gatePassword = document.getElementById('gatePassword');
-        const gateMsg = document.getElementById('gateMsg');
-        const authGate = document.getElementById('authGate');
-        const logoutCorner = document.getElementById('logoutCorner');
-        const appWrap = document.getElementById('appWrap');
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getFirestore, doc, getDoc, setDoc, deleteField } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
-        document.getElementById('gateBtn').addEventListener('click', async () => {
-            gateMsg.textContent = '';
+        const firebaseConfig = {
+          apiKey: "AIzaSyAPwS1GFwqj6KR4dQgxifykh9HS5km6OX4",
+          authDomain: "alpha-7fce5.firebaseapp.com",
+          projectId: "alpha-7fce5",
+          storageBucket: "alpha-7fce5.firebasestorage.app",
+          messagingSenderId: "10647816245",
+          appId: "1:10647816245:web:fbfb982260cf2eef97097c"
+        };
+        // No custom app name here — using the default app means this page
+        // picks up the same signed-in session as the dashboard and your
+        // other tools, instead of asking you to log in again separately.
+        const expensesFbApp = initializeApp(firebaseConfig);
+        const expensesDb = getFirestore(expensesFbApp);
+        const expensesAuth = getAuth(expensesFbApp);
+        const expensesDocRef = doc(expensesDb, "smartCoderApp", "main");
+
+        // Firestore requires you to be logged in for this collection (same
+        // as your other SmartCoder tools). This waits for Firebase to
+        // finish restoring your existing session before the very first
+        // read/write, so it isn't rejected by a race on page load.
+        let expensesAuthReady;
+        function waitForAuth() {
+            if (!expensesAuthReady) {
+                expensesAuthReady = new Promise((resolve) => {
+                    const unsub = onAuthStateChanged(expensesAuth, (user) => { unsub(); resolve(user); });
+                });
+            }
+            return expensesAuthReady;
+        }
+
+        // Firestore-backed replacements for the old browser-only localforage calls.
+        // Every device reading/writing this same document stays in sync.
+        async function fsGet(key) {
             try {
-                await auth.signInWithEmailAndPassword(gateEmail.value.trim(), gatePassword.value);
-            } catch (e) {
-                gateMsg.textContent = 'Incorrect email or password.';
-            }
-        });
-        logoutCorner.addEventListener('click', () => auth.signOut());
-
-        let appHasStarted = false;
-        auth.onAuthStateChanged(async (user) => {
-            if (!user) {
-                authGate.style.display = 'flex';
-                logoutCorner.style.display = 'none';
-                appWrap.style.display = 'none';
-                return;
-            }
-            let allowed = false;
+                const user = await waitForAuth();
+                if (!user) { console.error("Not signed in — log in via the dashboard first."); return null; }
+                const snap = await getDoc(expensesDocRef);
+                if (!snap.exists()) return null;
+                const data = snap.data();
+                return (key in data) ? data[key] : null;
+            } catch (e) { console.error("Firestore get failed:", e); return null; }
+        }
+        async function fsSet(key, value) {
             try {
-                const snap = await db.collection('users').doc(user.uid).get();
-                if (snap.exists) {
-                    const data = snap.data();
-                    allowed = data.role === 'admin' || (data.tools || []).includes(REQUIRED_TOOL_KEY);
-                }
-            } catch (e) { console.error(e); }
+                const user = await waitForAuth();
+                if (!user) { console.error("Not signed in — log in via the dashboard first."); return false; }
+                await setDoc(expensesDocRef, { [key]: value }, { merge: true }); return true;
+            } catch (e) { console.error("Firestore set failed:", e); return false; }
+        }
+        async function fsRemove(key) {
+            try {
+                const user = await waitForAuth();
+                if (!user) { console.error("Not signed in — log in via the dashboard first."); return false; }
+                await setDoc(expensesDocRef, { [key]: deleteField() }, { merge: true }); return true;
+            } catch (e) { console.error("Firestore remove failed:", e); return false; }
+        }
 
-            if (!allowed) {
-                gateMsg.textContent = "You don't have access to this tool.";
-                auth.signOut();
-                return;
-            }
-
-            authGate.style.display = 'none';
-            logoutCorner.style.display = 'block';
-            appWrap.style.display = 'block';
-            if (!appHasStarted) { appHasStarted = true; init(); }
-        });
-    </script>
-
-    <script>
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
         // --- Theme toggle ---
@@ -518,21 +489,159 @@
         }
 
         const UNCODED_ENTRY = { id: "UNCODED", name: "⚠️ NEEDS REVIEW" };
+        // A separate, deliberate "not an expense" option -- for lines that shouldn't
+        // sit in the "needs review" count forever but also don't belong in any
+        // account (e.g. a deposit refund, till float adjustment, etc).
+        const EXCLUDED_ENTRY = { id: "EXCLUDED", name: "N/A \u2014 not a coded expense" };
 
+        // Your full real chart of accounts (145 accounts, from CashManager export).
+        // Fully editable via "Manage Account Codes" -- add, rename, or remove any of these.
         const defaultChartOfAccounts = [
-            { id: "280/12", name: "PURCHASES - CONFECTIONERY" },
-            { id: "280/13", name: "PURCHASES - DRINKS" },
-            { id: "280/09", name: "PURCHASES - GROCERIES" },
-            { id: "280/10", name: "PURCHASES - HOT FOOD" },
-            { id: "280/11", name: "PURCHASES - CIGARETTES" },
-            { id: "280/20", name: "PURCHASES - MILK" },
-            { id: "280/23", name: "PURCHASES - BREAD" },
-            { id: "283", name: "FREIGHT" },
-            { id: "461", name: "TELEPHONE AND TOLLS" },
-            { id: "382", name: "ELECTRCITY (OVERHEADS)" },
-            { id: "383", name: "CLEANING (OVERHEADS)" },
-            { id: "459", name: "PRINTING AND STATIONERY" },
-            { id: "297", name: "DAMAGES AND WASTAGE" }
+            { id: '182', name: 'PRICE SUPPORT', category: 'Income' },
+            { id: '211/00', name: 'Total Sales', category: 'Income' },
+            { id: '214/002', name: 'MTA Gift Card Commission', category: 'Income' },
+            { id: '214/03', name: 'BOOKING FEES', category: 'Income' },
+            { id: '214/04', name: 'CHEQUE FEE RECEIVED', category: 'Income' },
+            { id: '215/00', name: 'SUNDRY INCOME', category: 'Income' },
+            { id: '216', name: 'Rebates Received Tyres', category: 'Income' },
+            { id: '216/00', name: 'REBATES RECEIVED', category: 'Income' },
+            { id: '216/01', name: 'Rebates Recd Capricorn', category: 'Income' },
+            { id: '216/02', name: 'Rebates Recd Tobacco', category: 'Income' },
+            { id: '217/00', name: 'LPG EXCISE DUTY REFUND', category: 'Income' },
+            { id: '219/00', name: 'INTEREST RECEIVED', category: 'Income' },
+            { id: '246', name: 'Sub-Contractor- Workshop', category: 'Direct Costs' },
+            { id: '280/00', name: 'PURCHASES - PETROL 96', category: 'Direct Costs' },
+            { id: '280/01', name: 'PURCHASES - PETROL 91', category: 'Direct Costs' },
+            { id: '280/02', name: 'PURCHASES - DIESEL', category: 'Direct Costs' },
+            { id: '280/03', name: 'PURCHASES - L.P.G.', category: 'Direct Costs' },
+            { id: '280/04', name: 'PURCHASES - FORECOURT OILS', category: 'Direct Costs' },
+            { id: '280/05', name: 'PURCHASES - C.N.G', category: 'Direct Costs' },
+            { id: '280/06', name: 'PURCHASES - TYRES & TUBES', category: 'Direct Costs' },
+            { id: '280/07', name: 'PURCHASES - ACCESSORIES', category: 'Direct Costs' },
+            { id: '280/08', name: 'PURCHASES - BATTERIES', category: 'Direct Costs' },
+            { id: '280/09', name: 'PURCHASES - GROCERIES', category: 'Direct Costs' },
+            { id: '280/10', name: 'PURCHASES - HOT FOOD', category: 'Direct Costs' },
+            { id: '280/11', name: 'PURCHASES - CIGARETTES', category: 'Direct Costs' },
+            { id: '280/12', name: 'PURCHASES - CONFECTIONERY', category: 'Direct Costs' },
+            { id: '280/13', name: 'PURCHASES - DRINKS', category: 'Direct Costs' },
+            { id: '280/14', name: 'PURCHASES - CHIPS & NUTS', category: 'Direct Costs' },
+            { id: '280/15', name: 'PURCHASES-W/SHOP OILS', category: 'Direct Costs' },
+            { id: '280/16', name: 'PURCHASES- MOWER PARTS ETC', category: 'Direct Costs' },
+            { id: '280/17', name: 'PURCHASES - WORKSHOP PARTS', category: 'Direct Costs' },
+            { id: '280/18', name: 'PURCHASES - WORKSHOP OUTWORK', category: 'Direct Costs' },
+            { id: '280/19', name: 'PURCHASES - MAGAZINES & PAPERS', category: 'Direct Costs' },
+            { id: '280/20', name: 'PURCHASES - MILK', category: 'Direct Costs' },
+            { id: '280/21', name: 'PURCHASES - FROZEN FOODS', category: 'Direct Costs' },
+            { id: '280/23', name: 'PURCHASES - BREAD', category: 'Direct Costs' },
+            { id: '280/24', name: 'PURCHASES - SUPPLEMENTS', category: 'Direct Costs' },
+            { id: '280/25', name: 'PURCHASES - STAMPS AND PHONECARDS', category: 'Direct Costs' },
+            { id: '280/26', name: 'PURCHASES WHEEL ALIGNMENT', category: 'Direct Costs' },
+            { id: '280/27', name: 'Coffee Machine', category: 'Overheads' },
+            { id: '283', name: 'FREIGHT', category: 'Direct Costs' },
+            { id: '290/16', name: 'DIRECT WAGES - WORKSHOP', category: 'Direct Costs' },
+            { id: '290/17', name: 'Wages-Profit Share', category: 'Direct Costs' },
+            { id: '291/00', name: 'CONSUMABLES - FORECOURT', category: 'Direct Costs' },
+            { id: '291/17', name: 'CONSUMABLES - WORKSHOP', category: 'Direct Costs' },
+            { id: '292/06', name: 'Tyrepower Admin Fees', category: 'Overheads' },
+            { id: '296', name: 'Workshop Comebacks', category: 'Direct Costs' },
+            { id: '297', name: 'DAMAGES AND WASTAGE', category: 'Direct Costs' },
+            { id: '298', name: 'DRIVE OFFS', category: 'Direct Costs' },
+            { id: '370', name: 'WAGES - FORECOURT', category: 'Overheads' },
+            { id: '371', name: 'WAGES - OFFICE', category: 'Overheads' },
+            { id: '372', name: 'Wages - Tyre Bay', category: 'Overheads' },
+            { id: '382', name: 'ELECTRCITY', category: 'Overheads' },
+            { id: '383', name: 'CLEANING', category: 'Overheads' },
+            { id: '410', name: 'PROTECTIVE CLOTHING/UNIFORMS', category: 'Overheads' },
+            { id: '410/00', name: 'Protective Clothing Workshop', category: 'Overheads' },
+            { id: '411', name: 'HARDWARE AND TOOLS', category: 'Overheads' },
+            { id: '413', name: 'VEHICLE EXPENSES', category: 'Overheads' },
+            { id: '413/00', name: 'Trailer R & M', category: 'Overheads' },
+            { id: '420', name: 'REPAIRS AND MAINTENANCE', category: 'Overheads' },
+            { id: '420/01', name: 'R & M W/SHOP', category: 'Overheads' },
+            { id: '452', name: 'ACCOUNTANCY FEES', category: 'Overheads' },
+            { id: '453/00', name: 'BAD DEBTS', category: 'Overheads' },
+            { id: '453/01', name: 'TILL OVER AND UNDERS', category: 'Overheads' },
+            { id: '453/02', name: 'UNPAID ITEMS & REBANKS', category: 'Overheads' },
+            { id: '453/10', name: 'ROBBERY OF PREMISES', category: 'Overheads' },
+            { id: '454', name: 'ENTERTAINMENT', category: 'Overheads' },
+            { id: '456', name: 'GENERAL EXPENSES', category: 'Overheads' },
+            { id: '457/00', name: 'LEGAL EXPENSES', category: 'Overheads' },
+            { id: '458', name: 'POSTAGES', category: 'Overheads' },
+            { id: '459', name: 'PRINTING AND STATIONERY', category: 'Overheads' },
+            { id: '459/01', name: 'PRINT & STATIONERY WORKSHOP', category: 'Overheads' },
+            { id: '460', name: 'COMPUTER EXPENSES', category: 'Overheads' },
+            { id: '461', name: 'TELEPHONE AND TOLLS', category: 'Overheads' },
+            { id: '462/00', name: 'TRAVELLING EXPENSES', category: 'Overheads' },
+            { id: '462/01', name: 'OVERSEAS TRAVEL / CONFERENCES', category: 'Overheads' },
+            { id: '463', name: 'ADVERTISING/DONATIONS', category: 'Overheads' },
+            { id: '464', name: 'CREDIT CARD COMMISSION', category: 'Overheads' },
+            { id: '464/001', name: 'MTA Gift Card Redemption', category: 'Overheads' },
+            { id: '464/003', name: 'Fuel Card Discounts', category: 'Other Items' },
+            { id: '464/01', name: 'CHALLENGE CARD COMMISSION', category: 'Overheads' },
+            { id: '465', name: 'LICENCES AND REGISTRATION', category: 'Overheads' },
+            { id: '466', name: 'BANK CHARGES', category: 'Overheads' },
+            { id: '467', name: 'Fuel Savers', category: 'Overheads' },
+            { id: '468', name: 'My Challenge Redemptions', category: 'Overheads' },
+            { id: '468/01', name: 'Gold Card Redemptions', category: 'Overheads' },
+            { id: '468/02', name: 'GREYPOWER REDEMPTIONS', category: 'Overheads' },
+            { id: '469', name: 'COLLECTION EXPENSES', category: 'Overheads' },
+            { id: '470', name: 'BARTERCARD CHARGES', category: 'Overheads' },
+            { id: '473', name: 'SECURITY', category: 'Overheads' },
+            { id: '474', name: 'STAFF TRAINING AND WELFARE', category: 'Overheads' },
+            { id: '479', name: 'FRINGE BENEFIT TAX', category: 'Overheads' },
+            { id: '480', name: 'INSURANCE', category: 'Overheads' },
+            { id: '481', name: 'RATES', category: 'Overheads' },
+            { id: '483', name: 'INTEREST - H.P', category: 'Overheads' },
+            { id: '484', name: 'INTEREST - BANK', category: 'Overheads' },
+            { id: '485', name: 'RENT', category: 'Overheads' },
+            { id: '487', name: 'LEASE OF PLANT', category: 'Overheads' },
+            { id: '488/00', name: 'ACCIDENT COMPENSATION LEVIES', category: 'Overheads' },
+            { id: '488/01', name: 'ACCIDENT COMPENSATION REFUNDS', category: 'Overheads' },
+            { id: '648', name: 'BDF Fund Pre payment', category: 'Overheads' },
+            { id: '651', name: 'Whangamata Transfers', category: 'Other Items' },
+            { id: '669/00', name: 'SUNDRY DEBTORS', category: 'Other Items' },
+            { id: '669/01', name: 'CREDIT CARDS & EFT - POS', category: 'Other Items' },
+            { id: '669/02', name: 'Banking', category: 'Other Items' },
+            { id: '669/03', name: 'Amex', category: 'Other Items' },
+            { id: '669/04', name: 'Diners', category: 'Other Items' },
+            { id: '669/05', name: 'Q Card', category: 'Other Items' },
+            { id: '669/06', name: 'BARTERCARD', category: 'Other Items' },
+            { id: '669/07', name: 'Fleet/Cardlink', category: 'Other Items' },
+            { id: '669/08', name: 'Starcard', category: 'Other Items' },
+            { id: '669/09', name: 'RD1 CARD', category: 'Other Items' },
+            { id: '669/10', name: 'F/F CARD', category: 'Other Items' },
+            { id: '676', name: 'PETROL VOUCHERS - BOUGHT AND SOLD', category: 'Other Items' },
+            { id: '676/001', name: 'MTA Gift Cards', category: 'Other Items' },
+            { id: '676/01', name: 'Challenge Promo Vouchers', category: 'Other Items' },
+            { id: '679', name: 'TILL FLOATS', category: 'Other Items' },
+            { id: '681/00', name: 'TAX RESERVE ACCOUNT', category: 'Other Items' },
+            { id: '686', name: 'FAR NORTH FUELS', category: 'Other Items' },
+            { id: '783', name: 'CHALLENGE RESERVE', category: 'Other Items' },
+            { id: '787/00', name: 'Purchase of Shares', category: 'Other Items' },
+            { id: '812/05', name: 'Payments for Plant', category: 'Other Items' },
+            { id: '840/02', name: 'FINANCE CO. REPAYMENTS', category: 'Other Items' },
+            { id: '860/02', name: 'LOAN REPAYMENTS', category: 'Other Items' },
+            { id: '876/00', name: 'COMPANY TERMINAL TAX PAID', category: 'Other Items' },
+            { id: '876/04', name: 'COMPANY TAX REFUND RECEIVED', category: 'Other Items' },
+            { id: '891/00', name: 'FUNDS INTRODUCED - OWNER', category: 'Other Items' },
+            { id: '895/00', name: 'DRAWINGS - OWNER', category: 'Other Items' },
+            { id: '896/00', name: 'PERSONAL TAXATION - OWNER', category: 'Other Items' },
+            { id: '897/00', name: 'PERSONAL INSURANCE - OWNER', category: 'Other Items' },
+            { id: '899', name: 'Suspense Prev Bankings', category: 'Other Items' },
+            { id: '910', name: 'GST PAYMENT & REFUND', category: 'Other Items' },
+            { id: '920', name: 'FBT Payments & Refunds', category: 'Other Items' },
+            { id: '954/003', name: 'GE Finance- Sam System', category: 'Direct Costs' },
+            { id: '954/004', name: 'GE Finance- Ute', category: 'Overheads' },
+            { id: '954/005', name: 'BMW FINANCE - HOLDEN UTE', category: 'Overheads' },
+            { id: '954/006', name: 'D/C Services Mitsubishi Ute', category: 'Overheads' },
+            { id: '954/008', name: 'Sam Repayments $810.30', category: 'Direct Costs' },
+            { id: '956/02', name: 'PRIME FINANCE $292.92', category: 'Other Items' },
+            { id: '964/02', name: 'Kapadia Loan Payment', category: 'Other Items' },
+            { id: '965/04', name: 'Kiwibank Loan - 03', category: 'Other Items' },
+            { id: '965/05', name: 'GE FINANCE HOIST', category: 'Overheads' },
+            { id: '967/02', name: 'Kiwi Bank Loan - 02', category: 'Other Items' },
+            { id: '998', name: 'PURCHASE AND SALE OF ASSETS', category: 'Other Items' },
+            { id: '999', name: 'SUSPENSE', category: 'Other Items' }
         ];
 
         // Natural sort for account codes (e.g. "280/09" before "280/10" before "283"),
@@ -594,32 +703,16 @@
         let categoryChart = null;
 
         async function init() {
-            try {
-                const snap = await smartCoderDocRef.get();
-                const data = snap.exists ? snap.data() : {};
-                if (data.userLearnedRules) userLearnedRules = data.userLearnedRules;
-                if (data.customChartOfAccounts && Array.isArray(data.customChartOfAccounts) && data.customChartOfAccounts.length) {
-                    chartOfAccounts = [ UNCODED_ENTRY, ...sortAccounts(data.customChartOfAccounts) ];
-                    buildAccountColorMap();
-                }
-            } catch (e) {
-                console.error("Could not load synced settings, starting fresh (offline).", e);
+            const storedRules = await fsGet('userLearnedRules');
+            if (storedRules) userLearnedRules = storedRules;
+
+            const storedAccounts = await fsGet('customChartOfAccounts');
+            if (storedAccounts && Array.isArray(storedAccounts) && storedAccounts.length) {
+                chartOfAccounts = [ UNCODED_ENTRY, ...sortAccounts(storedAccounts) ];
+                buildAccountColorMap();
             }
 
             initCategoryChart();
-        }
-
-        // Saves both learned rules and chart of accounts together to the
-        // shared database, so every device sees updates.
-        async function syncToCloud() {
-            try {
-                await smartCoderDocRef.set({
-                    userLearnedRules: userLearnedRules,
-                    customChartOfAccounts: chartOfAccounts.filter(a => a.id !== 'UNCODED')
-                });
-            } catch (e) {
-                console.error("Could not sync to cloud — check your internet connection.", e);
-            }
         }
 
         function categorizeItem(description) {
@@ -762,22 +855,160 @@
             calculateTotals(); 
         }
 
-        // Builds the <option> list for an account select, using the CURRENT chartOfAccounts.
-        // Each option is tinted with that account's fixed color, matching the pie chart.
+        // Builds the <option> list for the underlying (hidden) select, using the CURRENT
+        // chartOfAccounts. This select stays the source of truth for the row's value;
+        // the visible search box on top of it is just the UI (see initAccountCombo).
         function buildAccountOptionsHTML(selectedId) {
-            return chartOfAccounts.map(a => {
+            const fullList = [UNCODED_ENTRY, EXCLUDED_ENTRY, ...chartOfAccounts.filter(a => a.id !== 'UNCODED')];
+            return fullList.map(a => {
                 const color = accountColorMap[a.id];
                 const style = color ? ` style="color:${color};"` : '';
-                const label = a.id !== 'UNCODED' ? a.id + ' - ' : '';
+                const label = (a.id !== 'UNCODED' && a.id !== 'EXCLUDED') ? a.id + ' - ' : '';
                 return `<option value="${a.id}" ${a.id === selectedId ? 'selected' : ''}${style}>${label}${a.name}</option>`;
             }).join('');
         }
 
-        // Tints the closed select box itself (a colored left edge) so the coded
-        // category is visible at a glance without opening the dropdown.
+        // Tints the visible search box's left edge to match the coded category's
+        // color, so it's visible at a glance without opening the picker.
         function applySelectSwatch(select) {
             const color = accountColorMap[select.value];
-            select.style.borderLeft = color ? `4px solid ${color}` : '4px solid var(--rule-strong)';
+            const input = select.closest('.acc-combo').querySelector('.account-search-input');
+            if (input) input.style.borderLeft = color ? `4px solid ${color}` : '4px solid var(--rule-strong)';
+        }
+
+        // Keeps the visible search box's displayed text in sync with the hidden
+        // select's actual value (e.g. after account codes are edited/renamed).
+        function syncComboInputToSelection(select) {
+            const input = select.closest('.acc-combo').querySelector('.account-search-input');
+            if (!input) return;
+            const id = select.value;
+            if (id === 'EXCLUDED') { input.value = EXCLUDED_ENTRY.name; return; }
+            const account = chartOfAccounts.find(a => a.id === id) || UNCODED_ENTRY;
+            input.value = id !== 'UNCODED' ? `${id} - ${account.name}` : account.name;
+        }
+
+        // Matches the START of any word in the account's name (or code), like a
+        // type-ahead jump -- "p" surfaces PURCHASES/PROTECTIVE, "pu" narrows to
+        // PURCHASES, "c" surfaces CHIPS/CLEANING/CIGARETTES, etc. "wor"/"work"/
+        // "workshop" all still match "PURCHASES - WORKSHOP PARTS", since WORKSHOP
+        // is its own word there. The code itself still matches anywhere (so "669"
+        // or "280/12" work too), since codes aren't really made of "words".
+        function filterAccounts(query) {
+            const q = query.trim().toLowerCase();
+            const list = chartOfAccounts.filter(a => a.id !== 'UNCODED');
+            if (!q) return list;
+            return list.filter(a => {
+                if (a.id.toLowerCase().includes(q)) return true;
+                const words = a.name.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+                if (words.some(w => w.startsWith(q))) return true;
+                if ((a.category || '').toLowerCase().startsWith(q)) return true;
+                return false;
+            });
+        }
+
+        function createComboItem(a, activeId) {
+            const div = document.createElement('div');
+            div.className = "acc-combo-item" + (a.id === activeId ? ' active' : '');
+            div.dataset.id = a.id;
+            const color = accountColorMap[a.id] || '#9AA0AE';
+            const codeHtml = (a.id !== 'UNCODED' && a.id !== 'EXCLUDED') ? `<span class="code">${a.id}</span>` : '';
+            const catHtml = a.category ? `<span class="cat-tag">${a.category}</span>` : '';
+            div.innerHTML = `<span class="dot" style="background:${color};"></span>${codeHtml}<span class="name">${a.name}</span>${catHtml}`;
+            return div;
+        }
+
+        function renderComboList(listEl, accounts, activeId) {
+            listEl.innerHTML = '';
+            const count = document.createElement('div');
+            count.className = 'acc-combo-count';
+            count.textContent = `${accounts.length} of ${chartOfAccounts.length - 1} accounts`;
+            listEl.appendChild(count);
+            listEl.appendChild(createComboItem(UNCODED_ENTRY, activeId));
+            listEl.appendChild(createComboItem(EXCLUDED_ENTRY, activeId));
+            if (accounts.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'acc-combo-empty';
+                empty.textContent = 'No matching accounts';
+                listEl.appendChild(empty);
+                return;
+            }
+            accounts.forEach(a => listEl.appendChild(createComboItem(a, activeId)));
+        }
+
+        function highlightIndex(items, idx) {
+            items.forEach((it, i) => it.classList.toggle('active', i === idx));
+            if (items[idx]) items[idx].scrollIntoView({ block: 'nearest' });
+        }
+
+        // Wires up the searchable picker for one row's account cell: a text input
+        // that filters the account list live as you type (by code, name, or
+        // category), with keyboard navigation, sitting on top of a hidden <select>
+        // that remains the actual source of truth for the row's coded value.
+        function initAccountCombo(combo, select) {
+            const input = combo.querySelector('.account-search-input');
+            const panel = combo.querySelector('.acc-combo-panel');
+            const listEl = combo.querySelector('.acc-combo-list');
+
+            function openPanel(query) {
+                panel.classList.remove('hide');
+                renderComboList(listEl, filterAccounts(query), select.value);
+            }
+            function closePanel() {
+                panel.classList.add('hide');
+            }
+            function selectAccount(id) {
+                select.value = id;
+                syncComboInputToSelection(select);
+                closePanel();
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+
+            input.addEventListener('focus', () => {
+                // Deferred: a mouse click's native cursor placement runs right after
+                // this focus handler and would otherwise collapse the selection,
+                // leaving old text in place for typed characters to insert into.
+                setTimeout(() => input.select(), 0);
+                openPanel('');
+            });
+            input.addEventListener('mousedown', () => {
+                // Clicking an ALREADY-focused input fires no new 'focus' event at all,
+                // so without this, re-clicking mid-edit (e.g. to try a new search
+                // without tabbing away first) leaves the old text in place and the
+                // next keystrokes get inserted into it instead of replacing it.
+                setTimeout(() => input.select(), 0);
+                openPanel(input.value);
+            });
+            input.addEventListener('input', () => openPanel(input.value));
+            input.addEventListener('blur', () => {
+                // Delay so a mousedown selection on the list registers before the panel closes
+                setTimeout(() => { closePanel(); syncComboInputToSelection(select); }, 150);
+            });
+            input.addEventListener('keydown', (e) => {
+                const items = [...listEl.querySelectorAll('.acc-combo-item')];
+                let idx = items.findIndex(i => i.classList.contains('active'));
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (panel.classList.contains('hide')) { openPanel(input.value); return; }
+                    highlightIndex(items, Math.min(idx + 1, items.length - 1));
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    highlightIndex(items, Math.max(idx - 1, 0));
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const target = items[idx] || items[0];
+                    if (target) selectAccount(target.dataset.id);
+                } else if (e.key === 'Escape') {
+                    closePanel();
+                    syncComboInputToSelection(select);
+                    input.blur();
+                }
+            });
+            panel.addEventListener('mousedown', (e) => {
+                const item = e.target.closest('.acc-combo-item');
+                if (!item) return;
+                e.preventDefault(); // keep focus so blur doesn't fire before we read the click
+                selectAccount(item.dataset.id);
+            });
         }
 
         // Updated RenderRow handles editable descriptions and manual status
@@ -789,7 +1020,11 @@
 
             let confClass = "conf-low"; 
             let confText = "Needs Review";
-            if (isManual) { 
+            if (category.id === 'EXCLUDED') {
+                confClass = "conf-excluded";
+                confText = "Excluded";
+            }
+            else if (isManual) { 
                 confClass = "conf-manual"; 
                 confText = "Manual Entry"; 
             }
@@ -801,9 +1036,13 @@
                     <input type="text" class="desc-input w-full rounded-md p-1.5 text-sm font-medium outline-none transition-all" value="${desc}" placeholder="Enter item description...">
                 </td>
                 <td class="p-4">
-                    <select class="account-select w-full rounded-md p-2 text-sm shadow-sm outline-none">
-                        ${options}
-                    </select>
+                    <div class="acc-combo">
+                        <input type="text" class="account-search-input" autocomplete="off" placeholder="Search code or name...">
+                        <div class="acc-combo-panel hide"><div class="acc-combo-list"></div></div>
+                        <select class="account-select hide">
+                            ${options}
+                        </select>
+                    </div>
                 </td>
                 <td class="p-4">
                     <input type="number" step="0.01" class="amount-input w-24 rounded-md p-1.5 text-sm outline-none text-right" value="${amount.toFixed(2)}">
@@ -825,11 +1064,14 @@
 
             const descInput = row.querySelector('.desc-input');
             const select = row.querySelector('.account-select');
+            const combo = row.querySelector('.acc-combo');
             const amountInput = row.querySelector('.amount-input');
             const confBadge = row.querySelector('.conf-badge');
             const confirmBtn = row.querySelector('.confirm-btn');
 
+            syncComboInputToSelection(select);
             applySelectSwatch(select);
+            initAccountCombo(combo, select);
 
             // Shared by both "pick a new code" and "tick to confirm the existing code" --
             // either path teaches the system this description belongs to this account,
@@ -838,12 +1080,18 @@
                 const itemDesc = descInput.value.toLowerCase().trim();
                 if (itemDesc.length > 2) {
                     userLearnedRules[itemDesc] = accountId;
-                    await syncToCloud();
+                    await fsSet('userLearnedRules', userLearnedRules);
                 }
-                confBadge.className = "conf-high conf-badge font-semibold";
-                confBadge.textContent = "Learned (100%)";
+                if (accountId === 'EXCLUDED') {
+                    confBadge.className = "conf-excluded conf-badge font-semibold";
+                    confBadge.textContent = "Excluded";
+                    confirmBtn.title = "Marked as not a coded expense \u2014 remembered for future invoices";
+                } else {
+                    confBadge.className = "conf-high conf-badge font-semibold";
+                    confBadge.textContent = "Learned (100%)";
+                    confirmBtn.title = "Confirmed \u2014 remembered for future invoices";
+                }
                 confirmBtn.classList.add('confirmed');
-                confirmBtn.title = "Confirmed \u2014 remembered for future invoices";
                 calculateTotals();
             }
 
@@ -919,7 +1167,7 @@
                 const catId = select.value;
                 const amount = parseFloat(row.querySelector('.amount-input').value) || 0;
 
-                if (catId !== 'UNCODED') {
+                if (catId !== 'UNCODED' && catId !== 'EXCLUDED') {
                     if (!totalsMap[catId]) {
                         totalsMap[catId] = { 
                             name: select.options[select.selectedIndex].text.replace(catId + ' - ', ''), 
@@ -982,8 +1230,8 @@
 
         async function clearLearnedRules() {
             if(confirm("Are you sure you want to delete all custom rules the software has learned?")) {
+                await fsRemove('userLearnedRules');
                 userLearnedRules = {};
-                await syncToCloud();
                 alert("Rules cleared. Refresh or re-upload your document.");
             }
         }
@@ -1018,8 +1266,20 @@
             chartOfAccounts
                 .filter(a => a.id !== 'UNCODED')
                 .forEach(a => container.appendChild(createAccountRowEl(a.id, a.name)));
+            const searchBox = document.getElementById('account-manager-search');
+            searchBox.value = '';
             document.getElementById('account-modal').classList.remove('hide');
+            searchBox.focus();
         }
+
+        document.getElementById('account-manager-search').addEventListener('input', (e) => {
+            const q = e.target.value.trim().toLowerCase();
+            document.querySelectorAll('#account-rows .account-row').forEach(row => {
+                const code = row.querySelector('.acc-code').value.toLowerCase();
+                const name = row.querySelector('.acc-name').value.toLowerCase();
+                row.style.display = (!q || code.includes(q) || name.includes(q)) ? '' : 'none';
+            });
+        });
 
         function closeAccountManager() {
             document.getElementById('account-modal').classList.add('hide');
@@ -1029,6 +1289,8 @@
             const rows = document.querySelectorAll('#account-rows .account-row');
             const newAccounts = [];
             const seenIds = new Set();
+            const oldCategoryById = {};
+            chartOfAccounts.forEach(a => { if (a.category) oldCategoryById[a.id] = a.category; });
 
             for (const row of rows) {
                 const id = row.querySelector('.acc-code').value.trim();
@@ -1049,7 +1311,9 @@
                     return;
                 }
                 seenIds.add(id);
-                newAccounts.push({ id, name });
+                const account = { id, name };
+                if (oldCategoryById[id]) account.category = oldCategoryById[id];
+                newAccounts.push(account);
             }
 
             const sortedAccounts = sortAccounts(newAccounts);
@@ -1057,9 +1321,9 @@
             buildAccountColorMap();
 
             try {
-                await syncToCloud();
+                await fsSet('customChartOfAccounts', sortedAccounts);
             } catch (err) {
-                alert("Warning: could not sync account codes to the cloud, so changes may not appear on your other devices.");
+                alert("Warning: could not save account codes to local storage, so changes may not persist after refresh.");
             }
 
             refreshAllAccountSelects();
@@ -1070,7 +1334,7 @@
             if (!confirm("Reset account codes back to the original default list? Any codes you've added or edited will be lost.")) return;
             chartOfAccounts = [ UNCODED_ENTRY, ...sortAccounts(defaultChartOfAccounts) ];
             buildAccountColorMap();
-            await syncToCloud();
+            await fsRemove('customChartOfAccounts');
             refreshAllAccountSelects();
             openAccountManager(); // re-render the modal rows with the defaults
         }
@@ -1084,11 +1348,12 @@
                 const valueToUse = stillExists ? currentValue : 'UNCODED';
                 select.innerHTML = buildAccountOptionsHTML(valueToUse);
                 applySelectSwatch(select);
+                syncComboInputToSelection(select);
             });
             calculateTotals();
         }
 
-        // init() is now triggered automatically once login + access are confirmed (see auth gate script above).
+        init();
     </script>
 </body>
 </html>
