@@ -416,68 +416,7 @@
         </div>
     </div>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-        import { getFirestore, doc, getDoc, setDoc, deleteField } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-
-        const firebaseConfig = {
-          apiKey: "AIzaSyAPwS1GFwqj6KR4dQgxifykh9HS5km6OX4",
-          authDomain: "alpha-7fce5.firebaseapp.com",
-          projectId: "alpha-7fce5",
-          storageBucket: "alpha-7fce5.firebasestorage.app",
-          messagingSenderId: "10647816245",
-          appId: "1:10647816245:web:fbfb982260cf2eef97097c"
-        };
-        // No custom app name here — using the default app means this page
-        // picks up the same signed-in session as the dashboard and your
-        // other tools, instead of asking you to log in again separately.
-        const expensesFbApp = initializeApp(firebaseConfig);
-        const expensesDb = getFirestore(expensesFbApp);
-        const expensesAuth = getAuth(expensesFbApp);
-        const expensesDocRef = doc(expensesDb, "smartCoderApp", "main");
-
-        // Firestore requires you to be logged in for this collection (same
-        // as your other SmartCoder tools). This waits for Firebase to
-        // finish restoring your existing session before the very first
-        // read/write, so it isn't rejected by a race on page load.
-        let expensesAuthReady;
-        function waitForAuth() {
-            if (!expensesAuthReady) {
-                expensesAuthReady = new Promise((resolve) => {
-                    const unsub = onAuthStateChanged(expensesAuth, (user) => { unsub(); resolve(user); });
-                });
-            }
-            return expensesAuthReady;
-        }
-
-        // Firestore-backed replacements for the old browser-only localforage calls.
-        // Every device reading/writing this same document stays in sync.
-        async function fsGet(key) {
-            try {
-                const user = await waitForAuth();
-                if (!user) { console.error("Not signed in — log in via the dashboard first."); return null; }
-                const snap = await getDoc(expensesDocRef);
-                if (!snap.exists()) return null;
-                const data = snap.data();
-                return (key in data) ? data[key] : null;
-            } catch (e) { console.error("Firestore get failed:", e); return null; }
-        }
-        async function fsSet(key, value) {
-            try {
-                const user = await waitForAuth();
-                if (!user) { console.error("Not signed in — log in via the dashboard first."); return false; }
-                await setDoc(expensesDocRef, { [key]: value }, { merge: true }); return true;
-            } catch (e) { console.error("Firestore set failed:", e); return false; }
-        }
-        async function fsRemove(key) {
-            try {
-                const user = await waitForAuth();
-                if (!user) { console.error("Not signed in — log in via the dashboard first."); return false; }
-                await setDoc(expensesDocRef, { [key]: deleteField() }, { merge: true }); return true;
-            } catch (e) { console.error("Firestore remove failed:", e); return false; }
-        }
-
+    <script>
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
         // --- Theme toggle ---
@@ -703,10 +642,10 @@
         let categoryChart = null;
 
         async function init() {
-            const storedRules = await fsGet('userLearnedRules');
+            const storedRules = await localforage.getItem('userLearnedRules');
             if (storedRules) userLearnedRules = storedRules;
 
-            const storedAccounts = await fsGet('customChartOfAccounts');
+            const storedAccounts = await localforage.getItem('customChartOfAccounts');
             if (storedAccounts && Array.isArray(storedAccounts) && storedAccounts.length) {
                 chartOfAccounts = [ UNCODED_ENTRY, ...sortAccounts(storedAccounts) ];
                 buildAccountColorMap();
@@ -1080,7 +1019,7 @@
                 const itemDesc = descInput.value.toLowerCase().trim();
                 if (itemDesc.length > 2) {
                     userLearnedRules[itemDesc] = accountId;
-                    await fsSet('userLearnedRules', userLearnedRules);
+                    await localforage.setItem('userLearnedRules', userLearnedRules);
                 }
                 if (accountId === 'EXCLUDED') {
                     confBadge.className = "conf-excluded conf-badge font-semibold";
@@ -1230,7 +1169,7 @@
 
         async function clearLearnedRules() {
             if(confirm("Are you sure you want to delete all custom rules the software has learned?")) {
-                await fsRemove('userLearnedRules');
+                await localforage.removeItem('userLearnedRules');
                 userLearnedRules = {};
                 alert("Rules cleared. Refresh or re-upload your document.");
             }
@@ -1321,7 +1260,7 @@
             buildAccountColorMap();
 
             try {
-                await fsSet('customChartOfAccounts', sortedAccounts);
+                await localforage.setItem('customChartOfAccounts', sortedAccounts);
             } catch (err) {
                 alert("Warning: could not save account codes to local storage, so changes may not persist after refresh.");
             }
@@ -1334,7 +1273,7 @@
             if (!confirm("Reset account codes back to the original default list? Any codes you've added or edited will be lost.")) return;
             chartOfAccounts = [ UNCODED_ENTRY, ...sortAccounts(defaultChartOfAccounts) ];
             buildAccountColorMap();
-            await fsRemove('customChartOfAccounts');
+            await localforage.removeItem('customChartOfAccounts');
             refreshAllAccountSelects();
             openAccountManager(); // re-render the modal rows with the defaults
         }
