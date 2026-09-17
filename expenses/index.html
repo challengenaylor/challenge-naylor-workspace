@@ -25,6 +25,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         /* ---------- Token system: sleek dashboard, light + dark ---------- */
@@ -474,19 +476,20 @@
 
     <!-- Printable coded-invoice export (hidden on screen, shown only when printing) -->
     <div id="print-report" class="print-report">
-        <h1>Coded Invoice Export</h1>
+        <h1>Invoice Export</h1>
         <table class="print-meta-table">
             <tr>
                 <td class="label">Generated</td><td id="print-generated-date">&mdash;</td>
-                <td class="label">Total Coded</td><td id="print-total-coded">&mdash;</td>
+                <td class="label">Total (Inc GST)</td><td id="print-total-coded">&mdash;</td>
             </tr>
         </table>
 
         <div id="print-review-warning" class="print-warning hide"></div>
 
+        <h2>Items (Ex GST, for stock entry)</h2>
         <table class="print-table">
             <thead>
-                <tr><th>Item Description</th><th>Account Code</th><th class="right">Amount</th></tr>
+                <tr><th>Item Description</th><th class="right">Ordered</th><th class="right">Supplied</th><th class="right">Unit Price (Ex GST)</th><th class="right">Amount (Ex GST)</th><th class="right">Amount (Inc GST)</th></tr>
             </thead>
             <tbody id="print-transaction-body"></tbody>
         </table>
@@ -722,6 +725,9 @@
         let processedHashes = new Set(); 
         let expectedTotal = null; 
         let categoryChart = null;
+        let invoiceVendor = null;
+        let invoiceNumber = null;
+        let invoiceDate = null;
 
         async function init() {
             const storedRules = await localforage.getItem('userLearnedRules');
@@ -779,6 +785,9 @@
             document.getElementById('total-warning').classList.add('hide'); 
             expectedTotal = null;
             processedHashes.clear();
+            invoiceVendor = null;
+            invoiceNumber = null;
+            invoiceDate = null;
             
             const emptyState = document.getElementById('empty-state');
             if(emptyState) emptyState.remove();
@@ -788,21 +797,89 @@
                 const typedarray = new Uint8Array(this.result);
                 const pdf = await pdfjsLib.getDocument(typedarray).promise;
                 let fullText = [];
+                const feeCorrections = {};
 
                 for (let i = 1; i <= pdf.numPages; i++) {
                     const page = await pdf.getPage(i);
                     const textContent = await page.getTextContent();
-                    const strings = textContent.items.map(item => item.str.trim()).filter(s => s.length > 0);
-                    fullText = fullText.concat(strings);
+                    const items = textContent.items
+                        .map(item => ({ str: item.str.trim(), y: item.transform[5] }))
+                        .filter(it => it.str.length > 0);
+
+                    fullText = fullText.concat(items.map(it => it.str));
+
+                    // Position-based safety net for "Pick up Fee" / "Paper Bags": Woolworths'
+                    // PDF text stream sometimes emits these labels and their dollar values in
+                    // a different order than they're printed (confirmed by inspecting the raw
+                    // PDF coordinates), which can make the sequential parser above lose or
+                    // mis-assign these two specific values. The y-coordinate always reflects
+                    // the true printed row regardless of stream order, so cross-check against
+                    // that instead of relying on sequence for just these two known labels.
+                    items.forEach(labelItem => {
+                        const lbl = labelItem.str.toLowerCase().replace(/^\+\s*/, '');
+                        if (lbl === 'pick up fee' || lbl === 'paper bags') {
+                            const match = items.find(v =>
+                                v.str.startsWith('$') &&
+                                !v.str.toLowerCase().includes('/ea') &&
+                                Math.abs(v.y - labelItem.y) < 2
+                            );
+                            if (match) {
+                                const val = parseFloat(match.str.replace('$', '').replace(/,/g, ''));
+                                if (!isNaN(val)) feeCorrections[lbl] = val;
+                            }
+                        }
+                    });
+
+                    // Invoice header metadata, captured once (from page 1), for the export
+                    // header only -- doesn't affect on-screen parsing/categorization at all.
+                    if (i === 1) {
+                        if (invoiceVendor === null && items.some(it => it.str.toLowerCase().includes('woolworths'))) {
+                            invoiceVendor = 'Woolworths';
+                        }
+                        items.forEach((it, idx) => {
+                            if (invoiceNumber === null && it.str === 'Order Confirmation/Invoice Number') {
+                                const next = items[idx + 1];
+                                if (next) invoiceNumber = next.str;
+                            }
+                        });
+                        if (invoiceDate === null) {
+                            const dateItem = items.find(it => /^\d{1,2}\s+[A-Za-z]{3,}\.?,?\s+\d{4}$/.test(it.str));
+                            if (dateItem) invoiceDate = dateItem.str;
+                        }
+                    }
                 }
 
                 document.getElementById('loading').classList.add('hide');
-                parseInvoiceText(fullText);
+                parseInvoiceText(fullText, feeCorrections);
             };
             fileReader.readAsArrayBuffer(file);
         }
 
-        function parseInvoiceText(textArray) {
+        // Applies the position-verified fee values from processPDF: fixes an
+        // existing row's amount if a fee label matched it with the wrong value,
+        // or adds a row if that fee's row was lost entirely during parsing.
+        function applyFeeCorrections(feeCorrections) {
+            if (!feeCorrections || Object.keys(feeCorrections).length === 0) return;
+            const handled = new Set();
+
+            document.querySelectorAll('.item-row').forEach(row => {
+                const desc = row.querySelector('.desc-input').value.toLowerCase();
+                Object.keys(feeCorrections).forEach(label => {
+                    if (desc.includes(label)) {
+                        row.querySelector('.amount-input').value = feeCorrections[label].toFixed(2);
+                        handled.add(label);
+                    }
+                });
+            });
+
+            Object.entries(feeCorrections).forEach(([label, val]) => {
+                if (handled.has(label)) return;
+                const properName = label.replace(/\b\w/g, c => c.toUpperCase());
+                renderRow(properName, categorizeItem(properName), val, false);
+            });
+        }
+
+        function parseInvoiceText(textArray, feeCorrections) {
             const structuralHeaders = [
                 'deliver to', 'arpit ahuja', 'rototuna', 'challenge naylor', 'bridge st', 'new zealand',
                 'description', 'ordered', 'supplied', 'unit price', 'amount', 'ref', 'order no',
@@ -817,6 +894,7 @@
             let pendingItem = null;
             let foundItems = 0;
             let expectingTotalAmount = false;
+            let lastRenderedRow = null; // so trailing "Ordered"/"Supplied" qty tokens (which arrive AFTER the amount) can still be attached to the row just rendered
 
             textArray.forEach((str) => {
                 const lowerStr = str.toLowerCase().trim();
@@ -824,6 +902,17 @@
                 if (lowerStr.includes('invoice total')) {
                     expectingTotalAmount = true;
                     pendingItem = null;
+                    return;
+                }
+
+                // Unit price, e.g. "$3.20/ea" (GST-inclusive, as Woolworths prints it) --
+                // captured only for the PDF export's ex-GST stock-entry table; doesn't
+                // affect on-screen categorization or amounts at all.
+                if (str.startsWith('$') && lowerStr.includes('/ea')) {
+                    if (pendingItem) {
+                        const unitVal = parseFloat(str.replace('$', '').replace(/\/ea.*/i, '').replace(/,/g, ''));
+                        if (!isNaN(unitVal)) pendingItem.unitPriceIncGst = unitVal;
+                    }
                     return;
                 }
 
@@ -838,14 +927,32 @@
 
                     if (pendingItem) {
                         pendingItem.amount = val;
-                        renderRow(pendingItem.desc, pendingItem.category, pendingItem.amount, false);
+                        const row = renderRow(pendingItem.desc, pendingItem.category, pendingItem.amount, false);
+                        if (row && pendingItem.unitPriceIncGst !== undefined) {
+                            row.dataset.unitPriceIncGst = pendingItem.unitPriceIncGst;
+                        }
+                        lastRenderedRow = row || null;
                         pendingItem = null; 
                         foundItems++;
                     }
                     return;
                 }
 
-                if (/^\d+\s*ea$/i.test(lowerStr) || (str.length < 3 && !lowerStr.includes('bag') && !lowerStr.includes('fee'))) return;
+                // Ordered / Supplied quantity, e.g. "2 ea" -- these trail the amount in
+                // Woolworths' layout, so they attach to the row just rendered, not to
+                // whatever's pending next. Also captured only for the PDF export.
+                if (/^\d+\s*ea$/i.test(lowerStr)) {
+                    if (lastRenderedRow) {
+                        if (!lastRenderedRow.dataset.ordered) {
+                            lastRenderedRow.dataset.ordered = str;
+                        } else if (!lastRenderedRow.dataset.supplied) {
+                            lastRenderedRow.dataset.supplied = str;
+                            lastRenderedRow = null;
+                        }
+                    }
+                    return;
+                }
+                if (str.length < 3 && !lowerStr.includes('bag') && !lowerStr.includes('fee')) return;
                 if (!isNaN(str.charAt(0)) && !str.toLowerCase().includes('bag') && !str.toLowerCase().includes('fee')) return;
 
                 if (structuralHeaders.some(w => lowerStr === w || (w.length > 5 && lowerStr.includes(w)))) {
@@ -872,7 +979,9 @@
             });
 
             if(foundItems === 0) alert("Could not detect any paired line items. Ensure the PDF is a standard invoice format.");
-            
+
+            applyFeeCorrections(feeCorrections);
+
             calculateTotals(); 
         }
 
@@ -1147,6 +1256,8 @@
             
             // Auto-focus description input if it was added manually
             if (isManual) descInput.focus();
+
+            return row;
         }
 
         function initCategoryChart() {
@@ -1396,42 +1507,78 @@
                 return;
             }
 
-            document.getElementById('print-generated-date').textContent = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-            document.getElementById('print-total-coded').textContent = document.getElementById('grand-total').textContent;
+            if (typeof window.jspdf === 'undefined' || typeof window.jspdf.jsPDF === 'undefined') {
+                alert("The PDF export library didn't load (check your internet connection), so a PDF couldn't be generated. Please reload the page and try again.");
+                return;
+            }
 
-            const body = document.getElementById('print-transaction-body');
-            body.innerHTML = '';
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({ orientation, unit: 'pt', format: 'a4' });
+            if (typeof doc.autoTable !== 'function') {
+                alert("The PDF table library didn't load correctly, so a PDF couldn't be generated. Please reload the page and try again.");
+                return;
+            }
+
+            const generatedDate = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            const totalCoded = document.getElementById('grand-total').textContent;
+            const GST_RATE = 0.15;
+
+            // Header: vendor name (styled as text -- not reproducing any logo artwork),
+            // invoice number/date if detected, so this export is traceable back to the
+            // source invoice without presenting itself as that invoice.
+            doc.setFontSize(20);
+            doc.setFont(undefined, 'bold');
+            doc.setTextColor(30, 120, 65);
+            doc.text(invoiceVendor || 'Invoice', 40, 42);
+            doc.setTextColor(0, 0, 0);
+
+            doc.setFontSize(11);
+            doc.text('Tax Invoice/Receipt \u2014 Coded Export', 40, 60);
+            doc.setFont(undefined, 'normal');
+
+            doc.setFontSize(9);
+            let metaY = 76;
+            if (invoiceNumber) { doc.text(`Invoice Number: ${invoiceNumber}`, 40, metaY); metaY += 13; }
+            if (invoiceDate) { doc.text(`Invoice Date: ${invoiceDate}`, 40, metaY); metaY += 13; }
+            doc.text(`Exported: ${generatedDate}`, 40, metaY); metaY += 13;
+            doc.text(`Total (Inc GST): ${totalCoded}`, 40, metaY); metaY += 13;
+
             let needsReviewCount = 0;
-
+            const itemRows = [];
             rows.forEach(row => {
                 const desc = row.querySelector('.desc-input').value || '(no description)';
-                const select = row.querySelector('.account-select');
-                const accountId = select.value;
-                const isUncoded = accountId === 'UNCODED';
-                const isExcluded = accountId === 'EXCLUDED';
-                if (isUncoded) needsReviewCount++;
-                let accountLabel;
-                if (isUncoded) accountLabel = 'NEEDS REVIEW';
-                else if (isExcluded) accountLabel = 'N/A \u2014 EXCLUDED';
-                else accountLabel = `${accountId} - ${select.options[select.selectedIndex].text.replace(accountId + ' - ', '')}`;
-                const amount = parseFloat(row.querySelector('.amount-input').value) || 0;
+                const accountId = row.querySelector('.account-select').value;
+                if (accountId === 'UNCODED') needsReviewCount++;
 
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td>${desc}</td>
-                    <td${isUncoded ? ' class="needs-review-cell"' : ''}>${accountLabel}</td>
-                    <td class="right">$${amount.toFixed(2)}</td>
-                `;
-                body.appendChild(tr);
+                const amountIncGst = parseFloat(row.querySelector('.amount-input').value) || 0;
+                const amountExGst = amountIncGst / (1 + GST_RATE);
+                const ordered = row.dataset.ordered || '\u2014';
+                const supplied = row.dataset.supplied || '\u2014';
+                const unitPriceIncGst = row.dataset.unitPriceIncGst ? parseFloat(row.dataset.unitPriceIncGst) : null;
+                const unitPriceExGstCell = unitPriceIncGst !== null
+                    ? `$${(unitPriceIncGst / (1 + GST_RATE)).toFixed(2)}`
+                    : '\u2014';
+
+                itemRows.push([desc, ordered, supplied, unitPriceExGstCell, `$${amountExGst.toFixed(2)}`, `$${amountIncGst.toFixed(2)}`]);
             });
 
-            const warningDiv = document.getElementById('print-review-warning');
+            let startY = metaY + 10;
             if (needsReviewCount > 0) {
-                warningDiv.textContent = `\u26A0 ${needsReviewCount} item(s) still need an account code \u2014 see "NEEDS REVIEW" rows above.`;
-                warningDiv.classList.remove('hide');
-            } else {
-                warningDiv.classList.add('hide');
+                doc.setTextColor(180, 40, 30);
+                doc.setFontSize(9);
+                doc.text(`Warning: ${needsReviewCount} item(s) still need an account code \u2014 see Category Totals below for what's coded so far.`, 40, startY);
+                doc.setTextColor(0, 0, 0);
+                startY += 16;
             }
+
+            doc.autoTable({
+                startY,
+                head: [['Item Description', 'Ordered', 'Supplied', 'Unit Price (Ex GST)', 'Amount (Ex GST)', 'Amount (Inc GST)']],
+                body: itemRows,
+                styles: { fontSize: 8, cellPadding: 4 },
+                headStyles: { fillColor: [20, 20, 20] },
+                margin: { left: 40, right: 40 }
+            });
 
             const totalsMap = {};
             rows.forEach(row => {
@@ -1445,26 +1592,22 @@
                     totalsMap[catId].amount += amount;
                 }
             });
-            const totalsBody = document.getElementById('print-totals-body');
-            totalsBody.innerHTML = '';
-            Object.entries(totalsMap).forEach(([id, data]) => {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `<td>${id}</td><td>${data.name}</td><td class="right">$${data.amount.toFixed(2)}</td>`;
-                totalsBody.appendChild(tr);
+            const totalsRows = Object.entries(totalsMap).map(([id, data]) => [id, data.name, `$${data.amount.toFixed(2)}`]);
+            if (totalsRows.length === 0) totalsRows.push(['\u2014', 'No coded items yet.', '\u2014']);
+
+            const afterItemsY = doc.lastAutoTable.finalY + 24;
+            doc.setFontSize(12);
+            doc.text('Category Totals', 40, afterItemsY);
+            doc.autoTable({
+                startY: afterItemsY + 8,
+                head: [['Code', 'Category', 'Amount']],
+                body: totalsRows,
+                styles: { fontSize: 8, cellPadding: 4 },
+                headStyles: { fillColor: [20, 20, 20] },
+                margin: { left: 40, right: 40 }
             });
-            if (Object.keys(totalsMap).length === 0) {
-                totalsBody.innerHTML = '<tr><td colspan="3">No coded items yet.</td></tr>';
-            }
 
-            let styleEl = document.getElementById('print-orientation-style');
-            if (!styleEl) {
-                styleEl = document.createElement('style');
-                styleEl.id = 'print-orientation-style';
-                document.head.appendChild(styleEl);
-            }
-            styleEl.textContent = `@media print { @page { size: ${orientation}; } }`;
-
-            window.print();
+            doc.save(`invoice-export-${Date.now()}.pdf`);
         }
 
         init();
