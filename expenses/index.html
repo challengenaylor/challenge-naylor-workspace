@@ -129,6 +129,42 @@
         .btn-chip svg{ width:15px; height:15px; }
         .btn-chip:hover{ border-color:var(--forest); color:var(--forest); background:var(--paper-panel); }
         .btn-chip.danger:hover{ border-color:var(--rust); color:var(--rust); }
+        .btn-chip.primary{ border-color:var(--forest); color:var(--forest); }
+        .btn-chip.primary:hover{ background:var(--forest); color:#fff; }
+
+        .pdf-menu{
+            position:absolute; top:calc(100% + 6px); z-index:50; min-width:150px;
+            background:var(--paper-panel); border:1px solid var(--rule-strong); border-radius:10px;
+            box-shadow:0 14px 32px rgba(0,0,0,0.22); padding:5px;
+        }
+        .pdf-menu-item{
+            display:flex; align-items:center; gap:8px; width:100%; text-align:left;
+            padding:8px 10px; border-radius:7px; font-size:0.8125rem; color:var(--ink);
+        }
+        .pdf-menu-item svg{ width:15px; height:15px; color:var(--ink-soft); flex-shrink:0; }
+        .pdf-menu-item:hover{ background:var(--accent-soft); }
+
+        /* ---------- Printable coded-invoice export ---------- */
+        .print-report{ display:none; }
+        @media print{
+            html, body{ background:#fff !important; }
+            body *{ visibility:hidden; }
+            #print-report, #print-report *{ visibility:visible; }
+            #print-report{ display:block !important; position:absolute; top:0; left:0; width:100%; padding:10mm 4mm; }
+            #print-report h1{ font-size:16px; margin-bottom:2px; color:#000; font-family:Arial, sans-serif; }
+            .print-meta-table{ width:100%; margin-bottom:14px; font-size:10.5px; border-collapse:collapse; font-family:Arial, sans-serif; }
+            .print-meta-table td{ padding:2px 10px 2px 0; color:#000; }
+            .print-meta-table td.label{ font-weight:700; color:#333; width:110px; }
+            .print-table{ width:100%; border-collapse:collapse; margin-bottom:16px; font-size:10.5px; font-family:Arial, sans-serif; }
+            .print-table th{ text-align:left; border-bottom:1.5px solid #000; padding:5px 6px; font-size:9.5px; text-transform:uppercase; color:#000; }
+            .print-table td{ border-bottom:1px solid #ccc; padding:4px 6px; color:#000; }
+            .print-table td.right, .print-table th.right{ text-align:right; font-variant-numeric:tabular-nums; }
+            .print-table tr{ page-break-inside:avoid; }
+            .needs-review-cell{ color:#a6402a; font-weight:700; }
+            .print-warning{ background:#fdecea; border:1px solid #d9a29a; padding:7px 10px; margin-bottom:14px; font-size:10.5px; color:#7c2e1e; font-family:Arial, sans-serif; }
+            #print-report h2{ font-size:12.5px; margin:16px 0 6px; color:#000; font-family:Arial, sans-serif; }
+            @page{ margin:14mm 12mm; }
+        }
 
         /* Theme toggle */
         .theme-toggle{
@@ -378,6 +414,26 @@
             </div>
         </div>
 
+        <div class="flex justify-center mb-8">
+            <div class="relative">
+                <button onclick="togglePdfMenu()" class="btn-chip primary">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v12m0 0l-4-4m4 4l4-4M4 20h16"/></svg>
+                    Download PDF
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" style="width:12px;height:12px;"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                </button>
+                <div id="pdf-menu" class="hide pdf-menu" style="left:0; right:auto;">
+                    <button onclick="exportPDF('portrait')" class="pdf-menu-item">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect x="6" y="3" width="12" height="18" rx="1.5"/></svg>
+                        Portrait
+                    </button>
+                    <button onclick="exportPDF('landscape')" class="pdf-menu-item">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect x="3" y="6" width="18" height="12" rx="1.5"/></svg>
+                        Landscape
+                    </button>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <!-- Account Code Manager Modal -->
@@ -414,6 +470,32 @@
                 </div>
             </div>
         </div>
+    </div>
+
+    <!-- Printable coded-invoice export (hidden on screen, shown only when printing) -->
+    <div id="print-report" class="print-report">
+        <h1>Coded Invoice Export</h1>
+        <table class="print-meta-table">
+            <tr>
+                <td class="label">Generated</td><td id="print-generated-date">&mdash;</td>
+                <td class="label">Total Coded</td><td id="print-total-coded">&mdash;</td>
+            </tr>
+        </table>
+
+        <div id="print-review-warning" class="print-warning hide"></div>
+
+        <table class="print-table">
+            <thead>
+                <tr><th>Item Description</th><th>Account Code</th><th class="right">Amount</th></tr>
+            </thead>
+            <tbody id="print-transaction-body"></tbody>
+        </table>
+
+        <h2>Category Totals</h2>
+        <table class="print-table">
+            <thead><tr><th>Code</th><th>Category</th><th class="right">Amount</th></tr></thead>
+            <tbody id="print-totals-body"></tbody>
+        </table>
     </div>
 
     <script>
@@ -1290,6 +1372,99 @@
                 syncComboInputToSelection(select);
             });
             calculateTotals();
+        }
+
+        // --- PDF export ---
+        function togglePdfMenu() {
+            document.getElementById('pdf-menu').classList.toggle('hide');
+        }
+        document.addEventListener('click', (e) => {
+            const menu = document.getElementById('pdf-menu');
+            if (!menu || menu.classList.contains('hide')) return;
+            if (!e.target.closest('#pdf-menu') && !e.target.closest('[onclick="togglePdfMenu()"]')) {
+                menu.classList.add('hide');
+            }
+        });
+
+        function exportPDF(orientation) {
+            orientation = orientation === 'landscape' ? 'landscape' : 'portrait';
+            document.getElementById('pdf-menu').classList.add('hide');
+
+            const rows = document.querySelectorAll('.item-row');
+            if (rows.length === 0) {
+                alert("There's nothing to export yet \u2014 upload an invoice or add an item first.");
+                return;
+            }
+
+            document.getElementById('print-generated-date').textContent = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            document.getElementById('print-total-coded').textContent = document.getElementById('grand-total').textContent;
+
+            const body = document.getElementById('print-transaction-body');
+            body.innerHTML = '';
+            let needsReviewCount = 0;
+
+            rows.forEach(row => {
+                const desc = row.querySelector('.desc-input').value || '(no description)';
+                const select = row.querySelector('.account-select');
+                const accountId = select.value;
+                const isUncoded = accountId === 'UNCODED';
+                const isExcluded = accountId === 'EXCLUDED';
+                if (isUncoded) needsReviewCount++;
+                let accountLabel;
+                if (isUncoded) accountLabel = 'NEEDS REVIEW';
+                else if (isExcluded) accountLabel = 'N/A \u2014 EXCLUDED';
+                else accountLabel = `${accountId} - ${select.options[select.selectedIndex].text.replace(accountId + ' - ', '')}`;
+                const amount = parseFloat(row.querySelector('.amount-input').value) || 0;
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${desc}</td>
+                    <td${isUncoded ? ' class="needs-review-cell"' : ''}>${accountLabel}</td>
+                    <td class="right">$${amount.toFixed(2)}</td>
+                `;
+                body.appendChild(tr);
+            });
+
+            const warningDiv = document.getElementById('print-review-warning');
+            if (needsReviewCount > 0) {
+                warningDiv.textContent = `\u26A0 ${needsReviewCount} item(s) still need an account code \u2014 see "NEEDS REVIEW" rows above.`;
+                warningDiv.classList.remove('hide');
+            } else {
+                warningDiv.classList.add('hide');
+            }
+
+            const totalsMap = {};
+            rows.forEach(row => {
+                const select = row.querySelector('.account-select');
+                const catId = select.value;
+                const amount = parseFloat(row.querySelector('.amount-input').value) || 0;
+                if (catId !== 'UNCODED' && catId !== 'EXCLUDED') {
+                    if (!totalsMap[catId]) {
+                        totalsMap[catId] = { name: select.options[select.selectedIndex].text.replace(catId + ' - ', ''), amount: 0 };
+                    }
+                    totalsMap[catId].amount += amount;
+                }
+            });
+            const totalsBody = document.getElementById('print-totals-body');
+            totalsBody.innerHTML = '';
+            Object.entries(totalsMap).forEach(([id, data]) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td>${id}</td><td>${data.name}</td><td class="right">$${data.amount.toFixed(2)}</td>`;
+                totalsBody.appendChild(tr);
+            });
+            if (Object.keys(totalsMap).length === 0) {
+                totalsBody.innerHTML = '<tr><td colspan="3">No coded items yet.</td></tr>';
+            }
+
+            let styleEl = document.getElementById('print-orientation-style');
+            if (!styleEl) {
+                styleEl = document.createElement('style');
+                styleEl.id = 'print-orientation-style';
+                document.head.appendChild(styleEl);
+            }
+            styleEl.textContent = `@media print { @page { size: ${orientation}; } }`;
+
+            window.print();
         }
 
         init();
