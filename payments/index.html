@@ -404,6 +404,7 @@
   </div>
   <div class="btn-row">
     <button class="btn ghost" id="clearBtn">📁 Archive month &amp; start new</button>
+    <button class="btn ghost" id="restoreAugustBtn" style="border-color:#0B6B8A;color:#0B6B8A;" title="One-time recovery from your saved backup">↺ Restore recovered August 2026 data</button>
     <button class="btn" id="autosaveBtn">🔗 Connect autosave file</button>
     <button class="btn" id="printBtn">🖨 Print / Export PDF</button>
     <button class="btn primary" id="saveBtn">⭳ Save copy (.html)</button>
@@ -712,7 +713,7 @@ document.getElementById('clearBtn').addEventListener('click', ()=>{
   state.month = nextLabel.trim() || state.month;
   viewingIndex = null;
   render();
-  scheduleAutosave();
+  flushSaveNow();
 });
 
 function serializeCurrentHtml(){
@@ -723,6 +724,8 @@ function serializeCurrentHtml(){
 document.getElementById('printBtn').addEventListener('click', ()=>{
   window.print();
 });
+
+document.getElementById('restoreAugustBtn').addEventListener('click', restoreAugust2026);
 
 document.getElementById('saveBtn').addEventListener('click', ()=>{
   const htmlNow = serializeCurrentHtml();
@@ -755,7 +758,7 @@ if(!autosaveSupported){
   autosaveBtn.title = 'Autosave needs a Chromium browser (Chrome or Edge)';
   setAutosaveStatus('Autosave needs Chrome or Edge — use "Save copy" manually in this browser.', false);
 } else {
-  setAutosaveStatus('Not connected — changes only live in this tab until you connect or save a copy.', false);
+  setAutosaveStatus('Cloud sync is active. Local file backup: not connected.', false);
 }
 
 autosaveBtn.addEventListener('click', async ()=>{
@@ -780,7 +783,7 @@ async function writeToFile(){
     await writable.close();
     setAutosaveStatus(`Autosaving to "${fileHandle.name}" — last saved ${new Date().toLocaleTimeString()}.`, true);
   } catch(e){
-    setAutosaveStatus('Autosave failed — reconnect the file.', false);
+    setAutosaveStatus('Local file backup failed — reconnect the file. Cloud sync is unaffected.', false);
     console.error('Autosave write failed:', e);
   }
 }
@@ -800,6 +803,7 @@ function scheduleAutosave(){
 ----------------------------------------------------------------- */
 const paymentsDocRef = db.collection("paymentsApp").doc("main");
 let cloudSaveInFlight = false;
+let cloudSaveNeedsRerun = false;
 
 async function loadFromCloud(){
   try {
@@ -812,8 +816,11 @@ async function loadFromCloud(){
   }
 }
 
+// FIXED: previously, if a save was already running when another change came
+// in, that second save was silently dropped — the newer data was never
+// retried. Now it queues a re-run instead of losing it.
 async function saveToCloud(){
-  if (cloudSaveInFlight) return;
+  if (cloudSaveInFlight) { cloudSaveNeedsRerun = true; return; }
   cloudSaveInFlight = true;
   try {
     await paymentsDocRef.set({ state: state });
@@ -821,7 +828,50 @@ async function saveToCloud(){
     console.error("Could not sync to the cloud — check your internet connection.", e);
   } finally {
     cloudSaveInFlight = false;
+    if (cloudSaveNeedsRerun) {
+      cloudSaveNeedsRerun = false;
+      saveToCloud();
+    }
   }
+}
+
+// Forces an immediate save, bypassing the normal 800ms debounce delay.
+// Used right after archiving, and as a safety net when the tab is closing.
+async function flushSaveNow(){
+  clearTimeout(autosaveTimer);
+  await saveToCloud();
+}
+
+// Best-effort safety net: if the tab is closed or the browser is backgrounded
+// with an unsaved change still pending, try to push it immediately. This
+// can't be guaranteed to finish (browsers can kill the page at any point
+// during unload), but it closes most of the gap where a fast close after
+// typing could otherwise lose that last edit.
+window.addEventListener('pagehide', () => { flushSaveNow(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flushSaveNow();
+});
+
+/* -----------------------------------------------------------------
+   ONE-TIME RECOVERY — restores the real August 2026 figures found in
+   a locally saved backup, since the live archived copy was blank due
+   to the save-timing gap fixed above. Merges into the archived August
+   entry only; current month and everything else is untouched. Safe
+   to click more than once — it always re-applies the same recovered
+   numbers rather than duplicating anything.
+----------------------------------------------------------------- */
+const RECOVERED_AUGUST_SECTIONS = [{"id": "main", "title": "20th of Month Payments", "companies": [{"name": "Accurate Line Marking", "amount": null}, {"name": "Admirals Holden", "amount": 334.65}, {"name": "Allied Autoparts", "amount": null}, {"name": "Allied Security", "amount": 58.24}, {"name": "ALT NZ", "amount": 399.86}, {"name": "Apex Auto", "amount": 323.6}, {"name": "Arpit", "amount": null}, {"name": "ATL Balancing", "amount": null}, {"name": "Automaster", "amount": null}, {"name": "Automotech", "amount": null}, {"name": "Bayteck", "amount": null}, {"name": "Bhavini", "amount": null}, {"name": "Blairs", "amount": 4921.1}, {"name": "Boot IT", "amount": null}, {"name": "Bridged IT", "amount": 551.8}, {"name": "CarTrack", "amount": 92}, {"name": "City Glass", "amount": null}, {"name": "Commtech Supplies", "amount": null}, {"name": "Competetive Couriers", "amount": null}, {"name": "Coombes Johnston BMW", "amount": null}, {"name": "Crafty Weka Bar", "amount": null}, {"name": "DAM Doors Ltd", "amount": null}, {"name": "Dealer Co NZ", "amount": null}, {"name": "Dealer Co NZ 0891451-01", "amount": 54.48}, {"name": "Drive Smart", "amount": null}, {"name": "Duncan & Ebbett", "amount": null}, {"name": "Ebbett Toyota", "amount": null}, {"name": "Ebbett Waikato", "amount": null}, {"name": "Elgas -  Bottle", "amount": null}, {"name": "Elgas - Auto", "amount": null}, {"name": "Enivor NZ", "amount": null}, {"name": "Enterprise Engineering", "amount": null}, {"name": "Enviro Haz", "amount": null}, {"name": "Fargo Group", "amount": null}, {"name": "Faria Holdings", "amount": null}, {"name": "Firewatch", "amount": null}, {"name": "Fortus Safety", "amount": null}, {"name": "Get Gas", "amount": 1846.29}, {"name": "GJS Tradding (BOTO)", "amount": null}, {"name": "Greame Clunie", "amount": null}, {"name": "Hamilton City - Water", "amount": 136}, {"name": "Herbert Morton", "amount": null}, {"name": "HillWay Enterprises LTD", "amount": 69}, {"name": "Holden Haven", "amount": null}, {"name": "Honda", "amount": null}, {"name": "Incafe", "amount": null}, {"name": "Ingham Motors", "amount": null}, {"name": "Inland Revenue", "amount": null}, {"name": "Jim Wright", "amount": null}, {"name": "Jimmy It UP", "amount": null}, {"name": "King Commercial", "amount": null}, {"name": "Kiwi Baloon Company", "amount": null}, {"name": "Nippon South Pacific (NSPL)", "amount": 616.17}, {"name": "Northland Waste", "amount": 45.49}, {"name": "Nothing Naughty", "amount": 314.01}, {"name": "NZME", "amount": 177.15}, {"name": "Oji Fibre", "amount": null}, {"name": "Patch Rubber", "amount": 214.25}, {"name": "Pickerill", "amount": null}, {"name": "Prima Deli North", "amount": null}, {"name": "Pure Group", "amount": null}, {"name": "Reed Product", "amount": 156.98}, {"name": "Ruka", "amount": 499.34}, {"name": "Sam Computers", "amount": 240.35}, {"name": "Sean Elder Garage", "amount": 40}, {"name": "Shalini D Sharma (Sparky)", "amount": null}, {"name": "Stuff", "amount": 208.8}, {"name": "Summit Hire", "amount": null}, {"name": "Supercheap Auto NZ", "amount": null}, {"name": "The Brand Makers", "amount": null}, {"name": "Titex", "amount": null}, {"name": "Toolshed Hamilton", "amount": null}, {"name": "Tyre Tracks", "amount": null}, {"name": "Tyremax", "amount": null}, {"name": "Tyres 4 U", "amount": null}, {"name": "Value Tyres", "amount": 197.34}, {"name": "VAMS - bluebird", "amount": null}, {"name": "Waikato Auto Locksmith", "amount": null}, {"name": "Waikato Bearings", "amount": null}, {"name": "Waikato Cleaning Supplies", "amount": null}, {"name": "Waikato Commercial Spare", "amount": null}, {"name": "Waikato Kia", "amount": null}, {"name": "Wests Original", "amount": null}, {"name": "Windscreens Aotearoa", "amount": null}, {"name": "Winger Hamilton", "amount": 260.82}]}, {"id": "dd25", "title": "Direct Debits \u2013 25th of Month", "companies": [{"name": "AL Distribution", "amount": null}, {"name": "BakeShack", "amount": null}, {"name": "Black Fern", "amount": 3222.64}, {"name": "British American Tobacco", "amount": null}, {"name": "Capricorn", "amount": 7403.02}, {"name": "HCC - Rent", "amount": null}, {"name": "Imperial Tobacco", "amount": null}, {"name": "MTA", "amount": null}, {"name": "Meridian Energy", "amount": null}, {"name": "Myob", "amount": null}, {"name": "Paymark", "amount": 82.8}, {"name": "Phillip Morris", "amount": null}, {"name": "Red Circle", "amount": 5635.49}, {"name": "Spark", "amount": null}]}, {"id": "dd20", "title": "Direct Debits \u2013 20th of Month (Auto Debit)", "companies": [{"name": "Coregas", "amount": 514.27}, {"name": "Nalsun", "amount": null}, {"name": "Swole Foods", "amount": null}, {"name": "Worldline", "amount": null}]}];
+
+function restoreAugust2026(){
+  const entry = state.history.find(h => h.month === 'August 2026');
+  if (!entry) {
+    alert('No archived "August 2026" entry was found to restore into.');
+    return;
+  }
+  if (!confirm('Replace the archived August 2026 figures with the recovered backup? This only affects August — your current month is untouched.')) return;
+  entry.sections = JSON.parse(JSON.stringify(RECOVERED_AUGUST_SECTIONS));
+  render();
+  flushSaveNow().then(() => showToast('August 2026 figures restored and saved to the cloud'));
 }
 </script>
 
