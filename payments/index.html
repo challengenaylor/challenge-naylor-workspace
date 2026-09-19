@@ -321,6 +321,12 @@
     padding:8px 14px; border-radius:10px; margin-bottom:16px; font-family:var(--mono);
   }
   .archived-banner.show{ display:flex; }
+  .btn-inline{
+    background:var(--amber); color:#1a1200; border:none; border-radius:6px;
+    padding:4px 10px; font-size:11.5px; font-weight:700; cursor:pointer;
+    font-family:var(--mono);
+  }
+  .btn-inline:hover{ opacity:0.85; }
 
   /* ---------- Payment-list (filtered) mode ---------- */
   body.list-mode .row.unpaid{ display:none; }
@@ -423,8 +429,9 @@ let state = {"month": "August 2026", "sections": [{"id": "main", "title": "20th 
 ;
 let mode = 'edit';
 let viewingIndex = null; // null = current live month; otherwise index into state.history
+let unlockedArchiveIndex = null; // set to an index while that archived month is unlocked for editing
 
-if(!state.theme) state.theme = 'dark';
+if(!state.theme) state.theme = 'light';
 
 function applyTheme(){
   document.documentElement.setAttribute('data-theme', state.theme);
@@ -507,14 +514,15 @@ function fmt(n){
   return '$' + Number(n).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2});
 }
 
-function isReadOnly(){ return viewingIndex !== null; }
+function isViewingArchive(){ return viewingIndex !== null; }
+function isReadOnly(){ return isViewingArchive() && viewingIndex !== unlockedArchiveIndex; }
 
 function activeSections(){
-  return isReadOnly() ? state.history[viewingIndex].sections : state.sections;
+  return isViewingArchive() ? state.history[viewingIndex].sections : state.sections;
 }
 
 function activeMonthLabel(){
-  return isReadOnly() ? state.history[viewingIndex].month : state.month;
+  return isViewingArchive() ? state.history[viewingIndex].month : state.month;
 }
 
 function sectionTotal(sec){
@@ -536,7 +544,7 @@ function renderTabs(){
     const b = document.createElement('button');
     b.className = 'tab' + (isActive ? ' active' : '') + (archived ? ' archived' : '');
     b.textContent = label;
-    b.addEventListener('click', ()=>{ viewingIndex = idxVal; render(); });
+    b.addEventListener('click', ()=>{ viewingIndex = idxVal; unlockedArchiveIndex = null; render(); });
     bar.appendChild(b);
   };
   mkTab(state.month + ' · current', null, viewingIndex === null, false);
@@ -547,8 +555,28 @@ function render(){
   renderTabs();
   const monthInput = document.getElementById('monthInput');
   monthInput.value = activeMonthLabel();
-  monthInput.disabled = isReadOnly();
-  document.getElementById('archivedBanner').classList.toggle('show', isReadOnly());
+  monthInput.disabled = isViewingArchive();
+  const banner = document.getElementById('archivedBanner');
+  banner.classList.toggle('show', isViewingArchive());
+  if(isViewingArchive()){
+    if(isReadOnly()){
+      banner.innerHTML = '🔒 Viewing an archived month — read-only. <button id="unlockArchiveBtn" class="btn-inline">Unlock to edit</button>';
+      const ub = document.getElementById('unlockArchiveBtn');
+      if(ub) ub.addEventListener('click', ()=>{
+        if(confirm('Unlock "'+activeMonthLabel()+'" for editing? Remember to lock it again once you\'re done.')){
+          unlockedArchiveIndex = viewingIndex;
+          render();
+        }
+      });
+    } else {
+      banner.innerHTML = '🔓 Editing an archived month — changes save immediately. <button id="lockArchiveBtn" class="btn-inline">Done — lock it</button>';
+      const lb = document.getElementById('lockArchiveBtn');
+      if(lb) lb.addEventListener('click', ()=>{
+        unlockedArchiveIndex = null;
+        render();
+      });
+    }
+  }
   document.getElementById('statGrand').textContent = fmt(grandTotal());
   document.getElementById('statCount').textContent = paidCount();
   document.getElementById('stampDate').textContent = new Date().toLocaleDateString();
@@ -680,7 +708,7 @@ function updateStatsOnly(){
 }
 
 document.getElementById('monthInput').addEventListener('input', (e)=>{
-  if(isReadOnly()) return;
+  if(isViewingArchive()) return;
   state.month = e.target.value;
   renderTabs();
   scheduleAutosave();
@@ -698,7 +726,7 @@ document.getElementById('modeSeg').addEventListener('click', (e)=>{
 });
 
 document.getElementById('clearBtn').addEventListener('click', ()=>{
-  if(isReadOnly()){
+  if(isViewingArchive()){
     alert('You\'re viewing an archived month. Click the "· current" tab first, then archive from there.');
     return;
   }
@@ -923,6 +951,8 @@ function restoreAugust2026(){
     if (!appHasStarted) {
       appHasStarted = true;
       await loadFromCloud();
+      if(!state.theme) state.theme = 'light';
+      applyTheme();
       render();
     }
   });
