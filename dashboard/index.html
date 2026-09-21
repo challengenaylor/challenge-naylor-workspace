@@ -557,6 +557,58 @@
   }
   .rule-remove:hover{ background:var(--danger-soft); color:var(--danger); }
 
+  /* Accountant GST comparison */
+  .gst-compare-grid{ display:flex; flex-direction:column; gap:10px; }
+  .gst-compare-row{
+    display:grid;
+    grid-template-columns:120px 110px 150px 130px;
+    align-items:center;
+    gap:12px;
+    padding:8px 0;
+    border-bottom:1px solid var(--border-soft);
+  }
+  .gst-compare-row:last-child{ border-bottom:none; }
+  .gst-compare-label{ font-weight:600; color:var(--text); font-size:.85rem; }
+  .gst-compare-our{ font-family:var(--mono); font-variant-numeric:tabular-nums; color:var(--text-secondary); font-size:.85rem; }
+  .gst-acc-input{
+    font-size:.85rem;
+    font-family:var(--mono);
+    padding:7px 10px;
+    border:1.5px solid var(--border);
+    border-radius:8px;
+    color:var(--text);
+    transition:border-color var(--fast), box-shadow var(--fast);
+  }
+  .gst-acc-input:focus{ outline:none; border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-soft); }
+  .gst-compare-diff{ font-family:var(--mono); font-variant-numeric:tabular-nums; font-weight:700; font-size:.85rem; }
+  .gst-compare-diff.pos{ color:var(--success); }
+  .gst-compare-diff.neg{ color:var(--danger); }
+  @media (max-width:640px){
+    .gst-compare-row{ grid-template-columns:1fr 1fr; grid-template-areas:"label label" "our diff" "input input"; row-gap:6px; }
+    .gst-compare-label{ grid-area:label; }
+    .gst-compare-our{ grid-area:our; }
+    .gst-compare-diff{ grid-area:diff; text-align:right; }
+    .gst-acc-input{ grid-area:input; }
+  }
+
+  /* GST History */
+  .gst-history-period{ padding:10px 0; border-bottom:1px solid var(--border-soft); }
+  .gst-history-period:last-child{ border-bottom:none; }
+  .gst-history-period.current{ background:var(--primary-soft); border-radius:8px; padding:10px 12px; margin:0 -12px; }
+  .gst-history-label{ font-weight:700; color:var(--text); font-size:.85rem; margin-bottom:6px; }
+  .gst-history-line{
+    display:flex;
+    gap:14px;
+    font-family:var(--mono);
+    font-size:.78rem;
+    color:var(--text-secondary);
+    padding:2px 0;
+    flex-wrap:wrap;
+  }
+  .gst-history-field{ font-weight:700; color:var(--text); flex:0 0 70px; }
+  .gst-history-line .pos{ color:var(--success); font-weight:600; }
+  .gst-history-line .neg{ color:var(--danger); font-weight:600; }
+
   /* GST panel */
   .gst-header{
     display:flex;
@@ -719,7 +771,7 @@
   /* ---------- Print / PDF export ---------- */
   @media print{
     .no-print, #uploadPanel, .click-hint, #chooseBtn{ display:none !important; }
-    select.txn-recode, .txn-recode-input, .rule-remove, .suggest-chip, #acctDropdown{ display:none !important; }
+    select.txn-recode, .txn-recode-input, .rule-remove, .suggest-chip, .gst-acc-input, #acctDropdown{ display:none !important; }
     body{ background:#fff; }
     header.topbar{
       position:static;
@@ -870,6 +922,34 @@
         </div>
       </div>
       <div class="chart-card full" style="margin-top:14px;">
+        <h4>Accountant GST <span class="gst-badge" id="gstPeriodBadge">—</span></h4>
+        <p class="click-hint">Enter whichever figure your accountant gives you — you don't need all three. Saved automatically, per period, without touching the others.</p>
+        <div class="gst-compare-grid">
+          <div class="gst-compare-row">
+            <div class="gst-compare-label">GST Collected</div>
+            <div class="gst-compare-our" id="gstCompareOurCollected">—</div>
+            <input type="text" inputmode="decimal" class="gst-acc-input" id="gstAccCollectedInput" data-field="Collected" placeholder="Accountant figure">
+            <div class="gst-compare-diff" id="gstCompareDiffCollected"></div>
+          </div>
+          <div class="gst-compare-row">
+            <div class="gst-compare-label">GST Claimed</div>
+            <div class="gst-compare-our" id="gstCompareOurClaimed">—</div>
+            <input type="text" inputmode="decimal" class="gst-acc-input" id="gstAccClaimedInput" data-field="Claimed" placeholder="Accountant figure">
+            <div class="gst-compare-diff" id="gstCompareDiffClaimed"></div>
+          </div>
+          <div class="gst-compare-row">
+            <div class="gst-compare-label">Net GST</div>
+            <div class="gst-compare-our" id="gstCompareOurNet">—</div>
+            <input type="text" inputmode="decimal" class="gst-acc-input" id="gstAccNetInput" data-field="Net" placeholder="Accountant figure">
+            <div class="gst-compare-diff" id="gstCompareDiffNet"></div>
+          </div>
+        </div>
+      </div>
+      <div class="chart-card full" id="gstHistoryCard" style="margin-top:14px; display:none;">
+        <h4>GST History</h4>
+        <div id="gstHistoryList"></div>
+      </div>
+      <div class="chart-card full" style="margin-top:14px;">
         <h4>What was excluded from the GST estimate, and why</h4>
         <p class="click-hint">Click a row to see all its transactions, or click just the Deposits or Withdrawals figure to see only that direction. Each transaction has a search box to code it to your chart of accounts.</p>
         <table class="monthly" id="gstExcludedTable">
@@ -977,6 +1057,7 @@ License: MIT
 //# sourceMappingURL=chart.umd.min.js.map
 </script>
 <script>
+
 
 (function(){
   'use strict';
@@ -1193,6 +1274,72 @@ License: MIT
   function saveRules(){
     try { window.localStorage.setItem(RULES_KEY, JSON.stringify(RULES)); }
     catch (e){ /* localStorage unavailable — silently continue in-memory */ }
+  }
+
+  /* ---------------------------------------------------------------
+     MONTHLY TOTALS — persistent history
+     Stored under its own localStorage key (cashflowLedgerMonthlyTotals::
+     <account>), completely separate from the coding rules above.
+     Deliberately shaped to match a future Firebase document
+     (cashFlowApp/monthlyTotals/{accountRoot}_{YYYY-MM}) field-for-field,
+     so swapping the storage backend later doesn't require touching how
+     this data is built or rendered — only where it's read/written.
+     Only the four summary numbers are ever stored here; no transaction
+     data.
+  --------------------------------------------------------------- */
+  function monthlyTotalsKeyFor(ownRoot){
+    return 'cashflowLedgerMonthlyTotals::' + (ownRoot || 'default');
+  }
+
+  function loadMonthlyTotals(ownRoot){
+    try {
+      var raw = window.localStorage.getItem(monthlyTotalsKeyFor(ownRoot));
+      return raw ? (JSON.parse(raw) || {}) : {};
+    } catch (e){ return {}; }
+  }
+
+  function saveMonthlyTotals(ownRoot, store){
+    try { window.localStorage.setItem(monthlyTotalsKeyFor(ownRoot), JSON.stringify(store)); }
+    catch (e){ /* localStorage unavailable — silently continue in-memory */ }
+  }
+
+  /* ---------------------------------------------------------------
+     GST COMPARISONS — accountant figures, per GST period
+     Same isolation principle: own key (cashflowLedgerGstComparisons::
+     <account>), shaped to match the future Firebase document
+     (cashFlowApp/gstComparisons/{accountRoot}_{periodKey}). Each of
+     the three accountant figures (Collected/Claimed/Net) can be
+     entered independently; saving one never touches the others.
+  --------------------------------------------------------------- */
+  function gstComparisonsKeyFor(ownRoot){
+    return 'cashflowLedgerGstComparisons::' + (ownRoot || 'default');
+  }
+
+  function loadGstComparisons(ownRoot){
+    try {
+      var raw = window.localStorage.getItem(gstComparisonsKeyFor(ownRoot));
+      return raw ? (JSON.parse(raw) || {}) : {};
+    } catch (e){ return {}; }
+  }
+
+  function saveGstComparisons(ownRoot, store){
+    try { window.localStorage.setItem(gstComparisonsKeyFor(ownRoot), JSON.stringify(store)); }
+    catch (e){ /* localStorage unavailable — silently continue in-memory */ }
+  }
+
+  // yyyy-mm (same month) or yyyy-mm_yyyy-mm (spans months) — derived
+  // automatically from the loaded file's date range, matching this
+  // business's bimonthly GST filing pattern. Never typed by the user.
+  function periodKeyFor(minDate, maxDate){
+    var a = monthKey(minDate), b = monthKey(maxDate);
+    return a === b ? a : (a + '_' + b);
+  }
+
+  function periodLabelFor(minDate, maxDate){
+    var a = monthKey(minDate), b = monthKey(maxDate);
+    if (a === b) return monthLabel(a);
+    var shortFirst = minDate.toLocaleDateString(undefined, { month:'short' });
+    return shortFirst + '-' + monthLabel(b);
   }
 
   // Display label for whatever is currently coded against a party —
@@ -1633,22 +1780,45 @@ License: MIT
     /* ---------- Spending by Category ---------- */
     renderSpendingChart(txns, ownRoot);
 
-    /* ---------- Monthly totals table ---------- */
-    var monthKeys = Object.keys(byMonth).sort();
+    /* ---------- Monthly totals table (persistent history) ----------
+       Only the months in the CURRENTLY loaded file update the store
+       and stay drill-down-able. Every other month ever loaded still
+       shows its summary row, newest month first, but isn't clickable
+       — there's no transaction data behind it to expand. */
+    var monthlyStore = loadMonthlyTotals(ownRoot);
+    Object.keys(byMonth).forEach(function(mk){
+      var rowData = byMonth[mk];
+      monthlyStore[mk] = {
+        month: mk,
+        deposits: rowData.dep,
+        withdrawals: -rowData.wit,
+        net: rowData.dep - rowData.wit,
+        updatedAt: new Date().toISOString()
+      };
+    });
+    saveMonthlyTotals(ownRoot, monthlyStore);
+
+    var allMonthKeys = Object.keys(monthlyStore).sort().reverse(); // newest first
     var tbody = document.querySelector('#monthlyTable tbody');
     tbody.innerHTML = '';
-    monthKeys.forEach(function(mk){
-      var rowData = byMonth[mk];
-      var net = rowData.dep - rowData.wit;
+    allMonthKeys.forEach(function(mk){
+      var rowData = monthlyStore[mk];
+      var isLive = byMonth.hasOwnProperty(mk); // transactions for this month are in the currently loaded file
       var tr = document.createElement('tr');
-      tr.className = 'expandable-row';
-      tr.setAttribute('data-month', mk);
-      tr.innerHTML =
-        '<td><span class="caret">&#9656;</span></td>' +
-        '<td>' + monthLabel(mk) + '</td>' +
-        '<td class="pos">' + dirCellHtml(rowData.dep, 'dep') + '</td>' +
-        '<td class="neg">' + dirCellHtml(-rowData.wit, 'wit') + '</td>' +
-        '<td class="' + (net >= 0 ? 'pos' : 'neg') + '">' + fmtMoney(net) + '</td>';
+      var caretCell, depCell, witCell;
+      if (isLive){
+        tr.className = 'expandable-row';
+        tr.setAttribute('data-month', mk);
+        caretCell = '<td><span class="caret">&#9656;</span></td>';
+        depCell = '<td class="pos">' + dirCellHtml(rowData.deposits, 'dep') + '</td>';
+        witCell = '<td class="neg">' + dirCellHtml(rowData.withdrawals, 'wit') + '</td>';
+      } else {
+        caretCell = '<td></td>';
+        depCell = '<td class="pos">' + fmtMoney(rowData.deposits) + '</td>';
+        witCell = '<td class="neg">' + fmtMoney(rowData.withdrawals) + '</td>';
+      }
+      tr.innerHTML = caretCell + '<td>' + monthLabel(mk) + '</td>' + depCell + witCell +
+        '<td class="' + (rowData.net >= 0 ? 'pos' : 'neg') + '">' + fmtMoney(rowData.net) + '</td>';
       tbody.appendChild(tr);
     });
 
@@ -1851,6 +2021,10 @@ License: MIT
       if (!(k in lastPartyDisplayNames)) lastPartyDisplayNames[k] = t.party || 'Unspecified';
     });
     renderRulesPanel();
+
+    if (txns.length){
+      renderGstComparison(txns[0].date, txns[txns.length - 1].date, gstCollected, gstClaimed, gstNet, ownRoot);
+    }
   }
 
   function renderRulesPanel(){
@@ -1875,6 +2049,123 @@ License: MIT
         '<span class="rule-party">' + escapeHtml(displayName) + '</span>' +
         '<span class="rule-code">' + escapeHtml(codeLabel) + '</span>' +
         '<button type="button" class="rule-remove" data-rule-key="' + escapeHtml(key) + '" title="Remove this rule">&times;</button>' +
+        '</div>';
+    }).join('');
+  }
+
+  /* ---------------------------------------------------------------
+     ACCOUNTANT GST COMPARISON
+     Three independent figures (Collected/Claimed/Net) per GST period.
+     "Our" values are always the freshly computed ones; "accountant"
+     values only change when the person actually types one in — never
+     overwritten by a recompute, and entering one never disturbs the
+     other two.
+  --------------------------------------------------------------- */
+  var lastGstPeriodKey = null; // so the input change-handler knows which record to update
+
+  function fmtDiff(diff){
+    var sign = diff > 0 ? '+' : '';
+    return sign + fmtMoney(diff);
+  }
+
+  function renderGstComparison(minDate, maxDate, ourCollected, ourClaimed, ourNet, ownRoot){
+    var periodKey = periodKeyFor(minDate, maxDate);
+    var periodLabel = periodLabelFor(minDate, maxDate);
+    lastGstPeriodKey = periodKey;
+
+    var store = loadGstComparisons(ownRoot);
+    var rec = store[periodKey] || { periodKey:periodKey, periodLabel:periodLabel };
+    rec.periodKey = periodKey;
+    rec.periodLabel = periodLabel;
+    rec.ourCollected = ourCollected;
+    rec.ourClaimed = ourClaimed;
+    rec.ourNet = ourNet;
+    if (rec.accountantCollected != null) rec.collectedDifference = rec.ourCollected - rec.accountantCollected;
+    if (rec.accountantClaimed != null) rec.claimedDifference = rec.ourClaimed - rec.accountantClaimed;
+    if (rec.accountantNet != null) rec.netDifference = rec.ourNet - rec.accountantNet;
+    store[periodKey] = rec;
+    saveGstComparisons(ownRoot, store);
+
+    setText('gstPeriodBadge', periodLabel);
+    renderComparisonRow('Collected', rec);
+    renderComparisonRow('Claimed', rec);
+    renderComparisonRow('Net', rec);
+
+    renderGstHistory(ownRoot, periodKey);
+  }
+
+  function renderComparisonRow(field, rec){
+    var ourVal = rec['our' + field];
+    var accVal = rec['accountant' + field];
+    var diffVal = rec[field.charAt(0).toLowerCase() + field.slice(1) + 'Difference'];
+    setText('gstCompareOur' + field, fmtMoney(ourVal));
+    var input = document.getElementById('gstAcc' + field + 'Input');
+    if (input && document.activeElement !== input){ // don't fight the user mid-typing
+      input.value = (accVal != null) ? accVal.toFixed(2) : '';
+    }
+    var diffEl = document.getElementById('gstCompareDiff' + field);
+    if (diffEl){
+      if (accVal != null && diffVal != null){
+        diffEl.textContent = 'Diff: ' + fmtDiff(diffVal);
+        diffEl.className = 'gst-compare-diff ' + (diffVal === 0 ? '' : (diffVal > 0 ? 'pos' : 'neg'));
+      } else {
+        diffEl.textContent = '';
+        diffEl.className = 'gst-compare-diff';
+      }
+    }
+  }
+
+  // Called when an accountant figure input changes — updates just
+  // that one field for the current period, leaving the other two
+  // (and every other period) untouched.
+  function saveAccountantGstField(field, value){
+    if (!lastGstPeriodKey) return;
+    var store = loadGstComparisons(lastOwnRoot);
+    var rec = store[lastGstPeriodKey];
+    if (!rec) return; // renderGstComparison always creates it first, so this shouldn't happen
+    rec['accountant' + field] = value;
+    var diffKey = field.charAt(0).toLowerCase() + field.slice(1) + 'Difference';
+    rec[diffKey] = (value == null) ? null : (rec['our' + field] - value);
+    store[lastGstPeriodKey] = rec;
+    saveGstComparisons(lastOwnRoot, store);
+    renderComparisonRow(field, rec);
+    renderGstHistory(lastOwnRoot, lastGstPeriodKey);
+  }
+
+  function renderGstHistory(ownRoot, currentPeriodKey){
+    var card = document.getElementById('gstHistoryCard');
+    var list = document.getElementById('gstHistoryList');
+    if (!card || !list) return;
+    var store = loadGstComparisons(ownRoot);
+    // Only periods where at least one accountant figure has actually been entered.
+    var periodKeys = Object.keys(store).filter(function(k){
+      var r = store[k];
+      return r.accountantCollected != null || r.accountantClaimed != null || r.accountantNet != null;
+    }).sort().reverse(); // newest period first
+
+    if (!periodKeys.length){
+      card.style.display = 'none';
+      list.innerHTML = '';
+      return;
+    }
+    card.style.display = 'block';
+    list.innerHTML = periodKeys.map(function(k){
+      var r = store[k];
+      var lines = ['Collected', 'Claimed', 'Net'].map(function(field){
+        var accVal = r['accountant' + field];
+        if (accVal == null) return '';
+        var ourVal = r['our' + field];
+        var diffVal = r[field.charAt(0).toLowerCase() + field.slice(1) + 'Difference'];
+        return '<div class="gst-history-line">' +
+          '<span class="gst-history-field">' + field + '</span>' +
+          '<span>Our: ' + fmtMoney(ourVal) + '</span>' +
+          '<span>Accountant: ' + fmtMoney(accVal) + '</span>' +
+          '<span class="' + (diffVal >= 0 ? 'pos' : 'neg') + '">Diff: ' + fmtDiff(diffVal) + '</span>' +
+          '</div>';
+      }).join('');
+      return '<div class="gst-history-period' + (k === currentPeriodKey ? ' current' : '') + '">' +
+        '<div class="gst-history-label">' + escapeHtml(r.periodLabel) + '</div>' +
+        lines +
         '</div>';
     }).join('');
   }
@@ -2232,6 +2523,22 @@ License: MIT
       });
     }
 
+    document.addEventListener('change', function(e){
+      if (!e.target || !e.target.classList || !e.target.classList.contains('gst-acc-input')) return;
+      var field = e.target.getAttribute('data-field'); // 'Collected' | 'Claimed' | 'Net'
+      var raw = e.target.value.trim();
+      if (raw === ''){
+        saveAccountantGstField(field, null);
+        return;
+      }
+      var val = parseFloat(raw.replace(/[,$]/g, ''));
+      if (isNaN(val)){
+        e.target.value = ''; // reject unparseable input rather than save garbage
+        return;
+      }
+      saveAccountantGstField(field, val);
+    });
+
     setupExpandableTable('gstExcludedTable', 5, function(tr, txns, ownRoot){
       var reason = tr.getAttribute('data-reason');
       return txns.filter(function(t){ return classifyForGst(t, ownRoot).reason === reason; });
@@ -2312,6 +2619,7 @@ License: MIT
   });
 
 })();
+
 
 
 </script>
