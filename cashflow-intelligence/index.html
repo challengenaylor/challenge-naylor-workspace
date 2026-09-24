@@ -1133,7 +1133,7 @@ const DB = {
     return this.data;
   },
 
-  CURRENT_SCHEMA_VERSION: 3,
+  CURRENT_SCHEMA_VERSION: 4,
   MIGRATIONS: [
     {
       // v1: the original flat field-fill, formalized as a real migration
@@ -1182,6 +1182,24 @@ const DB = {
       migrate(data){
         data.aliasMappings = [];
       }
+    },
+    {
+      // v4: backfill an explicit direction on the handful of legacy
+      // seed records that predate the direction field (Wages, Monthly
+      // Supplier Payments, and the pre-canonical-engine Capricorn/Red
+      // Circle/Blackfern seed entries) — needed for the Calendar's
+      // direction filter (Calendar Phase 1): only direction="out" series
+      // may produce a Calendar event, and a record with no direction at
+      // all would be silently and incorrectly excluded even though these
+      // are unambiguously outgoing payments by what they are. New-engine
+      // (seriesId-bearing) records already set direction correctly and
+      // are untouched here.
+      toVersion: 4,
+      migrate(data){
+        (data.recurringPayments||[]).forEach(r=>{
+          if(!r.seriesId && r.direction===undefined) r.direction = "out";
+        });
+      }
     }
   ],
 
@@ -1222,7 +1240,7 @@ const DB = {
       championModel: null, // {architecture:'old'|'new', backtestMAE, promotedAt, backtestSummary} — set by Backtest champion/challenger governance
       aliasMappings: [], // {alias, normalizedAlias, canonicalPayee, direction, confidence, matchingMethod, evidenceTransactionIds, firstSeen, lastSeen, autoMatched, manuallyLocked, createdAt, updatedAt} — persistent counterparty identity, survives every future import
       rebuildAuditLog: [], // persistent history of every rebuildFromEvidence() run — {timestamp, sourceId, transactionsProcessed, seriesCreated, seriesUpdated, seriesRetainedManual, aliasesCreated, validationFailures, validationFixed} — survives page refresh/reload
-      schemaVersion: 3, // fresh databases start at the current version — only legacy data needs to migrate
+      schemaVersion: 4, // fresh databases start at the current version — only legacy data needs to migrate
       migrationHistory: [] // {fromVersion, toVersion, ranAt, status, error} — one entry per migration actually executed
       // recurringPayments items may also carry: startDate, endDate (for fixed-term
       // commitments like a vehicle loan), scheduledAmount + scheduledDate (a future
@@ -1667,7 +1685,7 @@ const Forecast = {
     const today = DateUtil.todayISO();
     const cutoff = DateUtil.addDays(today, -lookbackDays);
     const byDate = {};
-    const recurringNames = DB.data.recurringPayments.filter(r=>r.enabled).map(r=>(r.matchKeyword||r.name).toLowerCase());
+    const recurringNames = DB.data.recurringPayments.filter(r=>r.enabled && !(r.direction && r.direction!=="out")).map(r=>(r.matchKeyword||r.name).toLowerCase()); // CRITICAL Phase 4 fix: only exclude OUTGOING recurring items from this baseline — those get properly re-added via recurringAmountOnDate()'s subtraction. An "in" (income) item has no such add-back pathway, so excluding it here with no compensation would make recognized recurring income silently vanish from the forecast entirely.
     DB.data.transactions.forEach(t=>{
       if(t.date < cutoff || t.date > today) return;
       const descLower = t.desc.toLowerCase();
@@ -1719,7 +1737,7 @@ const Forecast = {
     const today = DateUtil.todayISO();
     const cutoff = DateUtil.addDays(today, -lookbackDays);
     const byDate = {};
-    const recurringNames = DB.data.recurringPayments.filter(r=>r.enabled).map(r=>(r.matchKeyword||r.name).toLowerCase());
+    const recurringNames = DB.data.recurringPayments.filter(r=>r.enabled && !(r.direction && r.direction!=="out")).map(r=>(r.matchKeyword||r.name).toLowerCase()); // CRITICAL Phase 4 fix: only exclude OUTGOING recurring items from this baseline — those get properly re-added via recurringAmountOnDate()'s subtraction. An "in" (income) item has no such add-back pathway, so excluding it here with no compensation would make recognized recurring income silently vanish from the forecast entirely.
     DB.data.transactions.forEach(t=>{
       if(t.date < cutoff || t.date > today) return;
       const descLower = t.desc.toLowerCase();
@@ -1757,7 +1775,7 @@ const Forecast = {
     const today = DateUtil.todayISO();
     const cutoff = DateUtil.addDays(today, -lookbackDays);
     const byDate = {};
-    const recurringNames = DB.data.recurringPayments.filter(r=>r.enabled).map(r=>(r.matchKeyword||r.name).toLowerCase());
+    const recurringNames = DB.data.recurringPayments.filter(r=>r.enabled && !(r.direction && r.direction!=="out")).map(r=>(r.matchKeyword||r.name).toLowerCase()); // CRITICAL Phase 4 fix: only exclude OUTGOING recurring items from this baseline — those get properly re-added via recurringAmountOnDate()'s subtraction. An "in" (income) item has no such add-back pathway, so excluding it here with no compensation would make recognized recurring income silently vanish from the forecast entirely.
     DB.data.transactions.forEach(t=>{
       if(t.date < cutoff || t.date > today) return;
       const descLower = t.desc.toLowerCase();
@@ -1879,6 +1897,7 @@ const Forecast = {
       residualTotal += avg[wd];
       DB.data.recurringPayments.forEach(r=>{
         if(!r.enabled) return;
+        if(r.direction && r.direction!=="out") return; // same fix as recurringAmountOnDate() — this breakdown must reconcile exactly with the real forecast math, including which series it's allowed to include at all
         if(r.lifecycle==="ENDED") return; // same lifecycle enforcement as recurringAmountOnDate() — must reconcile exactly with projectBalance()
         const amt = this.amountForRecurringOn(r, cursor);
         if(amt===0) return;
@@ -2070,7 +2089,21 @@ const Forecast = {
     // and "the 1st" is well-defined regardless of month length. Only
     // cadences without a natural calendar anchor (fortnightly/quarterly/
     // annual) fall back to interval-from-a-reference-date matching.
-    if(r.type==="weekly") return new Date(dateISO+"T00:00:00").getDay()===r.anchor;
+    if(r.type==="weekly"){
+      // Spec-required ±2 day tolerance window around the expected weekly
+      // occurrence — for MATCHING a real transaction against the forecast
+      // (a payment that lands a day or two off its usual weekday due to
+      // weekends/processing delays should still be recognized). This is
+      // distinct from recurringLandsOnExact() below, which stays exact
+      // weekday matching — forecast placement always uses exactly one day
+      // per cycle; only the matching/confirmation side needs a window.
+      const tolerance = r.dateTolerance != null ? r.dateTolerance : 2;
+      const dow = new Date(dateISO+"T00:00:00").getDay();
+      let diff = dow - r.anchor;
+      if(diff > 3) diff -= 7; // wrap to the nearest occurrence of the anchor weekday, not always the one in the same calendar week
+      if(diff < -3) diff += 7;
+      return Math.abs(diff) <= tolerance;
+    }
     if(r.type==="monthly"){
       // Spec-required ±5 day window around the expected monthly occurrence
       // (default; overridable per item), correctly spanning a month
@@ -2131,6 +2164,7 @@ const Forecast = {
     let total = 0;
     DB.data.recurringPayments.forEach(r=>{
       if(!r.enabled) return;
+      if(r.direction && r.direction!=="out") return; // CRITICAL: this function's result is SUBTRACTED from the balance — an "in" (income) series must never be treated as an outflow. Legacy records with no direction at all (Wages, Monthly Supplier Payments — genuinely outgoing) are allowed through, matching Calendar Phase 1's same rule.
       if(r.lifecycle==="ENDED") return; // evidence-based lifecycle (spec priority 9) — stop forecasting a relationship with no evidence for 6+ expected cycles
       const amt = this.amountForRecurringOn(r, dateISO);
       if(amt === 0) return;
@@ -2299,7 +2333,10 @@ const Forecast = {
       } else {
         if(item.recommendedDate && item.recommendedDate < due) problems.push({ id:item.id, label, issue:"recommendedDate is before dueDateAdjusted", detail:`recommendedDate=${item.recommendedDate} due=${due}` });
         if(item.extensionDays>0 && item.recommendedDate<=due) problems.push({ id:item.id, label, issue:"extensionDays>0 but recommendedDate did not move forward", detail:`extensionDays=${item.extensionDays} recommendedDate=${item.recommendedDate} due=${due}` });
-        if(due < realToday && item.reason && /request.*extension/i.test(item.reason) && !/overdue/i.test(item.reason)) problems.push({ id:item.id, label, issue:"Overdue invoice uses future-tense 'request extension' wording instead of Overdue framing", detail:item.reason });
+        if(due < realToday && item.paymentStatus && item.paymentStatus!=="overdue") problems.push({ id:item.id, label, issue:"Invoice is overdue but paymentStatus is not 'overdue'", detail:`paymentStatus=${item.paymentStatus}` }); // the actual Phase 3 invariant: overdue always wins the headline paymentStatus, never relabeled as an extension state
+        if(item.extensionRequired && item.extensionDays===0) problems.push({ id:item.id, label, issue:"extensionRequired=true but extensionDays=0", detail:"" });
+        if(!item.extensionRequired && item.extensionDays>0) problems.push({ id:item.id, label, issue:"extensionDays>0 but extensionRequired=false", detail:"" });
+        if(item.paymentStatus==="extension-required" && item.extensionDays!==item.extensionLimit) problems.push({ id:item.id, label, issue:"paymentStatus is extension-required but extensionDays does not equal the configured limit", detail:`extensionDays=${item.extensionDays} extensionLimit=${item.extensionLimit}` });
         if(item.paidDate || item.paidTxId) problems.push({ id:item.id, label, issue:"Pending record carries paidDate/paidTxId", detail:`paidDate=${item.paidDate} paidTxId=${item.paidTxId}` });
       }
     };
@@ -2469,36 +2506,74 @@ const Forecast = {
       return { balance, overdraftUsed, breach, remainingOverdraft, availableFunds, confidence };
     };
 
+    // ================================================================
+    // FUEL INVOICE PLANNER PHASE 3 — the decision tree below follows the
+    // exact required order: (1) effective due date, (2) affordability on
+    // that date, (3) safe -> pay on due date, (4) unsafe -> search
+    // forward, (5) a safe date found before the limit -> a delay, (6) no
+    // safe date within the limit -> unable-within-limit, (7) only THEN
+    // is extensionRequired/extensionDays actually set. `status` is a
+    // distinct field from `verdict` (safe/unsafe is a binary affordability
+    // result; `status` is the specific UI state) — this is the actual
+    // fix: the UI used to collapse every unsafe verdict into "Extension"
+    // wording regardless of whether the invoice was overdue, only
+    // mildly delayed, or had genuinely exhausted the configured limit.
+    // "Overdue" is a separate axis from "extension" and always wins the
+    // displayed status while an invoice is overdue, whether or not it's
+    // safe to pay today — an extension is never assumed on the
+    // supplier's behalf; it is only ever the actual computed outcome of
+    // this search.
     const isOverdue = dueISO < realToday;
-    const searchStart = isOverdue ? realToday : dueISO; // an overdue invoice's clock restarts from the REAL today, never from the stale original due date
-    const primary = evalDate(searchStart);
-    let verdict, extensionDays = 0, recommendedDate = searchStart, reason;
+    const effectiveDate = isOverdue ? realToday : dueISO; // an overdue invoice's clock restarts from the REAL today, never from the stale original due date
+    const primary = evalDate(effectiveDate);
+
+    let verdict, status, extensionDays = 0, extensionRequired = false, recommendedDate = effectiveDate, reason;
 
     if(!primary.breach){
       verdict = "safe";
-      reason = isOverdue
-        ? `This invoice is overdue (was due ${fmt.date(dueISO)}). Projected balance if paid today (${fmt.date(realToday)}) is ${fmt.money(primary.balance)}, leaving ${fmt.money(primary.availableFunds)} headroom — pay it now.`
-        : `Projected balance on ${fmt.date(dueISO)} is ${fmt.money(primary.balance)}, which stays within your NZ$${overdraftLimit.toLocaleString()} overdraft facility (${fmt.money(primary.availableFunds)} headroom, ${fmt.money(buffer)} minimum buffer maintained).`;
+      if(isOverdue){
+        status = "overdue"; // overdue is still overdue even once it's safe to pay today — never silently relabeled "safe" without saying so
+        reason = `This invoice is overdue (was due ${fmt.date(dueISO)}). Projected balance if paid today (${fmt.date(realToday)}) is ${fmt.money(primary.balance)}, leaving ${fmt.money(primary.availableFunds)} headroom — pay it now.`;
+      } else if(dueISO===realToday){
+        status = "due-today";
+        reason = `Due today. Projected balance is ${fmt.money(primary.balance)}, which stays within your NZ$${overdraftLimit.toLocaleString()} overdraft facility (${fmt.money(primary.availableFunds)} headroom, ${fmt.money(buffer)} minimum buffer maintained).`;
+      } else {
+        const daysUntilDue = Math.round((new Date(dueISO+"T00:00:00")-new Date(realToday+"T00:00:00"))/86400000);
+        status = (daysUntilDue>0 && daysUntilDue<=3) ? "due-soon" : "safe"; // "due soon" default: within 3 calendar days — a proximity note only, does not change affordability
+        reason = `Projected balance on ${fmt.date(dueISO)} is ${fmt.money(primary.balance)}, which stays within your NZ$${overdraftLimit.toLocaleString()} overdraft facility (${fmt.money(primary.availableFunds)} headroom, ${fmt.money(buffer)} minimum buffer maintained).`;
+      }
     } else {
       verdict = "unsafe";
-      let d = searchStart, found = false;
+      let d = effectiveDate, found = false;
       for(let i=1;i<=this.MAX_EXTENSION_DAYS;i++){
         d = DateUtil.nextBusinessDay(d);
         const res = evalDate(d);
-        extensionDays = i;
         if(!res.breach){
-          recommendedDate = d; found = true;
-          reason = isOverdue
-            ? `Overdue (was due ${fmt.date(dueISO)}) and paying today would breach your safety buffer. Earliest forecast-safe payment date is ${fmt.date(d)} — projected balance ${fmt.money(res.balance)}, ${fmt.money(res.availableFunds)} headroom.`
-            : `Paying on the original due date (${fmt.date(dueISO)}) would leave less than your ${fmt.money(buffer)} safety buffer. Waiting ${i} business day${i===1?"":"s"} to ${fmt.date(d)} lets incoming settlements rebuild your buffer — projected balance ${fmt.money(res.balance)}, ${fmt.money(res.availableFunds)} headroom.`;
+          found = true;
+          extensionDays = i;
+          extensionRequired = true; // only set now that a genuine later-safe-date search has actually concluded one is needed
+          recommendedDate = d;
+          if(isOverdue){
+            status = "overdue"; // still "Overdue" as the headline state — the earliest safe date is supporting detail, never a different top-level label
+            reason = `Overdue (was due ${fmt.date(dueISO)}) and paying today would breach your safety buffer. Earliest forecast-safe payment date is ${fmt.date(d)} — projected balance ${fmt.money(res.balance)}, ${fmt.money(res.availableFunds)} headroom.`;
+          } else if(i===this.MAX_EXTENSION_DAYS){
+            status = "extension-required"; // the earliest safe date genuinely lands exactly on the configured limit — this, and only this, is the real "Extension required — N business days" case
+            reason = `Paying on the original due date (${fmt.date(dueISO)}) would leave less than your ${fmt.money(buffer)} safety buffer. An extension is required — the earliest forecast-safe date is ${i} business days out, ${fmt.date(d)} — projected balance ${fmt.money(res.balance)}, ${fmt.money(res.availableFunds)} headroom.`;
+          } else {
+            status = "payment-delayed"; // a safe date exists sooner than the configured limit — a delay, not (yet) a formal extension
+            reason = `Paying on the original due date (${fmt.date(dueISO)}) would leave less than your ${fmt.money(buffer)} safety buffer. Waiting ${i} business day${i===1?"":"s"} to ${fmt.date(d)} lets incoming settlements rebuild your buffer — projected balance ${fmt.money(res.balance)}, ${fmt.money(res.availableFunds)} headroom.`;
+          }
           break;
         }
       }
       if(!found){
+        extensionDays = this.MAX_EXTENSION_DAYS;
+        extensionRequired = true;
+        recommendedDate = d;
+        status = isOverdue ? "overdue" : "unable-within-limit"; // overdue still wins the headline even when no safe date was found at all
         reason = isOverdue
           ? `Overdue (was due ${fmt.date(dueISO)}) and still unsafe within the next ${this.MAX_EXTENSION_DAYS} business days — contact the supplier directly.`
           : `Even after ${this.MAX_EXTENSION_DAYS} business days this payment still projects to breach your safety buffer. Recommend contacting the payee directly and reviewing upcoming outgoings.`;
-        recommendedDate = d;
       }
     }
     // Global audit, item 2: never hand back an assessment without checking
@@ -2508,9 +2583,34 @@ const Forecast = {
     // at face value.
     const audit = this.fuelReconciliationAudit();
     return {
-      verdict, extensionDays, recommendedDate, reason, projectedBalance: primary.balance, availableFunds: primary.availableFunds, confidence: primary.confidence,
+      verdict, paymentStatus: status, extensionDays, extensionRequired, extensionLimit: this.MAX_EXTENSION_DAYS,
+      recommendedDate, reason, projectedBalance: primary.balance, availableFunds: primary.availableFunds,
+      safetyBuffer: buffer, confidence: primary.confidence,
       auditFlagged: audit.flagged, auditReason: audit.flagged ? audit.reason : null
     };
+  },
+
+  // Single shared mapping from the distinct `status` field to what the UI
+  // actually displays — this is the fix itself. Previously every call site
+  // independently branched on the binary verdict (safe/unsafe) and rendered
+  // "Extension" for every unsafe case, which is how an overdue invoice or
+  // one that had exhausted the configured limit both ended up mislabeled
+  // as a plain "15 Business Day Extension" even when no such extension had
+  // actually been calculated as the answer. One function, one mapping,
+  // used everywhere the status is displayed — a possible status the UI
+  // doesn't know how to render is impossible by construction, not just by
+  // convention across four separate call sites.
+  statusLabel(status, extensionDays){
+    switch(status){
+      case "safe": return "✅ Safe to Pay";
+      case "due-today": return "📅 Due Today";
+      case "due-soon": return "📅 Due Soon";
+      case "overdue": return "⚠ Overdue";
+      case "payment-delayed": return `⏳ Payment Delayed — ${extensionDays} Business Day${extensionDays===1?"":"s"}`;
+      case "extension-required": return `⚠ Extension Required — ${extensionDays} Business Day${extensionDays===1?"":"s"}`;
+      case "unable-within-limit": return `🛑 Cannot Safely Pay Within ${extensionDays} Business Days`;
+      default: return status;
+    }
   },
 
   // Checks whether adding a NEW hypothetical payment (candidateDate/amount)
@@ -2846,71 +2946,69 @@ const Calendar = {
 
     const markers = {};
     const mark = (iso, type, label, meta) => { (markers[iso] = markers[iso]||[]).push({type,label,meta}); };
-    DB.data.fuelInvoices.forEach(i => {
-      if(i.status==="paid") mark(i.paidDate, "paid", `${i.supplier} ✓ ${fmt.money(i.amount)}`); // exact amount — this already happened, precision matters
-      else mark(i.dueDateAdjusted, "due", `${i.supplier} ${fmt.money(i.amount)}`); // exact amount so it matches the real invoice/bank figure
-    });
-    DB.data.otherPayments.forEach(p => {
-      if(p.status==="paid") mark(p.paidDate, "paid", `${p.description} ✓ ${fmt.money(p.amount)}`); // exact amount — this already happened, precision matters
-      else mark(p.dueDateAdjusted, "due", `${p.description} ${fmt.money(p.amount)}`); // exact amount so it matches the real invoice/bank figure
-    });
-    DB.data.cashDeposits.forEach(d => mark(d.dateAdjusted, "dep", `Deposit ${fmt.money(d.amount)}`)); // exact amount
-    CONFIG.nzHolidays2026.forEach(h => mark(h, "hol", "Public holiday"));
-    // predicted (unconfirmed) fuel events for this month — clearly distinct
-    // from a "due" (confirmed pending invoice) or "paid" (already happened)
-    // tag, so predicted vs confirmed vs actual is always visually explicit
-    const monthStart = `${y}-${String(m).padStart(2,"0")}-01`;
-    const monthEnd = `${y}-${String(m).padStart(2,"0")}-${String(daysInMonth).padStart(2,"0")}`;
-    if(monthEnd > DateUtil.todayISO()){
-      Forecast.predictFuelEvents(monthStart > DateUtil.todayISO() ? monthStart : DateUtil.todayISO(), monthEnd).forEach(e=>{
-        mark(e.date, "fuelpred", `Predicted fuel ~${fmt.money(e.amount)}`);
-      });
-    }
-    // A payment doesn't always land on the exact predicted day, or for the
-    // exact predicted amount — real recurring bills (bank fees, subscription
-    // charges that switch payment processor, etc.) drift. Each recurring
-    // item can carry its own date tolerance (± days) and amount tolerance
-    // (± %); a real transaction within that window gets recognized as
-    // confirming the occurrence, marked on the date it ACTUALLY happened
-    // (not the predicted date), with a note showing how far off it was.
-    // claimedTxIds prevents the same real transaction confirming two
-    // different predicted occurrences when tolerance windows overlap.
-    //
-    // IMPORTANT: recurringLandsOnExact() finds the ONE expected day per
-    // cycle — this must drive which day gets a marker at all. Iterating
-    // every day of the month and gating on recurringLandsOn() (the
-    // tolerance-WINDOW matcher) was a real, confirmed defect: that
-    // function deliberately returns true for every day within the
-    // window (correct for its actual job — recognizing a real
-    // transaction that landed a few days off), so using it as the
-    // display gate showed one $4,500 bill on 11 different calendar days
-    // in a single month. The tolerance window is still used below, but
-    // only to search for a confirming real transaction AROUND the one
-    // true expected day — never to decide how many days get a marker.
+    CONFIG.nzHolidays2026.forEach(h => mark(h, "hol", "Public holiday")); // not a transaction or a payment — calendar context only, not covered by the recurring-payment scope below
+
+    // ================================================================
+    // CALENDAR PHASE 1 — recurring-payment forecast events, single
+    // source of truth. The Calendar shows ONLY outgoing recurring-
+    // payment forecasts: one event per expected cycle, sourced
+    // exclusively from DB.data.recurringPayments. It does not scan bank
+    // transactions to decide what to display, and it does not show fuel
+    // invoices, other-payment invoices, cash deposits, or predicted fuel
+    // events — those are tracked by their own systems (Fuel Invoice
+    // Planner, Payment Planner) and affect the cash-flow forecast
+    // without being duplicated here. A recurring series with
+    // direction="in" (income) never produces a Calendar event; a record
+    // is trusted on its stored direction, never re-inferred from amount
+    // sign. The date-tolerance window is used ONLY to find a real bank
+    // transaction that confirms the one forecast event already created
+    // for this cycle — it is never a second (or sixth, or eleventh)
+    // reason to create another event.
     const claimedTxIds = new Set();
-    DB.data.recurringPayments.filter(r=>r.enabled).forEach(r=>{
+    DB.data.recurringPayments.filter(r=>r.enabled && r.direction==="out").forEach(r=>{
       for(let d=1; d<=daysInMonth; d++){
         const iso = `${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-        const match = Forecast.recurringLandsOnExact(r, iso);
-        if(!match) continue;
+        if(!Forecast.recurringLandsOnExact(r, iso)) continue; // exactly one expected day per cycle — this IS the single forecast event
         if(r.startDate && iso < r.startDate) continue; // fixed-term commitment hasn't started yet
         if(r.endDate && iso > r.endDate) continue; // fixed-term commitment has already ended
-        const amountOnThisDate = Forecast.amountForRecurringOn(r, iso); // respects a scheduled future change, e.g. a rent rise
+
+        // The one forecast event for this cycle — every field the spec
+        // calls for attached up front, before we know whether it's
+        // matched yet.
+        const event = {
+          recurringSeriesId: r.seriesId || r.id,
+          canonicalPayee: r.canonicalPayee || r.name,
+          expectedDate: iso,
+          expectedAmount: Forecast.amountForRecurringOn(r, iso), // respects a scheduled future change, e.g. a rent rise
+          confidence: r.confidenceTier || null,
+          matchingWindowStart: null, matchingWindowEnd: null,
+          status: "predicted",
+          actualDate: null, actualAmount: null, actualTxId: null
+        };
+
         const tol = r.dateToleranceDays != null ? r.dateToleranceDays : 3;
-        const windowStart = DateUtil.addDays(iso, -tol);
-        const windowEnd = DateUtil.addDays(iso, tol);
-        const windowTx = DB.data.transactions.filter(t=>t.date>=windowStart && t.date<=windowEnd && !claimedTxIds.has(t.id));
+        event.matchingWindowStart = DateUtil.addDays(iso, -tol);
+        event.matchingWindowEnd = DateUtil.addDays(iso, tol);
+        const windowTx = DB.data.transactions.filter(t=>t.date>=event.matchingWindowStart && t.date<=event.matchingWindowEnd && !claimedTxIds.has(t.id));
         const matches = RecurringPayments._matchesFor(r, windowTx);
         const real = matches.length
           ? matches.reduce((best,t)=> Math.abs(new Date(t.date+"T00:00:00")-new Date(iso+"T00:00:00")) < Math.abs(new Date(best.date+"T00:00:00")-new Date(iso+"T00:00:00")) ? t : best)
           : null;
+
+        // ONE event either way — matching a real transaction updates
+        // THIS event in place (status, actual date/amount, tx id), it
+        // never creates a second event alongside the predicted one.
         if(real){
           claimedTxIds.add(real.id);
+          event.status = "matched-paid";
+          event.actualDate = real.date;
+          event.actualAmount = real.debit;
+          event.actualTxId = real.id;
           const daysOff = Math.round((new Date(real.date+"T00:00:00")-new Date(iso+"T00:00:00"))/86400000);
           const offNote = daysOff !== 0 ? ` (${Math.abs(daysOff)}d ${daysOff>0?'late':'early'})` : '';
-          mark(real.date, "paid", `${r.name} ✓ ${fmt.money(real.debit)}${offNote}`, { recurId: r.id, date: real.date }); // exact amount for confirmed real payments — no rounding
+          mark(real.date, "paid", `${r.name} ✓ ${fmt.money(real.debit)}${offNote}`, { recurId: r.id, date: real.date, event });
         } else {
-          mark(iso, "rec", `${r.name} ${fmt.money(amountOnThisDate)}${r.scheduledDate && iso>=r.scheduledDate ? ' (new)' : ''}`, { recurId: r.id, date: iso }); // exact amount so a predicted/recurring average is still directly comparable to your bank statement
+          mark(iso, "rec", `${r.name} ${fmt.money(event.expectedAmount)}${r.scheduledDate && iso>=r.scheduledDate ? ' (new)' : ''}`, { recurId: r.id, date: iso, event });
         }
       }
     });
@@ -3194,9 +3292,10 @@ const FuelPlanner = {
     const evalResult = Forecast.evaluatePayment(adjusted, amount, excludeId);
     return {
       deliveryISO, amount, dueDateRaw: raw, dueDateAdjusted: adjusted, dueDateOverridden: overridden,
-      verdict: evalResult.verdict, extensionDays: evalResult.extensionDays,
+      verdict: evalResult.verdict, paymentStatus: evalResult.paymentStatus,
+      extensionDays: evalResult.extensionDays, extensionRequired: evalResult.extensionRequired, extensionLimit: evalResult.extensionLimit,
       recommendedDate: evalResult.recommendedDate, reason: evalResult.reason,
-      projectedBalance: evalResult.projectedBalance, availableFunds: evalResult.availableFunds,
+      projectedBalance: evalResult.projectedBalance, availableFunds: evalResult.availableFunds, safetyBuffer: evalResult.safetyBuffer,
       confidence: evalResult.confidence, auditFlagged: evalResult.auditFlagged, auditReason: evalResult.auditReason
     };
   },
@@ -3276,8 +3375,10 @@ const FuelPlanner = {
     const result = this.assess(inv.deliveryDate, inv.amount, inv.dueDateOverridden ? inv.dueDateAdjusted : null, inv.id);
     Object.assign(inv, {
       dueDateRaw: result.dueDateRaw, dueDateAdjusted: result.dueDateAdjusted,
-      verdict: result.verdict, extensionDays: result.extensionDays, recommendedDate: result.recommendedDate,
-      reason: result.reason, projectedBalance: result.projectedBalance, availableFunds: result.availableFunds, confidence: result.confidence,
+      verdict: result.verdict, paymentStatus: result.paymentStatus,
+      extensionDays: result.extensionDays, extensionRequired: result.extensionRequired, extensionLimit: result.extensionLimit,
+      recommendedDate: result.recommendedDate,
+      reason: result.reason, projectedBalance: result.projectedBalance, availableFunds: result.availableFunds, safetyBuffer: result.safetyBuffer, confidence: result.confidence,
       auditFlagged: result.auditFlagged, auditReason: result.auditReason
     });
   },
@@ -3318,7 +3419,7 @@ const FuelPlanner = {
     body.innerHTML = `
       ${auditBanner}
       <div class="verdict ${result.verdict==='safe'?'safe':'unsafe'}">
-        ${result.verdict==='safe' ? '✅ Pay On Time' : `⚠ Request ${result.extensionDays} Business Day${result.extensionDays===1?'':'s'} Extension`}
+        ${Forecast.statusLabel(result.paymentStatus, result.extensionDays)}
       </div>
       ${weekendNote}
       <div class="kv-grid">
@@ -3372,7 +3473,7 @@ const FuelPlanner = {
         </div>
         ${inv.auditFlagged ? `<div class="verdict unsafe" style="margin-bottom:10px;background:var(--red-100);border:2px solid var(--red-600);font-size:12px;">⚠ AUDIT FLAGGED: ${escapeHtml(inv.auditReason||"")}</div>` : ""}
         <div class="verdict ${inv.verdict==='safe'?'safe':'unsafe'}" style="margin-bottom:10px;padding:8px 12px;font-size:13px;">
-          ${inv.verdict==='safe' ? '✅ Pay On Time' : `⚠ ${inv.extensionDays} Business Day Extension`}
+          ${Forecast.statusLabel(inv.paymentStatus, inv.extensionDays)}
         </div>
         <div class="kv-grid">
           <div><div class="k">Due Date</div><div class="v"><input type="date" value="${inv.dueDateAdjusted}" style="font-size:13px;padding:3px 6px;width:100%;" onchange="FuelPlanner.updateDueDate('${inv.id}', this.value)"></div></div>
@@ -3580,8 +3681,10 @@ const PaymentPlanner = {
     if(p.status==="paid") return; // same enforcement as FuelPlanner.recalc() — a paid payment is never recalculated
     const result = Forecast.evaluatePayment(p.dueDateAdjusted, p.amount, p.id);
     Object.assign(p, {
-      verdict: result.verdict, extensionDays: result.extensionDays, recommendedDate: result.recommendedDate,
-      reason: result.reason, projectedBalance: result.projectedBalance, availableFunds: result.availableFunds, confidence: result.confidence
+      verdict: result.verdict, paymentStatus: result.paymentStatus,
+      extensionDays: result.extensionDays, extensionRequired: result.extensionRequired, extensionLimit: result.extensionLimit,
+      recommendedDate: result.recommendedDate,
+      reason: result.reason, projectedBalance: result.projectedBalance, availableFunds: result.availableFunds, safetyBuffer: result.safetyBuffer, confidence: result.confidence
     });
   },
 
@@ -3607,7 +3710,7 @@ const PaymentPlanner = {
     body.innerHTML = `
       ${conflictHtml}
       <div class="verdict ${result.verdict==='safe'?'safe':'unsafe'}">
-        ${result.verdict==='safe' ? '✅ Safe to Pay' : `⚠ Request ${result.extensionDays} Business Day${result.extensionDays===1?'':'s'} Extension`}
+        ${Forecast.statusLabel(result.paymentStatus, result.extensionDays)}
       </div>
       <div class="kv-grid">
         <div><div class="k">Recommended Payment Date</div><div class="v">${fmt.date(result.recommendedDate)}</div></div>
@@ -3635,7 +3738,7 @@ const PaymentPlanner = {
           <input type="text" value="${escapeHtml(p.invoiceNumber||"")}" placeholder="none" style="flex:1;font-size:12.5px;padding:4px 8px;" onchange="PaymentPlanner.updateInvoiceNumber('${p.id}', this.value)">
         </div>
         <div class="verdict ${p.verdict==='safe'?'safe':'unsafe'}" style="margin-bottom:10px;padding:8px 12px;font-size:13px;">
-          ${p.verdict==='safe' ? '✅ Pay On Time' : `⚠ ${p.extensionDays} Business Day Extension`}
+          ${Forecast.statusLabel(p.paymentStatus, p.extensionDays)}
         </div>
         <div class="kv-grid">
           <div><div class="k">Recommended</div><div class="v" style="font-size:13px;">${fmt.date(p.recommendedDate)}</div></div>
@@ -4283,11 +4386,11 @@ const RecurringPayments = {
     if(DB.data.recurringSeeded) return;
     DB.data.recurringSeeded = true;
     const defaults = [
-      { name:"Wages", type:"weekly", anchor:4, amount:4500, source:"seed" },                 // Thursday
-      { name:"Monthly Supplier Payments", type:"monthly", anchor:20, amount:15817.17, source:"seed" },
-      { name:"Capricorn Society Limited", type:"monthly", anchor:30, amount:7035.61, source:"seed" },
-      { name:"Red Circle Wholesale Limited", type:"monthly", anchor:25, amount:10218.93, source:"seed" },
-      { name:"Blackfern Society Ltd", type:"monthly", anchor:23, amount:3412.28, source:"seed" },
+      { name:"Wages", type:"weekly", anchor:4, amount:4500, source:"seed", direction:"out" },                 // Thursday
+      { name:"Monthly Supplier Payments", type:"monthly", anchor:20, amount:15817.17, source:"seed", direction:"out" },
+      { name:"Capricorn Society Limited", type:"monthly", anchor:30, amount:7035.61, source:"seed", direction:"out" },
+      { name:"Red Circle Wholesale Limited", type:"monthly", anchor:25, amount:10218.93, source:"seed", direction:"out" },
+      { name:"Blackfern Society Ltd", type:"monthly", anchor:23, amount:3412.28, source:"seed", direction:"out" },
     ];
     defaults.forEach(d => DB.data.recurringPayments.push({ id: uid(), enabled:true, occurrences:null, ...d }));
     DB.save();
