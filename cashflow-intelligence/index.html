@@ -4798,6 +4798,23 @@ const RecurringPayments = {
       candidates = recent.filter(t => t.desc.toLowerCase().startsWith("multiple payment") && t.debit>0 && t.debit<10000 && new Date(t.date+"T00:00:00").getDay()===item.anchor);
     } else if(item.name==="Monthly Supplier Payments"){
       candidates = recent.filter(t => t.desc.toLowerCase().startsWith("multiple payment") && t.debit>=10000 && Math.abs(Number(t.date.slice(8,10))-item.anchor)<=2);
+    } else if(item.seriesId){
+      // Alias-aware matching for new-engine series records. A plain
+      // substring check against item.name would miss a real transaction
+      // that landed under a known alias (e.g. Simon Bratton's payment
+      // arriving as "S P & T M BRATTON", or Kapadia's as "MURTAZA
+      // KAPADIA") — confirmed directly against real data: those
+      // transactions genuinely exist and resolveCanonical() correctly
+      // recognizes them, but the old substring check found zero matches,
+      // so the calendar kept showing an unconfirmed prediction forever
+      // even though the real payment had already arrived. Using the same
+      // canonical-identity resolution the detection engine itself uses
+      // keeps this consistent with what actually built the series.
+      candidates = recent.filter(t => {
+        if(t.debit<=0) return false;
+        const resolved = CounterpartyEngine.resolveCanonical(t.desc, t.opname, item.direction||"out", t.id);
+        return resolved === item.canonicalPayee;
+      });
     } else {
       const nameLower = (item.matchKeyword||item.name).toLowerCase();
       candidates = recent.filter(t => t.debit>0 && (t.desc.toLowerCase().includes(nameLower) || (t.opname && t.opname.toLowerCase().includes(nameLower))));
