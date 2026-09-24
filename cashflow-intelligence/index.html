@@ -1082,8 +1082,13 @@ function uid(){
 // for a chunk of every morning, which previously made the "Today's Projected
 // Balance" card think no time had passed since the last import and stay hidden.
 function localTodayISO(){
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  // Explicit NZ timezone (spec requirement: "actual application date/time
+  // in the configured NZ timezone"), not the host system's local timezone
+  // — those coincide when the browser itself is set to NZ time, but
+  // shouldn't be assumed given how easy that assumption is to get wrong.
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Pacific/Auckland", year:"numeric", month:"2-digit", day:"2-digit" }).formatToParts(new Date());
+  const get = (t) => parts.find(p=>p.type===t).value;
+  return `${get("year")}-${get("month")}-${get("day")}`;
 }
 
 /* ================================================================
@@ -1118,14 +1123,90 @@ const DB = {
       }
       if(typeof toast === "function") toast("⚠ Couldn't reach the live database — showing your last locally saved copy. Changes won't sync to other browsers until connection is restored.");
     }
-    // migration: fill in any fields added in later phases for DBs saved by earlier phases
-    const empty = this._empty();
-    for(const k in empty){ if(!(k in this.data)) this.data[k] = empty[k]; }
+    // Versioned migration (spec priority 5) — replaces the old flat
+    // field-fill. Each migration step runs at most once (guarded by both
+    // schemaVersion AND migrationHistory, so a stale/out-of-sync version
+    // number can't cause a re-run), is safe to attempt again on a DB
+    // that's already current (no-op), and never removes existing data —
+    // only adds/reconciles missing fields.
+    this.runMigrations();
     return this.data;
+  },
+
+  CURRENT_SCHEMA_VERSION: 3,
+  MIGRATIONS: [
+    {
+      // v1: the original flat field-fill, formalized as a real migration
+      // step — brings any legacy DB up to having every top-level field
+      // _empty() defines, without touching fields that already exist.
+      toVersion: 1,
+      migrate(data){
+        const empty = DB._empty();
+        for(const k in empty){ if(!(k in data)) data[k] = empty[k]; }
+      }
+    },
+    {
+      // v2: backfill the complete forecast-record fields (spec priority 1)
+      // onto any existing recurring-series record that predates them —
+      // reconciled in place, existing amount/anchor/evidence untouched.
+      toVersion: 2,
+      migrate(data){
+        (data.recurringPayments||[]).forEach(r=>{
+          if(r.seriesId && r.expectedDate===undefined){
+            const now = new Date().toISOString();
+            r.recurringSeriesId = r.recurringSeriesId || r.seriesId;
+            r.canonicalCounterpartyId = r.canonicalCounterpartyId || (r.canonicalPayee||r.name||"").toUpperCase().replace(/[^A-Z0-9]+/g,"_");
+            r.expectedDate = null; r.earliestDate = null; r.latestDate = null; // populated properly by the next rebuildFromEvidence() run
+            r.expectedAmount = r.amount; r.conservativeAmount = r.amount;
+            r.frequency = r.type || (r.cadenceDays ? "cadence" : "unknown");
+            r.forecastCreatedAt = r.forecastCreatedAt || now;
+            r.forecastUpdatedAt = r.forecastUpdatedAt || now;
+          }
+        });
+      }
+    },
+    {
+      // v3: the counterparty matching algorithm was corrected — generic
+      // business/financial terms ("Society", "Fee", "Transaction",
+      // "Motor", etc.) no longer count as distinctive identity tokens,
+      // after real data showed they were causing false merges between
+      // genuinely different companies (e.g. Capricorn Society Limited
+      // being merged into Blackfern Society Ltd). Any alias mapping
+      // recorded under the OLD rules could be wrong and won't
+      // self-correct (the exact-match fast path in resolveCanonical
+      // doesn't re-derive from tokens). Clearing them is safe: the next
+      // rebuildFromEvidence() re-derives every alias fresh under the
+      // corrected rules. Recurring series records themselves, and all
+      // real transaction data, are completely untouched.
+      toVersion: 3,
+      migrate(data){
+        data.aliasMappings = [];
+      }
+    }
+  ],
+
+  runMigrations(){
+    if(this.data.schemaVersion===undefined) this.data.schemaVersion = 0;
+    if(!Array.isArray(this.data.migrationHistory)) this.data.migrationHistory = [];
+    const alreadySucceeded = new Set(this.data.migrationHistory.filter(m=>m.status==="success").map(m=>m.toVersion));
+    this.MIGRATIONS.forEach(m=>{
+      if(m.toVersion <= this.data.schemaVersion) return; // already at or past this version — no-op, safe to call every load
+      if(alreadySucceeded.has(m.toVersion)) return; // idempotency guard even if schemaVersion is somehow stale
+      const entry = { fromVersion: this.data.schemaVersion, toVersion: m.toVersion, ranAt: new Date().toISOString(), status: "success", error: null };
+      try{
+        m.migrate(this.data);
+        this.data.schemaVersion = m.toVersion;
+      }catch(e){
+        entry.status = "failed";
+        entry.error = String(e && e.message || e);
+        console.error("Migration to v"+m.toVersion+" failed", e);
+      }
+      this.data.migrationHistory.push(entry);
+    });
   },
   _empty(){
     return {
-      settings: { overdraftLimit: CONFIG.overdraftLimit },
+      settings: { overdraftLimit: CONFIG.overdraftLimit, safetyBuffer: 1000 },
       statements: [],      // {id, month, year, filename, importedAt, rowCount, openBal, closeBal}
       transactions: [],    // {id, date, desc, opName, credit, debit, amount, balance, category, manualCat, sourceStatement, hash}
       categoryOverrides: {}, // descKey -> category (learned corrections)
@@ -1138,7 +1219,11 @@ const DB = {
       forecastSnapshot: null, // last captured Forecast.captureSnapshot() — used by explainForecastChange() to show what moved since the last import
       lastForecastChange: null, // stored result of Forecast.explainForecastChange(), computed once at import time
       predictionMemory: [], // {id, forecastDate, createdAt, horizon, predictedBalance, predictedFuel, predictedRecurring, predictedResidual, confidence, resolved, actualBalance, actualFuel, actualRecurring, actualResidual, errorTotal, errorAttribution}
-      championModel: null // {architecture:'old'|'new', backtestMAE, promotedAt, backtestSummary} — set by Backtest champion/challenger governance
+      championModel: null, // {architecture:'old'|'new', backtestMAE, promotedAt, backtestSummary} — set by Backtest champion/challenger governance
+      aliasMappings: [], // {alias, normalizedAlias, canonicalPayee, direction, confidence, matchingMethod, evidenceTransactionIds, firstSeen, lastSeen, autoMatched, manuallyLocked, createdAt, updatedAt} — persistent counterparty identity, survives every future import
+      rebuildAuditLog: [], // persistent history of every rebuildFromEvidence() run — {timestamp, sourceId, transactionsProcessed, seriesCreated, seriesUpdated, seriesRetainedManual, aliasesCreated, validationFailures, validationFixed} — survives page refresh/reload
+      schemaVersion: 3, // fresh databases start at the current version — only legacy data needs to migrate
+      migrationHistory: [] // {fromVersion, toVersion, ranAt, status, error} — one entry per migration actually executed
       // recurringPayments items may also carry: startDate, endDate (for fixed-term
       // commitments like a vehicle loan), scheduledAmount + scheduledDate (a future
       // amount change, e.g. a rent rise), and matchKeyword (text to match against
@@ -1792,13 +1877,12 @@ const Forecast = {
       cursor = DateUtil.addDays(cursor, 1);
       const wd = new Date(cursor+"T00:00:00").getDay();
       residualTotal += avg[wd];
-      const daysInMonth = new Date(Number(cursor.slice(0,4)), Number(cursor.slice(5,7)), 0).getDate();
       DB.data.recurringPayments.forEach(r=>{
         if(!r.enabled) return;
+        if(r.lifecycle==="ENDED") return; // same lifecycle enforcement as recurringAmountOnDate() — must reconcile exactly with projectBalance()
         const amt = this.amountForRecurringOn(r, cursor);
         if(amt===0) return;
-        const match = r.type==="weekly" ? wd===r.anchor : Number(cursor.slice(8,10))===Math.min(r.anchor, daysInMonth);
-        if(match){ recurringBreakdown[r.name] = (recurringBreakdown[r.name]||0) + amt; recurringTotal += amt; }
+        if(this.recurringLandsOnExact(r, cursor)){ recurringBreakdown[r.name] = (recurringBreakdown[r.name]||0) + amt; recurringTotal += amt; }
       });
       if(fuelMap[cursor]) fuelTotal += fuelMap[cursor];
     }
@@ -1971,20 +2055,86 @@ const Forecast = {
     if(r.scheduledDate && dateISO >= r.scheduledDate && typeof r.scheduledAmount === "number") return r.scheduledAmount;
     return r.amount;
   },
+
+  // Single source of truth for "does this recurring item land on this
+  // date" — used by recurringAmountOnDate(), the Calendar, and
+  // explainDate(), so the matching rule only exists in one place.
+  // Supports weekly/monthly (the original weekday/day-of-month anchor,
+  // kept for full backward compatibility with existing items) AND general
+  // cadence-day matching (fortnightly/quarterly/annual, or any interval)
+  // via a stored anchorDate + cadenceDays + tolerance — the general form
+  // the SeriesEngine now produces for every cadence beyond weekly/monthly.
+  recurringLandsOn(r, dateISO){
+    // weekly/monthly use their natural calendar anchor (weekday / day-of-month)
+    // — precise with no drift, since a weekday repeats exactly every 7 days
+    // and "the 1st" is well-defined regardless of month length. Only
+    // cadences without a natural calendar anchor (fortnightly/quarterly/
+    // annual) fall back to interval-from-a-reference-date matching.
+    if(r.type==="weekly") return new Date(dateISO+"T00:00:00").getDay()===r.anchor;
+    if(r.type==="monthly"){
+      // Spec-required ±5 day window around the expected monthly occurrence
+      // (default; overridable per item), correctly spanning a month
+      // boundary — e.g. anchor day 1 matches ~27th of the PREVIOUS month
+      // through the 6th of the current month, not just the 1st exactly.
+      const tolerance = r.dateTolerance != null ? r.dateTolerance : 5;
+      const y = Number(dateISO.slice(0,4)), m = Number(dateISO.slice(5,7));
+      const daysInMonthOf = (yy,mm) => new Date(yy, mm, 0).getDate(); // mm 1-indexed here by design of the Date(y,m,0) trick
+      const candidateDates = [[y,m-1],[y,m],[y,m+1]].map(([yy,mm])=>{
+        let ny=yy, nm=mm;
+        if(nm<1){ nm=12; ny--; } if(nm>12){ nm=1; ny++; }
+        const dim = daysInMonthOf(ny,nm);
+        const day = Math.min(r.anchor, dim);
+        return `${ny}-${String(nm).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+      });
+      const minDist = Math.min(...candidateDates.map(c => Math.abs((new Date(dateISO+"T00:00:00")-new Date(c+"T00:00:00"))/86400000)));
+      return minDist <= tolerance;
+    }
+    if(r.cadenceDays && r.anchorDate){
+      const diffDays = (new Date(dateISO+"T00:00:00") - new Date(r.anchorDate+"T00:00:00")) / 86400000;
+      const cyclesFromAnchor = diffDays / r.cadenceDays;
+      const nearestCycle = Math.round(cyclesFromAnchor);
+      const offsetDays = Math.abs((cyclesFromAnchor - nearestCycle) * r.cadenceDays);
+      const tolerance = r.dateTolerance != null ? r.dateTolerance : Math.max(2, Math.round(r.cadenceDays*0.15));
+      return offsetDays <= tolerance; // matches any cycle, past or future, within tolerance
+    }
+    return false;
+  },
+
+  // FORECAST GENERATION uses this — picks EXACTLY one day per cycle to
+  // place the expected amount on. This is deliberately separate from
+  // recurringLandsOn() below (which uses a tolerance WINDOW, correct for
+  // matching/confirming a real transaction against a forecast after the
+  // fact). Reusing the tolerance-window version here was a severe, real
+  // bug: every day within the window would independently satisfy the
+  // check, so a single $4,500 monthly payment was being subtracted once
+  // for EVERY day in its ±5 day window — roughly 10x over-counted in a
+  // 30-day forecast (found via the actual daily balance validation:
+  // Simon Bratton alone contributed $45,000 to what should have been a
+  // single $4,500 monthly hit). Forecast generation must place each
+  // cycle's amount on exactly one date; the tolerance window is a
+  // matching concept, not a forecasting one.
+  recurringLandsOnExact(r, dateISO){
+    if(r.type==="weekly") return new Date(dateISO+"T00:00:00").getDay()===r.anchor;
+    if(r.type==="monthly"){
+      const dom = Number(dateISO.slice(8,10));
+      const daysInMonth = new Date(Number(dateISO.slice(0,4)), Number(dateISO.slice(5,7)), 0).getDate();
+      return dom === Math.min(r.anchor, daysInMonth);
+    }
+    if(r.cadenceDays && r.anchorDate){
+      const diffDays = Math.round((new Date(dateISO+"T00:00:00") - new Date(r.anchorDate+"T00:00:00")) / 86400000);
+      return diffDays % r.cadenceDays === 0;
+    }
+    return false;
+  },
+
   recurringAmountOnDate(dateISO){
     let total = 0;
-    const wd = new Date(dateISO+"T00:00:00").getDay();
-    const dom = Number(dateISO.slice(8,10));
-    const daysInMonth = new Date(Number(dateISO.slice(0,4)), Number(dateISO.slice(5,7)), 0).getDate();
     DB.data.recurringPayments.forEach(r=>{
       if(!r.enabled) return;
+      if(r.lifecycle==="ENDED") return; // evidence-based lifecycle (spec priority 9) — stop forecasting a relationship with no evidence for 6+ expected cycles
       const amt = this.amountForRecurringOn(r, dateISO);
       if(amt === 0) return;
-      if(r.type==="weekly" && wd===r.anchor) total += amt;
-      if(r.type==="monthly"){
-        const targetDay = Math.min(r.anchor, daysInMonth);
-        if(dom===targetDay) total += amt;
-      }
+      if(this.recurringLandsOnExact(r, dateISO)) total += amt;
     });
     return total;
   },
@@ -2048,11 +2198,22 @@ const Forecast = {
     const windowRadius = Math.round(step * 0.75);
     const amount = (profile.recentAvg && profile.count>=4) ? profile.recentAvg : profile.amount.median;
     const confidence = profile.count>=8 ? "high" : profile.count>=4 ? "medium" : "low";
+    const pendingInvoices = DB.data.fuelInvoices.filter(i => i.status!=="paid");
 
-    // Full candidate sequence BEFORE any suppression — stepping forward
-    // from the last REAL fuel payment by the learned interval.
+    // Candidate generation anchors from the MOST RECENT known delivery —
+    // whichever is later: the last actual cleared transaction, or a
+    // confirmed pending invoice's delivery date. Anchoring from real
+    // transactions alone left a real gap: once two invoices land close
+    // together, the single nearby candidate the old anchor produced gets
+    // consumed matching the closer one, and the grid never advances to
+    // generate a candidate for the genuinely NEW delivery one full cycle
+    // beyond that — silently under-counting a real upcoming cost instead
+    // of over-counting a confirmed one. Anchoring from the latest known
+    // delivery (real or confirmed) keeps the candidate grid advancing
+    // properly regardless of how many invoices are already confirmed.
+    const latestKnownDelivery = pendingInvoices.reduce((latest, inv) => inv.deliveryDate > latest ? inv.deliveryDate : latest, profile.lastDate);
     const candidates = [];
-    let cursor = profile.lastDate;
+    let cursor = latestKnownDelivery;
     let guard = 0;
     while(cursor <= toDate && guard < 400){
       cursor = DateUtil.addDays(cursor, step);
@@ -2062,7 +2223,6 @@ const Forecast = {
 
     // One-to-one matching: each pending invoice (by DELIVERY date) claims
     // exactly the closest unclaimed candidate within ±windowRadius days.
-    const pendingInvoices = DB.data.fuelInvoices.filter(i => i.status!=="paid");
     const suppressed = new Set();
     const suppressionLog = [];
     pendingInvoices.forEach(inv => {
@@ -2081,7 +2241,7 @@ const Forecast = {
 
     return candidates.filter(c => !suppressed.has(c)).map(c => ({
       date: c, amount: Math.round(amount*100)/100, confidence,
-      reason: `Expected fuel payment ~${fmt.money(amount)} around ${fmt.date(c)} — based on ${profile.count} historical fuel payments averaging every ${step} days (last actual: ${fmt.date(profile.lastDate)}, ${fmt.money(profile.lastAmount)}).`
+      reason: `Expected fuel payment ~${fmt.money(amount)} around ${fmt.date(c)} — based on ${profile.count} historical fuel payments averaging every ${step} days (last known delivery: ${fmt.date(latestKnownDelivery)}).`
     }));
   },
 
@@ -2114,6 +2274,38 @@ const Forecast = {
         ? `Predicted 30-day fuel spend (${fmt.money(predicted30)}) exceeds your historical 30-day average (${fmt.money(historical30)}) by ${(overPct*100).toFixed(0)}% — check for a duplicate prediction before trusting any assessment right now.`
         : `Predicted 30-day fuel spend (${fmt.money(predicted30)}) is within 15% of your historical average (${fmt.money(historical30)}) — no duplication signature detected.`
     };
+  },
+
+  // ================================================================
+  // INVOICE VALIDATION — spec section 13. Every pending/paid invoice and
+  // payment is checked for a fixed list of invalid states after every
+  // recalc pass. Nothing here auto-corrects a record; it only reports —
+  // the point is to make an inconsistency visible rather than silently
+  // shipped in a confident-looking number.
+  // ================================================================
+  validateInvoiceRecords(){
+    const realToday = localTodayISO(); // overdue-ness is a real-calendar-date question, not a ledger-date one — same fix as evaluatePayment()
+    const problems = [];
+    const checkOne = (item, label) => {
+      const due = item.dueDateAdjusted;
+      if(item.status==="paid"){
+        // A paid record's verdict/extensionDays are the FROZEN historical
+        // assessment from before payment — expected, not a bug. The only
+        // genuine invariant for a paid record is that it actually has a
+        // paidDate. (Confirmed separately: the pending-invoice UI never
+        // surfaces a paid record's verdict as an active recommendation —
+        // paid items are filtered out of that list entirely.)
+        if(!item.paidDate) problems.push({ id:item.id, label, issue:"paidDate missing on a record marked paid", detail:"" });
+      } else {
+        if(item.recommendedDate && item.recommendedDate < due) problems.push({ id:item.id, label, issue:"recommendedDate is before dueDateAdjusted", detail:`recommendedDate=${item.recommendedDate} due=${due}` });
+        if(item.extensionDays>0 && item.recommendedDate<=due) problems.push({ id:item.id, label, issue:"extensionDays>0 but recommendedDate did not move forward", detail:`extensionDays=${item.extensionDays} recommendedDate=${item.recommendedDate} due=${due}` });
+        if(due < realToday && item.reason && /request.*extension/i.test(item.reason) && !/overdue/i.test(item.reason)) problems.push({ id:item.id, label, issue:"Overdue invoice uses future-tense 'request extension' wording instead of Overdue framing", detail:item.reason });
+        if(item.paidDate || item.paidTxId) problems.push({ id:item.id, label, issue:"Pending record carries paidDate/paidTxId", detail:`paidDate=${item.paidDate} paidTxId=${item.paidTxId}` });
+      }
+    };
+    DB.data.fuelInvoices.forEach(inv => checkOne(inv, inv.supplier+" "+(inv.invoiceNumber||inv.id)));
+    DB.data.otherPayments.forEach(p => checkOne(p, p.description+" "+(p.invoiceNumber||p.id)));
+    return { problems, checkedCount: DB.data.fuelInvoices.length + DB.data.otherPayments.length, passedCount: DB.data.fuelInvoices.length + DB.data.otherPayments.length - problems.length };
   },
 
   // Point-query version for a single date (used by per-invoice displays) —
@@ -2252,42 +2444,73 @@ const Forecast = {
   // planner, and the Invoice Simulator: is this payment safe on its due
   // date, and if not, how many business days of extension would fix it?
   // excludeId lets a payment being re-evaluated skip double-counting itself.
+  // Configurable safety buffer (spec section 12) — "safe" means the
+  // projected balance leaves at least this much genuine headroom inside
+  // the overdraft facility, not merely a balance that hasn't technically
+  // exceeded the limit yet ($4 of headroom is not a safe margin).
+  SAFETY_BUFFER: 1000,
+
   evaluatePayment(dueISO, amount, excludeId){
     const overdraftLimit = DB.data.settings.overdraftLimit;
+    const buffer = (DB.data.settings.safetyBuffer != null) ? DB.data.settings.safetyBuffer : this.SAFETY_BUFFER;
+    // "Overdue" must be judged against the REAL calendar date, not
+    // DateUtil.todayISO() (which returns the latest imported transaction
+    // date — correct for anchoring a projection, but wrong here: an
+    // invoice can be genuinely overdue even if no fresher statement has
+    // been imported yet). This distinction is exactly the "never overwrite
+    // one concept with another" rule the spec calls out.
+    const realToday = localTodayISO();
     const evalDate = (dateISO) => {
       const { balance, confidence } = this.projectBalance(dateISO, amount, excludeId);
       const overdraftUsed = balance < 0 ? Math.min(-balance, overdraftLimit) : 0;
-      const breach = balance < -overdraftLimit;
       const remainingOverdraft = Math.max(overdraftLimit - overdraftUsed, 0);
       const availableFunds = balance >= 0 ? balance + overdraftLimit : remainingOverdraft;
+      const breach = availableFunds < buffer; // the actual safety test — genuine headroom, not just "hasn't technically breached yet"
       return { balance, overdraftUsed, breach, remainingOverdraft, availableFunds, confidence };
     };
 
-    const primary = evalDate(dueISO);
-    let verdict, extensionDays = 0, recommendedDate = dueISO, reason;
+    const isOverdue = dueISO < realToday;
+    const searchStart = isOverdue ? realToday : dueISO; // an overdue invoice's clock restarts from the REAL today, never from the stale original due date
+    const primary = evalDate(searchStart);
+    let verdict, extensionDays = 0, recommendedDate = searchStart, reason;
 
     if(!primary.breach){
       verdict = "safe";
-      reason = `Projected balance on ${fmt.date(dueISO)} is ${fmt.money(primary.balance)}, which stays within your NZ$${overdraftLimit.toLocaleString()} overdraft facility (${fmt.money(primary.availableFunds)} headroom after this payment).`;
+      reason = isOverdue
+        ? `This invoice is overdue (was due ${fmt.date(dueISO)}). Projected balance if paid today (${fmt.date(realToday)}) is ${fmt.money(primary.balance)}, leaving ${fmt.money(primary.availableFunds)} headroom — pay it now.`
+        : `Projected balance on ${fmt.date(dueISO)} is ${fmt.money(primary.balance)}, which stays within your NZ$${overdraftLimit.toLocaleString()} overdraft facility (${fmt.money(primary.availableFunds)} headroom, ${fmt.money(buffer)} minimum buffer maintained).`;
     } else {
       verdict = "unsafe";
-      let d = dueISO, found = false;
+      let d = searchStart, found = false;
       for(let i=1;i<=this.MAX_EXTENSION_DAYS;i++){
         d = DateUtil.nextBusinessDay(d);
         const res = evalDate(d);
         extensionDays = i;
         if(!res.breach){
           recommendedDate = d; found = true;
-          reason = `Paying on the original due date (${fmt.date(dueISO)}) would breach your overdraft by ${fmt.money(Math.abs(primary.balance+overdraftLimit))}. Waiting ${i} business day${i===1?"":"s"} to ${fmt.date(d)} lets incoming settlements rebuild your buffer — projected balance ${fmt.money(res.balance)}, ${fmt.money(res.availableFunds)} headroom.`;
+          reason = isOverdue
+            ? `Overdue (was due ${fmt.date(dueISO)}) and paying today would breach your safety buffer. Earliest forecast-safe payment date is ${fmt.date(d)} — projected balance ${fmt.money(res.balance)}, ${fmt.money(res.availableFunds)} headroom.`
+            : `Paying on the original due date (${fmt.date(dueISO)}) would leave less than your ${fmt.money(buffer)} safety buffer. Waiting ${i} business day${i===1?"":"s"} to ${fmt.date(d)} lets incoming settlements rebuild your buffer — projected balance ${fmt.money(res.balance)}, ${fmt.money(res.availableFunds)} headroom.`;
           break;
         }
       }
       if(!found){
-        reason = `Even after ${this.MAX_EXTENSION_DAYS} business days this payment still projects to breach your overdraft. Recommend contacting the payee directly and reviewing upcoming outgoings.`;
+        reason = isOverdue
+          ? `Overdue (was due ${fmt.date(dueISO)}) and still unsafe within the next ${this.MAX_EXTENSION_DAYS} business days — contact the supplier directly.`
+          : `Even after ${this.MAX_EXTENSION_DAYS} business days this payment still projects to breach your safety buffer. Recommend contacting the payee directly and reviewing upcoming outgoings.`;
         recommendedDate = d;
       }
     }
-    return { verdict, extensionDays, recommendedDate, reason, projectedBalance: primary.balance, availableFunds: primary.availableFunds, confidence: primary.confidence };
+    // Global audit, item 2: never hand back an assessment without checking
+    // whether the fuel prediction feeding it looks like it contains a
+    // duplicate. This doesn't silently alter the number — it flags it, so
+    // an anomalous assessment is visibly marked as such rather than trusted
+    // at face value.
+    const audit = this.fuelReconciliationAudit();
+    return {
+      verdict, extensionDays, recommendedDate, reason, projectedBalance: primary.balance, availableFunds: primary.availableFunds, confidence: primary.confidence,
+      auditFlagged: audit.flagged, auditReason: audit.flagged ? audit.reason : null
+    };
   },
 
   // Checks whether adding a NEW hypothetical payment (candidateDate/amount)
@@ -2656,8 +2879,7 @@ const Calendar = {
     DB.data.recurringPayments.filter(r=>r.enabled).forEach(r=>{
       for(let d=1; d<=daysInMonth; d++){
         const iso = `${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-        const dow = new Date(y,m-1,d).getDay();
-        const match = r.type==="weekly" ? dow===r.anchor : d===Math.min(r.anchor, daysInMonth);
+        const match = Forecast.recurringLandsOn(r, iso);
         if(!match) continue;
         if(r.startDate && iso < r.startDate) continue; // fixed-term commitment hasn't started yet
         if(r.endDate && iso > r.endDate) continue; // fixed-term commitment has already ended
@@ -2963,7 +3185,7 @@ const FuelPlanner = {
       verdict: evalResult.verdict, extensionDays: evalResult.extensionDays,
       recommendedDate: evalResult.recommendedDate, reason: evalResult.reason,
       projectedBalance: evalResult.projectedBalance, availableFunds: evalResult.availableFunds,
-      confidence: evalResult.confidence
+      confidence: evalResult.confidence, auditFlagged: evalResult.auditFlagged, auditReason: evalResult.auditReason
     };
   },
 
@@ -3033,11 +3255,18 @@ const FuelPlanner = {
   recalc(id){
     const inv = DB.data.fuelInvoices.find(i=>i.id===id);
     if(!inv) return;
+    // A paid invoice's assessment fields are frozen at payment time — never
+    // recalculated. This is enforced HERE, not left to every caller to
+    // remember, so a paid invoice can never end up showing a live payment
+    // recommendation or extension suggestion no matter what triggered the
+    // recalc pass (spec section 13's validation rule).
+    if(inv.status==="paid") return;
     const result = this.assess(inv.deliveryDate, inv.amount, inv.dueDateOverridden ? inv.dueDateAdjusted : null, inv.id);
     Object.assign(inv, {
       dueDateRaw: result.dueDateRaw, dueDateAdjusted: result.dueDateAdjusted,
       verdict: result.verdict, extensionDays: result.extensionDays, recommendedDate: result.recommendedDate,
-      reason: result.reason, projectedBalance: result.projectedBalance, availableFunds: result.availableFunds, confidence: result.confidence
+      reason: result.reason, projectedBalance: result.projectedBalance, availableFunds: result.availableFunds, confidence: result.confidence,
+      auditFlagged: result.auditFlagged, auditReason: result.auditReason
     });
   },
 
@@ -3071,7 +3300,11 @@ const FuelPlanner = {
       : result.dueDateOverridden
       ? `<div class="stat-sub" style="margin-bottom:10px;">Using the due date you entered (${fmt.date(result.dueDateAdjusted)}, ${DateUtil.weekdayName(result.dueDateAdjusted)}) instead of the standard delivery+5-day rule.</div>`
       : "";
+    const auditBanner = result.auditFlagged
+      ? `<div class="verdict unsafe" style="margin-bottom:10px;background:var(--red-100);border:2px solid var(--red-600);">⚠ RECONCILIATION AUDIT FLAGGED: ${escapeHtml(result.auditReason)}</div>`
+      : "";
     body.innerHTML = `
+      ${auditBanner}
       <div class="verdict ${result.verdict==='safe'?'safe':'unsafe'}">
         ${result.verdict==='safe' ? '✅ Pay On Time' : `⚠ Request ${result.extensionDays} Business Day${result.extensionDays===1?'':'s'} Extension`}
       </div>
@@ -3125,6 +3358,7 @@ const FuelPlanner = {
           <span class="stat-label" style="margin:0;">Invoice #</span>
           <input type="text" value="${escapeHtml(inv.invoiceNumber||"")}" placeholder="none" style="flex:1;font-size:12.5px;padding:4px 8px;" onchange="FuelPlanner.updateInvoiceNumber('${inv.id}', this.value)">
         </div>
+        ${inv.auditFlagged ? `<div class="verdict unsafe" style="margin-bottom:10px;background:var(--red-100);border:2px solid var(--red-600);font-size:12px;">⚠ AUDIT FLAGGED: ${escapeHtml(inv.auditReason||"")}</div>` : ""}
         <div class="verdict ${inv.verdict==='safe'?'safe':'unsafe'}" style="margin-bottom:10px;padding:8px 12px;font-size:13px;">
           ${inv.verdict==='safe' ? '✅ Pay On Time' : `⚠ ${inv.extensionDays} Business Day Extension`}
         </div>
@@ -3331,6 +3565,7 @@ const PaymentPlanner = {
   recalc(id){
     const p = DB.data.otherPayments.find(x=>x.id===id);
     if(!p) return;
+    if(p.status==="paid") return; // same enforcement as FuelPlanner.recalc() — a paid payment is never recalculated
     const result = Forecast.evaluatePayment(p.dueDateAdjusted, p.amount, p.id);
     Object.assign(p, {
       verdict: result.verdict, extensionDays: result.extensionDays, recommendedDate: result.recommendedDate,
@@ -3809,6 +4044,223 @@ const InvoiceHistory = {
   }
 };
 
+/* ================================================================
+   CANONICAL COUNTERPARTY ENGINE
+   A persistent identity layer sitting BETWEEN raw bank text and the
+   recurring-payment engine. Raw descriptions are not treated as identity —
+   "AP#21714518 TO SIMON BRATTON & TANYA BRATTON" and "AP#21714518 TO S P
+   & T M BRATTON" resolve to the SAME canonical payee. Alias mappings, once
+   confirmed by evidence, persist in DB.data.aliasMappings across every
+   future import.
+   ================================================================ */
+const CounterpartyEngine = {
+  STOPWORDS: new Set(["THE","LTD","LIMITED","AND","OF","NZ","INC","CO","COMPANY","TRUST","ACCOUNT",
+    // Generic business/financial terminology — appears across many
+    // unrelated real-world entities, so treating it as a distinctive
+    // identity token causes false merges (found via real data: "Capricorn
+    // Society Limited" and "Blackfern Society Ltd" are different
+    // companies that only share the generic word "Society"; several
+    // distinct bank fee line items only shared "Transaction"/"Fee";
+    // "Motor Trade Association" and "Ingham Motor Group" — unrelated
+    // companies — only shared "Motor").
+    "SOCIETY","FEE","FEES","TRANSACTION","DEPOSIT","ASSOCIATION","SERVICE","SERVICES","PAYMENT","GROUP","HOLDINGS","MOTOR"]),
+
+  // Strips bank transport language, AP/reference numbers, and punctuation,
+  // leaving the meaningful identity tokens (names, surnames, business names).
+  normalize(text){
+    if(!text) return "";
+    let s = text.toUpperCase();
+    s = s.replace(/\bAP#\S*/g, " ");
+    s = s.replace(/\bDIRECT DEBIT\b/g, " ");
+    s = s.replace(/\bAUTOMATIC PAYMENT\b/g, " ");
+    s = s.replace(/\bBILL PAYMENT\b/g, " ");
+    s = s.replace(/\bMULTIPLE PAYMENT\b/g, " ");
+    s = s.replace(/\bBATCH\b/g, " ");
+    s = s.replace(/\bTO\b/g, " ");
+    s = s.replace(/\bPAY\b/g, " ");
+    s = s.replace(/\bFROM\b/g, " ");
+    s = s.replace(/[-#:.,\/()]/g, " ");
+    s = s.replace(/\b\d{3,}\b/g, " "); // strip long numeric IDs (AP numbers, invoice numbers, transaction IDs)
+    s = s.replace(/\s+/g, " ").trim();
+    return s;
+  },
+
+  tokenize(normalized){
+    return normalized.split(" ").filter(t => t.length>=2 && !this.STOPWORDS.has(t));
+  },
+
+  // Confirms (or creates) a persistent alias -> canonical mapping. Called
+  // whenever the clustering engine resolves a normalized description to a
+  // canonical identity, so the mapping survives future imports without
+  // needing to be re-derived from scratch every time.
+  recordAlias(normalizedAlias, canonicalPayee, direction, matchingMethod, txId){
+    if(!normalizedAlias) return;
+    let a = DB.data.aliasMappings.find(x => x.normalizedAlias===normalizedAlias && x.direction===direction);
+    const now = new Date().toISOString();
+    if(a){
+      if(!a.evidenceTransactionIds.includes(txId)) a.evidenceTransactionIds.push(txId);
+      a.lastSeen = now; a.updatedAt = now;
+    } else {
+      DB.data.aliasMappings.push({
+        alias: normalizedAlias, normalizedAlias, canonicalPayee, direction, confidence: matchingMethod==="exact"?100:70,
+        matchingMethod, evidenceTransactionIds: [txId], firstSeen: now, lastSeen: now,
+        autoMatched: true, manuallyLocked: false, createdAt: now, updatedAt: now
+      });
+    }
+  },
+
+  // Resolves a transaction's raw desc/opname to a canonical payee identity.
+  // Matching hierarchy, per spec: confirmed alias -> normalised exact match
+  // against a known canonical -> token overlap (surname/business-name
+  // matching) -> new canonical identity if nothing matches.
+  resolveCanonical(desc, opname, direction, txId){
+    const normDesc = this.normalize(desc);
+    const normOp = opname ? this.normalize(opname) : "";
+    const primary = normOp || normDesc; // opname is usually cleaner when present
+
+    // 1. confirmed alias mapping (exact normalized match, either field)
+    const direct = DB.data.aliasMappings.find(a => a.direction===direction && (a.normalizedAlias===normDesc || a.normalizedAlias===normOp));
+    if(direct){ this.recordAlias(primary, direct.canonicalPayee, direction, "confirmed-alias", txId); return direct.canonicalPayee; }
+
+    // 2. exact match against an existing canonical payee name itself
+    const existingCanonicals = [...new Set(DB.data.aliasMappings.filter(a=>a.direction===direction).map(a=>a.canonicalPayee))];
+    if(existingCanonicals.includes(primary)){ this.recordAlias(primary, primary, direction, "exact", txId); return primary; }
+
+    // 3. token overlap matching — catches a shortened/reordered name that
+    // still shares distinctive tokens (surname, business name) with an
+    // already-known canonical payee. Threshold favours precision: at least
+    // half the shorter name's tokens must overlap, and there must be a
+    // genuinely distinctive (non-trivial) token in common.
+    const tokens = new Set(this.tokenize(primary));
+    if(tokens.size){
+      let best = null, bestScore = 0;
+      existingCanonicals.forEach(c => {
+        const cTokens = new Set(this.tokenize(c));
+        const overlap = [...tokens].filter(t=>cTokens.has(t));
+        if(!overlap.length) return;
+        const score = overlap.length / Math.min(tokens.size, cTokens.size);
+        if(score > bestScore){ bestScore = score; best = c; }
+      });
+      if(best && bestScore >= 0.5){ this.recordAlias(primary, best, direction, "token-overlap", txId); return best; }
+    }
+
+    // 4. nothing matched — this normalized identity becomes its own new
+    // canonical payee going forward
+    this.recordAlias(primary, primary, direction, "new", txId);
+    return primary;
+  }
+};
+
+/* ================================================================
+   CADENCE-BASED SERIES CLUSTERING ENGINE
+   Builds recurring series from transaction evidence using date-tolerant
+   chain-building — never requiring an identical calendar date, and never
+   requiring an identical amount. When two transactions both plausibly
+   continue the same series (a genuine occurrence vs. an unrelated
+   coincidence landing nearby), amount is used ONLY as a tie-break —
+   never as the reason a series exists or splits.
+   ================================================================ */
+const SeriesEngine = {
+  CADENCES: [
+    { name: "weekly", days: 7, tolerance: 2 },
+    { name: "fortnightly", days: 14, tolerance: 2 },
+    { name: "monthly", days: 30, tolerance: 5 },
+    { name: "quarterly", days: 91, tolerance: 10 },
+    { name: "annual", days: 365, tolerance: 15 }
+  ],
+
+  classifyCadence(medianGapDays){
+    // proportionate band around each known cadence — first match wins,
+    // ordered shortest to longest so a 30-day gap isn't mistaken for
+    // "close enough" to weekly
+    for(const c of this.CADENCES){
+      if(medianGapDays >= c.days - c.tolerance*1.4 && medianGapDays <= c.days + c.tolerance*1.4) return c;
+    }
+    return null;
+  },
+
+  _stats: {
+    mean(a){ return a.reduce((s,v)=>s+v,0)/a.length; },
+    median(a){ const s=[...a].sort((x,y)=>x-y); const m=Math.floor(s.length/2); return s.length%2 ? s[m] : (s[m-1]+s[m])/2; },
+    stddev(a){ const m=this.mean(a); return Math.sqrt(a.reduce((s,v)=>s+(v-m)*(v-m),0)/a.length); }
+  },
+
+  // Builds one or more series from a set of same-canonical-payee,
+  // same-direction transactions. Returns an array (usually 1, but can be
+  // more if the evidence genuinely supports separate series — e.g. two
+  // different Kapadia payments at different cadences/amounts).
+  buildSeriesForGroup(canonicalPayee, direction, txs, depth){
+    depth = depth || 0;
+    const sorted = [...txs].sort((a,b)=>a.date.localeCompare(b.date));
+    if(sorted.length < 2 || depth > 4) return [];
+
+    const gaps = [];
+    for(let i=1;i<sorted.length;i++) gaps.push((new Date(sorted[i].date+"T00:00:00")-new Date(sorted[i-1].date+"T00:00:00"))/86400000);
+    const medianGap = this._stats.median(gaps);
+    const cadence = this.classifyCadence(medianGap);
+    if(!cadence) return []; // no plausible recurring rhythm in this group at all
+
+    const used = new Set([0]);
+    const chain = [sorted[0]];
+    let rollingAmounts = [sorted[0].absAmount];
+    let cursorDate = sorted[0].date; // separate search cursor — advances every cycle whether or not that cycle found a match, so a missed occurrence doesn't stall the walk forever on the same window
+    let guard = 0;
+    while(guard++ < 500){
+      const expectedNext = DateUtil.addDays(cursorDate, cadence.days);
+      const findInWindow = (tol) => {
+        const windowStart = DateUtil.addDays(expectedNext, -tol);
+        const windowEnd = DateUtil.addDays(expectedNext, tol);
+        return sorted.map((t,i)=>({t,i})).filter(({t,i}) => !used.has(i) && t.date>=windowStart && t.date<=windowEnd);
+      };
+      const rollingMedian = this._stats.median(rollingAmounts.slice(-12));
+      // Strict tolerance first (this is what actually gets used for the
+      // real production date-matching rule). If that finds nothing, retry
+      // with a wider catch-up allowance before giving up — a single noisy
+      // early gap (e.g. two payments 10 days apart before settling into a
+      // ~30-day rhythm) would otherwise throw the expected-date anchor off
+      // by enough that EVERY subsequent cycle misses the strict window and
+      // the chain permanently drifts away from the real payment rhythm
+      // instead of resyncing with it. The catch-up allowance only affects
+      // which real transactions get linked into ONE series here — it does
+      // not change the production date-tolerance rule used for actually
+      // matching a forecast against a bank statement.
+      let candidates = findInWindow(cadence.tolerance);
+      if(!candidates.length) candidates = findInWindow(cadence.tolerance * 3);
+      if(!candidates.length){
+        const anyFuture = sorted.some((t,i)=> !used.has(i) && t.date > DateUtil.addDays(expectedNext, cadence.tolerance*3));
+        if(!anyFuture) break;
+        cursorDate = expectedNext; // advance the search past this missed cycle
+        continue;
+      }
+      // amount used ONLY as a tie-break among candidates that already fit the date window
+      let best = candidates[0], bestDist = Math.abs(candidates[0].t.absAmount - rollingMedian);
+      candidates.forEach(c => { const d = Math.abs(c.t.absAmount-rollingMedian); if(d<bestDist){ bestDist=d; best=c; } });
+      used.add(best.i);
+      chain.push(best.t);
+      rollingAmounts.push(best.t.absAmount);
+      cursorDate = best.t.date; // advance the search from the real matched date — this resyncs the rhythm even after a catch-up match
+    }
+
+    if(chain.length < 2) return [];
+
+    const amounts = chain.map(t=>t.absAmount);
+    const series = {
+      canonicalPayee, direction, cadence: cadence.name,
+      transactions: chain,
+      amountStats: {
+        median: this._stats.median(amounts), mean: this._stats.mean(amounts),
+        min: Math.min(...amounts), max: Math.max(...amounts), std: this._stats.stddev(amounts),
+        observationCount: amounts.length, latest: chain[chain.length-1].absAmount
+      },
+      firstObservedDate: chain[0].date, lastObservedDate: chain[chain.length-1].date
+    };
+
+    const leftover = sorted.filter((t,i)=>!used.has(i));
+    const leftoverSeries = leftover.length>=2 ? this.buildSeriesForGroup(canonicalPayee, direction, leftover, depth+1) : [];
+    return [series, ...leftoverSeries];
+  }
+};
+
 const RecurringPayments = {
   WEEKDAY_NAMES: ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"],
 
@@ -3943,6 +4395,263 @@ const RecurringPayments = {
       });
     });
     return found;
+  },
+
+  // ================================================================
+  // EVIDENCE-DRIVEN REBUILD — the primary detection path, run
+  // automatically on every import. Recurring series are derived fresh
+  // from transaction evidence via CounterpartyEngine (canonical identity)
+  // and SeriesEngine (cadence-tolerant, amount-tolerant clustering) —
+  // never copied from the existing table. Manually-edited items are
+  // preserved (their amount/anchor is never overwritten), but their
+  // evidence/statistics still refresh. Re-running this twice with the
+  // same transaction data produces the same series (same seriesId, same
+  // numbers) — nothing is duplicated.
+  // ================================================================
+  // "southfuels" removed from this list after release-verification confirmed
+  // it's safe: it shares no token with any other real canonical in the data
+  // and no overlap with the separate Fuel Pattern Engine's own keyword
+  // ("dealer co (nz) limited") — the two systems track genuinely different
+  // suppliers and can't conflict. It was previously excluded on the
+  // assumption that anything fuel-related should defer to the dedicated
+  // fuel engine, but that engine only ever tracked Dealer Co — SouthFuels
+  // (a real ~$7K/month supplier) was being excluded from BOTH systems for
+  // no actual reason. "dealer co (nz) limited" stays excluded — that one
+  // genuinely does need to stay out, to avoid conflicting with the fuel engine.
+  EXCLUDED_FROM_REBUILD: ["dealer co (nz) limited","eftpos","cash deposit","transfer"],
+
+  // Computes the complete, persistable forecast field set for one series —
+  // expectedDate (next occurrence: latest confirmed date + dominant
+  // cadence + business-day adjustment), the earliest/latest matching
+  // window, expectedAmount (median — outlier-robust), and
+  // conservativeAmount (the safer-for-cash-flow direction: higher for an
+  // outgoing bill, lower for incoming money, so it's never optimistic in
+  // the direction that could hide a real risk).
+  _computeForecastFields({ type, anchor, cadenceDays, dateTolerance, cadenceMeta, series, direction, canonicalPayee, seriesId, evidenceIds }){
+    const lastDate = series.lastObservedDate;
+    let rawNext, tolerance;
+    if(type==="weekly"){
+      rawNext = lastDate;
+      do { rawNext = DateUtil.addDays(rawNext, 1); } while(new Date(rawNext+"T00:00:00").getDay()!==anchor);
+      tolerance = 2;
+    } else if(type==="monthly"){
+      const [y,m] = lastDate.split("-").map(Number);
+      let ny=y, nm=m+1; if(nm>12){ nm=1; ny++; }
+      const dim = new Date(ny, nm, 0).getDate();
+      rawNext = `${ny}-${String(nm).padStart(2,"0")}-${String(Math.min(anchor,dim)).padStart(2,"0")}`;
+      tolerance = 5;
+    } else {
+      rawNext = DateUtil.addDays(lastDate, cadenceDays);
+      tolerance = dateTolerance;
+    }
+    const expectedDate = DateUtil.adjustToBusinessDay(rawNext);
+    const earliestDate = DateUtil.addDays(expectedDate, -tolerance);
+    const latestDate = DateUtil.addDays(expectedDate, tolerance);
+    const { median, mean, std, min, max } = series.amountStats;
+    const conservativeAmount = direction==="out"
+      ? Math.min(max, Math.max(median, mean + std*0.5))
+      : Math.max(min, Math.min(median, mean - std*0.5));
+    return {
+      recurringSeriesId: seriesId,
+      canonicalCounterpartyId: canonicalPayee.toUpperCase().replace(/[^A-Z0-9]+/g,"_"),
+      canonicalPayee,
+      expectedDate, earliestDate, latestDate,
+      expectedAmount: Math.round(median*100)/100,
+      conservativeAmount: Math.round(conservativeAmount*100)/100,
+      frequency: type || (cadenceMeta && cadenceMeta.name) || "irregular",
+      direction,
+      evidenceTransactionIds: evidenceIds
+    };
+  },
+
+  rebuildFromEvidence(){
+    const audit = { added:[], merged:[], retainedManual:[], aliasesRecorded:0, ambiguous:[] };
+    const groups = {}; // key: canonicalPayee|direction -> {canonicalPayee, direction, txs:[]}
+
+    DB.data.transactions.forEach(t=>{
+      const descLower = t.desc.toLowerCase();
+      if(this.EXCLUDED_FROM_REBUILD.some(kw=>descLower.includes(kw))) return;
+      if(descLower.startsWith("multiple payment")) return; // Wages / Monthly Supplier Payments — handled by their own seeded, hard-matched items
+      let direction, absAmount;
+      if(t.debit>0){ direction="out"; absAmount=t.debit; }
+      else if(t.credit>0){ direction="in"; absAmount=t.credit; }
+      else return;
+      const canonicalPayee = CounterpartyEngine.resolveCanonical(t.desc, t.opname, direction, t.id);
+      if(!canonicalPayee || canonicalPayee.length<2) return;
+      const key = canonicalPayee + "|" + direction;
+      (groups[key] = groups[key] || { canonicalPayee, direction, txs:[] }).txs.push({ ...t, absAmount });
+    });
+
+    const aliasesBefore = DB.data.aliasMappings.length;
+
+    Object.values(groups).forEach(({ canonicalPayee, direction, txs }) => {
+      if(txs.length < 2) return; // not enough evidence for a series at all
+      const seriesList = SeriesEngine.buildSeriesForGroup(canonicalPayee, direction, txs);
+      seriesList.forEach(series => {
+        if(series.transactions.length < 2) return;
+        const cadenceMeta = SeriesEngine.CADENCES.find(c=>c.name===series.cadence);
+        const seriesId = (canonicalPayee + "_" + direction + "_" + series.cadence).toUpperCase().replace(/[^A-Z0-9]+/g,"_");
+        const evidenceIds = series.transactions.map(t=>t.id);
+        const lastTx = series.transactions[series.transactions.length-1];
+
+        let anchor, type, cadenceDays, anchorDate, dateTolerance;
+        if(series.cadence==="weekly"){
+          type = "weekly";
+          const wdCounts = {};
+          series.transactions.forEach(t=>{ const wd=new Date(t.date+"T00:00:00").getDay(); wdCounts[wd]=(wdCounts[wd]||0)+1; });
+          anchor = Number(Object.entries(wdCounts).sort((a,b)=>b[1]-a[1])[0][0]);
+        } else if(series.cadence==="monthly"){
+          type = "monthly";
+          const doms = series.transactions.map(t=>Number(t.date.slice(8,10)));
+          anchor = Math.round(SeriesEngine._stats.median(doms));
+        } else {
+          type = null;
+          cadenceDays = cadenceMeta.days;
+          anchorDate = lastTx.date;
+          dateTolerance = cadenceMeta.tolerance;
+        }
+
+        // Complete forecast fields (spec priority 1) — computed from the
+        // LATEST confirmed occurrence + dominant cadence + business-day
+        // adjustment, and persisted with the record, not just calculated
+        // on the fly each time something needs them.
+        const forecast = this._computeForecastFields({ type, anchor, cadenceDays, dateTolerance, cadenceMeta, series, direction, canonicalPayee, seriesId, evidenceIds });
+
+        const existing = DB.data.recurringPayments.find(r=>r.seriesId===seriesId);
+        if(existing){
+          existing.canonicalPayee = canonicalPayee;
+          existing.observationCount = series.amountStats.observationCount;
+          existing.medianAmount = series.amountStats.median; existing.meanAmount = series.amountStats.mean;
+          existing.minAmount = series.amountStats.min; existing.maxAmount = series.amountStats.max; existing.stdAmount = series.amountStats.std;
+          existing.evidenceTransactionIds = evidenceIds;
+          existing.lastObservedDate = series.lastObservedDate;
+          existing.occurrences = evidenceIds.length;
+          existing.evidence = series.transactions.slice(-8).map(t=>({date:t.date, amount:t.absAmount}));
+          Object.assign(existing, forecast, { forecastUpdatedAt: new Date().toISOString() });
+          if(existing.source!=="manual"){
+            existing.amount = Math.round(series.amountStats.median*100)/100;
+            existing.anchor = anchor; existing.type = type;
+            existing.cadenceDays = cadenceDays; existing.anchorDate = anchorDate; existing.dateTolerance = dateTolerance;
+            audit.merged.push({ canonicalPayee, cadence: series.cadence, seriesId });
+          } else {
+            audit.retainedManual.push({ canonicalPayee, cadence: series.cadence, seriesId });
+          }
+        } else {
+          const tier = series.amountStats.observationCount>=5 ? "high" : series.amountStats.observationCount>=3 ? "medium" : "low";
+          const now = new Date().toISOString();
+          DB.data.recurringPayments.push({
+            id: uid(), seriesId, name: canonicalPayee, canonicalPayee, direction, type, anchor,
+            cadenceDays, anchorDate, dateTolerance,
+            amount: Math.round(series.amountStats.median*100)/100, source:"detected", enabled: tier!=="low",
+            occurrences: evidenceIds.length, observationCount: evidenceIds.length, confidenceTier: tier,
+            medianAmount: series.amountStats.median, meanAmount: series.amountStats.mean,
+            minAmount: series.amountStats.min, maxAmount: series.amountStats.max, stdAmount: series.amountStats.std,
+            evidenceTransactionIds: evidenceIds, firstObservedDate: series.firstObservedDate, lastObservedDate: series.lastObservedDate,
+            evidence: series.transactions.slice(-8).map(t=>({date:t.date, amount:t.absAmount})),
+            startDate:null, endDate:null, scheduledAmount:null, scheduledDate:null, matchKeyword:null,
+            ...forecast, forecastCreatedAt: now, forecastUpdatedAt: now
+          });
+          audit.added.push({ canonicalPayee, cadence: series.cadence, seriesId, amount: series.amountStats.median, observationCount: series.amountStats.observationCount });
+        }
+      });
+    });
+
+    // Legacy dual-engine reconciliation — the OLD detectV2() detector
+    // (source='detected', no seriesId) never gets replaced by this new
+    // evidence-driven engine automatically; it just sits alongside it.
+    // Where a legacy record's identity now resolves to the SAME canonical
+    // payee as a new series, BOTH would independently subtract from every
+    // forecast — a genuine double-count. The legacy record is disabled
+    // (never deleted — its history stays visible) once the new series
+    // covers the same payee, so exactly one authoritative record remains
+    // enabled per real-world counterparty.
+    //
+    // IMPORTANT: probing with the legacy record's own summary `.name`
+    // (as an earlier version of this fix did) is unreliable — that name
+    // can be normalized/abbreviated differently than the bank's real
+    // opname field the new engine actually groups by (found via real
+    // data: "MOTOR TRADE ASSOCIATION (INC)" as a legacy name doesn't
+    // token-match "MTA H/OFFICE CHQ", the real opname the new engine
+    // correctly used to build a clean 14-observation series). Probing
+    // with an ACTUAL matching transaction's desc/opname — the same input
+    // the new engine itself used — is the only reliable way to detect
+    // the overlap.
+    const newCanonicals = new Set(DB.data.recurringPayments.filter(r=>r.seriesId).map(r=>r.canonicalPayee));
+    let disabledLegacyCount = 0;
+    DB.data.recurringPayments.filter(r=>!r.seriesId && r.enabled).forEach(legacy=>{
+      const realMatches = RecurringPayments._matchesFor(legacy, DB.data.transactions);
+      if(!realMatches.length) return; // nothing to probe with — leave as-is, ambiguous
+      const sample = realMatches[realMatches.length-1]; // most recent real transaction — most likely to reflect current bank formatting
+      const resolved = CounterpartyEngine.resolveCanonical(sample.desc, sample.opname, "out", "reconcile-probe");
+      if(newCanonicals.has(resolved)){
+        legacy.enabled = false;
+        legacy.supersededBySeriesId = DB.data.recurringPayments.find(r=>r.seriesId && r.canonicalPayee===resolved).seriesId;
+        legacy.supersededAt = new Date().toISOString();
+        disabledLegacyCount++;
+      }
+    });
+    audit.legacyRecordsSuperseded = disabledLegacyCount;
+
+    // ================================================================
+    // EVIDENCE-BASED LIFECYCLE (spec priority 9). A recurring relationship
+    // that's genuinely ended shouldn't keep generating forecasts forever,
+    // but a single missed cycle is normal noise, not evidence of ending.
+    // Computed from how many expected cycles have passed with zero
+    // evidence since the last real observation — NOT from a single missed
+    // occurrence. Written onto every series record every rebuild, and
+    // enforced in recurringLandsOnExact()/recurringAmountOnDate(): an
+    // ENDED series stops contributing to the forecast; ACTIVE/SUSPICIOUS/
+    // POSSIBLY_ENDED all continue (lifecycle only ever REDUCES what's
+    // forecast, never manufactures a new occurrence that wasn't already
+    // going to be predicted).
+    //
+    // Uses DateUtil.todayISO() (the latest date actually present in the
+    // imported ledger) — NOT localTodayISO() (the real calendar date).
+    // This one must be ledger-relative: "has this relationship gone
+    // quiet" can only be judged against data we've actually imported. A
+    // real-calendar reference would mark almost every series ENDED
+    // whenever a fresh statement simply hasn't been imported in a while,
+    // or during a historical walk-forward simulation where only older
+    // data is exposed — found via this exact release-verification pass,
+    // where it silently corrupted a historical forecast test. (Contrast
+    // with the overdue-invoice check nearby, which genuinely needs
+    // real-calendar time — a bill is overdue whether or not you've
+    // imported a new statement.)
+    const ledgerToday = DateUtil.todayISO();
+    DB.data.recurringPayments.filter(r=>r.seriesId).forEach(r=>{
+      const cadenceDaysEquiv = r.type==="weekly" ? 7 : r.type==="monthly" ? 30 : (r.cadenceDays||30);
+      const daysSinceLast = (new Date(ledgerToday+"T00:00:00") - new Date(r.lastObservedDate+"T00:00:00")) / 86400000;
+      const cyclesSinceLast = daysSinceLast / cadenceDaysEquiv;
+      r.cyclesSinceLastObserved = Math.round(cyclesSinceLast*10)/10;
+      if(cyclesSinceLast <= 1.5) r.lifecycle = "ACTIVE";
+      else if(cyclesSinceLast <= 3) r.lifecycle = "SUSPICIOUS";
+      else if(cyclesSinceLast <= 6) r.lifecycle = "POSSIBLY_ENDED";
+      else r.lifecycle = "ENDED";
+    });
+
+    audit.aliasesRecorded = DB.data.aliasMappings.length - aliasesBefore;
+    this._lastRebuildAudit = audit;
+
+    // Persist the audit record (spec priority 4) — survives page
+    // refresh/reload since it's stored in DB.data, not just an in-memory
+    // property that vanishes on the next load. Capped to the most recent
+    // 200 runs so this log doesn't grow unbounded across a long history
+    // of imports.
+    const validation = Forecast.validateInvoiceRecords ? Forecast.validateInvoiceRecords() : { problems: [] };
+    DB.data.rebuildAuditLog.push({
+      timestamp: new Date().toISOString(),
+      sourceId: DB.data.statements.length ? DB.data.statements[DB.data.statements.length-1].id : "manual",
+      transactionsProcessed: DB.data.transactions.length,
+      seriesCreated: audit.added.length,
+      seriesUpdated: audit.merged.length,
+      seriesRetainedManual: audit.retainedManual.length,
+      aliasesCreated: audit.aliasesRecorded,
+      validationFailures: validation.problems.length,
+      validationFixed: 0
+    });
+    if(DB.data.rebuildAuditLog.length > 200) DB.data.rebuildAuditLog = DB.data.rebuildAuditLog.slice(-200);
+
+    return audit;
   },
 
   runDetection(){
@@ -4841,6 +5550,12 @@ const App = {
 
 function Storage_afterImport(){
   RecurringPayments.seedDefaults();
+  // Evidence-driven rebuild runs on EVERY import automatically — this is
+  // now the primary recurring-detection path, not something the user has
+  // to ask for again. Rebuilds canonical identities, aliases, and series
+  // from the actual transaction history; manually-edited items keep their
+  // amount/anchor but still get fresh evidence/statistics.
+  const rebuildAudit = RecurringPayments.rebuildFromEvidence();
   const refreshed = RecurringPayments.refreshFromHistory();
   const matched = ReconciliationEngine.run();
   DB.data.fuelInvoices.forEach(i=>FuelPlanner.recalc(i.id));
@@ -4862,6 +5577,7 @@ function Storage_afterImport(){
   App.renderAll();
   const bits = ["Import complete — dashboard updated"];
   if(matched) bits.push(`${matched} payment${matched===1?'':'s'} auto-matched and marked paid`);
+  if(rebuildAudit.added.length) bits.push(`${rebuildAudit.added.length} new recurring series detected`);
   if(refreshed) bits.push(`${refreshed} recurring average${refreshed===1?'':'s'} refreshed from new data`);
   if(resolvedCount) bits.push(`${resolvedCount} past prediction${resolvedCount===1?'':'s'} resolved`);
   toast(bits.join(" · "));
