@@ -2700,14 +2700,15 @@ const Forecast = {
   // used everywhere the status is displayed — a possible status the UI
   // doesn't know how to render is impossible by construction, not just by
   // convention across four separate call sites.
-  statusLabel(status, extensionDays){
+  statusLabel(status, extensionDays, recommendedDate){
+    const onDate = recommendedDate ? ` — pay by ${fmt.date(recommendedDate)}` : "";
     switch(status){
       case "safe": return "✅ Safe to Pay";
       case "due-today": return "📅 Due Today";
       case "due-soon": return "📅 Due Soon";
       case "overdue": return "⚠ Overdue";
-      case "payment-delayed": return `⏳ Payment Delayed — ${extensionDays} Business Day${extensionDays===1?"":"s"}`;
-      case "extension-required": return `⚠ Extension Required — ${extensionDays} Business Day${extensionDays===1?"":"s"}`;
+      case "payment-delayed": return `⏳ Payment Delayed — ${extensionDays} Business Day${extensionDays===1?"":"s"}${onDate}`;
+      case "extension-required": return `⚠ Extension Required — ${extensionDays} Business Day${extensionDays===1?"":"s"}${onDate}`;
       case "unable-within-limit": return `🛑 Cannot Safely Pay Within ${extensionDays} Business Days`;
       default: return status;
     }
@@ -2971,7 +2972,7 @@ const Simulator = {
         <div><div class="k">Subtotal / GST</div><div class="v" style="font-size:13px;">${fmt.money(subtotal)} + ${fmt.money(gst)}</div></div>
       </div>
       <div class="verdict ${result.verdict==='safe'?'safe':'unsafe'}">
-        ${Forecast.statusLabel(result.paymentStatus, result.extensionDays)}
+        ${Forecast.statusLabel(result.paymentStatus, result.extensionDays, result.recommendedDate)}
       </div>
       <div class="kv-grid">
         <div><div class="k">Due Date (est.)</div><div class="v" style="font-size:14px;">${fmt.date(result.dueDateAdjusted)}</div></div>
@@ -3215,18 +3216,18 @@ const Recommendations = {
     const dueSoon = DB.data.fuelInvoices.filter(i => i.dueDateAdjusted >= today && i.dueDateAdjusted <= DateUtil.addDays(today,7));
     dueSoon.forEach(i => {
       if(i.paymentStatus==="overdue") insights.push(`${i.supplier} invoice of ${fmt.money(i.amount)} (was due ${fmt.date(i.dueDateAdjusted)}) is overdue.`);
-      else if(i.paymentStatus==="extension-required") insights.push(`${i.supplier} invoice of ${fmt.money(i.amount)} due ${fmt.date(i.dueDateAdjusted)} needs a ${i.extensionDays} business day extension.`);
+      else if(i.paymentStatus==="extension-required") insights.push(`${i.supplier} invoice of ${fmt.money(i.amount)} due ${fmt.date(i.dueDateAdjusted)} needs a ${i.extensionDays} business day extension — pay by ${fmt.date(i.recommendedDate)} instead.`);
       else if(i.paymentStatus==="unable-within-limit") insights.push(`${i.supplier} invoice of ${fmt.money(i.amount)} due ${fmt.date(i.dueDateAdjusted)} cannot be safely paid even within the ${i.extensionLimit}-business-day limit — worth reviewing your upcoming outgoings.`);
-      else if(i.paymentStatus==="payment-delayed") insights.push(`${i.supplier} invoice of ${fmt.money(i.amount)} due ${fmt.date(i.dueDateAdjusted)} is safer paid ${i.extensionDays} business day${i.extensionDays===1?"":"s"} later than the due date.`);
+      else if(i.paymentStatus==="payment-delayed") insights.push(`${i.supplier} invoice of ${fmt.money(i.amount)} due ${fmt.date(i.dueDateAdjusted)} is safer paid ${i.extensionDays} business day${i.extensionDays===1?"":"s"} later, on ${fmt.date(i.recommendedDate)}.`);
       else insights.push(`${i.supplier} invoice of ${fmt.money(i.amount)} due ${fmt.date(i.dueDateAdjusted)} is projected safe to pay on time.`);
     });
     // other payments due soon
     const paySoon = DB.data.otherPayments.filter(p => p.dueDateAdjusted >= today && p.dueDateAdjusted <= DateUtil.addDays(today,7));
     paySoon.forEach(p => {
       if(p.paymentStatus==="overdue") insights.push(`${p.description} of ${fmt.money(p.amount)} (was due ${fmt.date(p.dueDateAdjusted)}) is overdue.`);
-      else if(p.paymentStatus==="extension-required") insights.push(`${p.description} of ${fmt.money(p.amount)} due ${fmt.date(p.dueDateAdjusted)} needs a ${p.extensionDays} business day extension.`);
+      else if(p.paymentStatus==="extension-required") insights.push(`${p.description} of ${fmt.money(p.amount)} due ${fmt.date(p.dueDateAdjusted)} needs a ${p.extensionDays} business day extension — pay by ${fmt.date(p.recommendedDate)} instead.`);
       else if(p.paymentStatus==="unable-within-limit") insights.push(`${p.description} of ${fmt.money(p.amount)} due ${fmt.date(p.dueDateAdjusted)} cannot be safely paid even within the ${p.extensionLimit}-business-day limit — worth reviewing your upcoming outgoings.`);
-      else if(p.paymentStatus==="payment-delayed") insights.push(`${p.description} of ${fmt.money(p.amount)} due ${fmt.date(p.dueDateAdjusted)} is safer paid ${p.extensionDays} business day${p.extensionDays===1?"":"s"} later than the due date.`);
+      else if(p.paymentStatus==="payment-delayed") insights.push(`${p.description} of ${fmt.money(p.amount)} due ${fmt.date(p.dueDateAdjusted)} is safer paid ${p.extensionDays} business day${p.extensionDays===1?"":"s"} later, on ${fmt.date(p.recommendedDate)}.`);
       else insights.push(`${p.description} of ${fmt.money(p.amount)} due ${fmt.date(p.dueDateAdjusted)} is projected safe to pay on time.`);
     });
 
@@ -3559,7 +3560,7 @@ const FuelPlanner = {
     body.innerHTML = `
       ${auditBanner}
       <div class="verdict ${result.verdict==='safe'?'safe':'unsafe'}">
-        ${Forecast.statusLabel(result.paymentStatus, result.extensionDays)}
+        ${Forecast.statusLabel(result.paymentStatus, result.extensionDays, result.recommendedDate)}
       </div>
       ${weekendNote}
       <div class="kv-grid">
@@ -3613,7 +3614,7 @@ const FuelPlanner = {
         </div>
         ${inv.auditFlagged ? `<div class="verdict unsafe" style="margin-bottom:10px;background:var(--red-100);border:2px solid var(--red-600);font-size:12px;">⚠ AUDIT FLAGGED: ${escapeHtml(inv.auditReason||"")}</div>` : ""}
         <div class="verdict ${inv.verdict==='safe'?'safe':'unsafe'}" style="margin-bottom:10px;padding:8px 12px;font-size:13px;">
-          ${Forecast.statusLabel(inv.paymentStatus, inv.extensionDays)}
+          ${Forecast.statusLabel(inv.paymentStatus, inv.extensionDays, inv.recommendedDate)}
         </div>
         <div class="kv-grid">
           <div><div class="k">Due Date</div><div class="v"><input type="date" value="${inv.dueDateAdjusted}" style="font-size:13px;padding:3px 6px;width:100%;" onchange="FuelPlanner.updateDueDate('${inv.id}', this.value)"></div></div>
@@ -3850,7 +3851,7 @@ const PaymentPlanner = {
     body.innerHTML = `
       ${conflictHtml}
       <div class="verdict ${result.verdict==='safe'?'safe':'unsafe'}">
-        ${Forecast.statusLabel(result.paymentStatus, result.extensionDays)}
+        ${Forecast.statusLabel(result.paymentStatus, result.extensionDays, result.recommendedDate)}
       </div>
       <div class="kv-grid">
         <div><div class="k">Recommended Payment Date</div><div class="v">${fmt.date(result.recommendedDate)}</div></div>
@@ -3878,7 +3879,7 @@ const PaymentPlanner = {
           <input type="text" value="${escapeHtml(p.invoiceNumber||"")}" placeholder="none" style="flex:1;font-size:12.5px;padding:4px 8px;" onchange="PaymentPlanner.updateInvoiceNumber('${p.id}', this.value)">
         </div>
         <div class="verdict ${p.verdict==='safe'?'safe':'unsafe'}" style="margin-bottom:10px;padding:8px 12px;font-size:13px;">
-          ${Forecast.statusLabel(p.paymentStatus, p.extensionDays)}
+          ${Forecast.statusLabel(p.paymentStatus, p.extensionDays, p.recommendedDate)}
         </div>
         <div class="kv-grid">
           <div><div class="k">Recommended</div><div class="v" style="font-size:13px;">${fmt.date(p.recommendedDate)}</div></div>
