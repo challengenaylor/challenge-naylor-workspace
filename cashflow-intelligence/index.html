@@ -1133,7 +1133,7 @@ const DB = {
     return this.data;
   },
 
-  CURRENT_SCHEMA_VERSION: 4,
+  CURRENT_SCHEMA_VERSION: 8,
   MIGRATIONS: [
     {
       // v1: the original flat field-fill, formalized as a real migration
@@ -1200,6 +1200,102 @@ const DB = {
           if(!r.seriesId && r.direction===undefined) r.direction = "out";
         });
       }
+    },
+    {
+      // v5: backfill skippedDates — a per-series list of ISO dates the
+      // user has explicitly deleted from the Calendar for that one cycle
+      // only (Payment Calendar management feature). Checked both when
+      // rendering the Calendar and when computing the actual cash-flow
+      // forecast, so a deletion genuinely removes that occurrence's
+      // dollar impact, not just its visual marker. Existing records
+      // simply start with an empty list — nothing was ever deleted
+      // before this field existed.
+      toVersion: 5,
+      migrate(data){
+        (data.recurringPayments||[]).forEach(r=>{
+          if(!Array.isArray(r.skippedDates)) r.skippedDates = [];
+        });
+      }
+    },
+    {
+      // v6: the matching algorithm changed again — "LP" (Limited
+      // Partnership, structurally identical to LTD/LIMITED) no longer
+      // counts as a distinctive identity token. This was causing a real,
+      // confirmed false merge: "TYREMAX LP" and "TITEX GROUP LP" — two
+      // genuinely distinct real suppliers, proven by the user's own bank
+      // batch data — were being treated as one canonical identity because
+      // they only shared "LP". Any alias mapping recorded under the old
+      // rule could be wrong (same reasoning as the v3 migration when
+      // "Society"/"Fee"/"Motor" were stopworded) — clearing lets the next
+      // rebuildFromEvidence() correctly re-derive both as separate
+      // series from the (already unambiguous) real transaction text.
+      toVersion: 6,
+      migrate(data){
+        data.aliasMappings = [];
+      }
+    },
+    {
+      // v7: introduces forecastTreatment — a dimension separate from
+      // `enabled`, distinguishing how a recurring series participates in
+      // the cash-flow forecast: "active_individual" (forecast its own
+      // amount, the default), "batch_component" (contribute $0 — this
+      // supplier's real payment is already counted once via the Monthly
+      // Supplier Payments batch), or "review_required" (evidence is
+      // genuinely inconclusive — behaves exactly like active_individual
+      // until a person decides, never silently reclassified). This
+      // backfill applies the specific classifications confirmed by the
+      // Sept 2026 bank-batch reconciliation audit — evidence-based, not a
+      // blanket default: individual transaction history for each of the
+      // 10 batch_component suppliers stopped right as the monthly batch
+      // took over, while HM2 Ltd and HCC continued transacting
+      // individually through September and are correctly left as
+      // active_individual. The 6 review_required suppliers had no
+      // September-batch evidence either way, so their forecast behaviour
+      // is deliberately left unchanged (still counted individually) —
+      // only their visibility/status changes, per the explicit
+      // instruction not to auto-classify uncertain suppliers.
+      toVersion: 7,
+      migrate(data){
+        (data.recurringPayments||[]).forEach(r=>{
+          if(r.forecastTreatment) return; // already set — never overwrite an existing classification, including one the user has since changed
+          const name = (r.canonicalPayee || r.name || "").toUpperCase();
+          r.forecastTreatment = RecurringPayments.auditDefaultTreatment(name);
+        });
+      }
+    },
+    {
+      // v8: reclassification based on the expanded 5-month batch-evidence
+      // audit (May–September 2026, not just September). Allied Security,
+      // Ruka Wholesale, and Value Tyres appear in 4-5 of 5 months —
+      // decisive batch evidence the v7 audit didn't have (it only had
+      // September). Nalsun Investment appears in ZERO of the 5 months —
+      // the opposite conclusion from where v7 left it (review_required),
+      // so it moves back to the plain default. Dealer Co N — confirmed
+      // via real transaction evidence to be a genuinely separate, small
+      // recurring obligation from the large Dealer Co (NZ) fuel
+      // account (7 observations, all under $3,000, vs the fuel engine's
+      // own much larger deliveries) — moves to review_required since the
+      // batch evidence is real but not yet decisive either way.
+      //
+      // Each change is guarded by checking the record is STILL at
+      // exactly the value the v7 audit would have assigned it — if a
+      // person already changed it to something else since, that choice
+      // is left alone, never silently overwritten by a later audit.
+      toVersion: 8,
+      migrate(data){
+        const reclassify = [
+          { name: "ALLIED SECURITY", from: "active_individual", to: "batch_component" },
+          { name: "RUKA WHOLESALE AND DISTRIBUTORS", from: "active_individual", to: "batch_component" },
+          { name: "VALUE TYRES LTD", from: "active_individual", to: "batch_component" },
+          { name: "NALSUN INVESTMENT", from: "review_required", to: "active_individual" },
+          { name: "DEALER CO N", from: "active_individual", to: "review_required" }
+        ];
+        (data.recurringPayments||[]).forEach(r=>{
+          const name = (r.canonicalPayee || r.name || "").toUpperCase();
+          const match = reclassify.find(x=>x.name===name);
+          if(match && r.forecastTreatment===match.from) r.forecastTreatment = match.to;
+        });
+      }
     }
   ],
 
@@ -1240,7 +1336,7 @@ const DB = {
       championModel: null, // {architecture:'old'|'new', backtestMAE, promotedAt, backtestSummary} — set by Backtest champion/challenger governance
       aliasMappings: [], // {alias, normalizedAlias, canonicalPayee, direction, confidence, matchingMethod, evidenceTransactionIds, firstSeen, lastSeen, autoMatched, manuallyLocked, createdAt, updatedAt} — persistent counterparty identity, survives every future import
       rebuildAuditLog: [], // persistent history of every rebuildFromEvidence() run — {timestamp, sourceId, transactionsProcessed, seriesCreated, seriesUpdated, seriesRetainedManual, aliasesCreated, validationFailures, validationFixed} — survives page refresh/reload
-      schemaVersion: 4, // fresh databases start at the current version — only legacy data needs to migrate
+      schemaVersion: 8, // fresh databases start at the current version — only legacy data needs to migrate
       migrationHistory: [] // {fromVersion, toVersion, ranAt, status, error} — one entry per migration actually executed
       // recurringPayments items may also carry: startDate, endDate (for fixed-term
       // commitments like a vehicle loan), scheduledAmount + scheduledDate (a future
@@ -1898,7 +1994,9 @@ const Forecast = {
       DB.data.recurringPayments.forEach(r=>{
         if(!r.enabled) return;
         if(r.direction && r.direction!=="out") return; // same fix as recurringAmountOnDate() — this breakdown must reconcile exactly with the real forecast math, including which series it's allowed to include at all
+        if(r.forecastTreatment==="batch_component") return; // same reasoning as recurringAmountOnDate() — already counted once via the batch
         if(r.lifecycle==="ENDED") return; // same lifecycle enforcement as recurringAmountOnDate() — must reconcile exactly with projectBalance()
+        if(r.skippedDates && r.skippedDates.includes(cursor)) return; // same skipped-occurrence enforcement as recurringAmountOnDate()
         const amt = this.amountForRecurringOn(r, cursor);
         if(amt===0) return;
         if(this.recurringLandsOnExact(r, cursor)){ recurringBreakdown[r.name] = (recurringBreakdown[r.name]||0) + amt; recurringTotal += amt; }
@@ -2165,7 +2263,9 @@ const Forecast = {
     DB.data.recurringPayments.forEach(r=>{
       if(!r.enabled) return;
       if(r.direction && r.direction!=="out") return; // CRITICAL: this function's result is SUBTRACTED from the balance — an "in" (income) series must never be treated as an outflow. Legacy records with no direction at all (Wages, Monthly Supplier Payments — genuinely outgoing) are allowed through, matching Calendar Phase 1's same rule.
+      if(r.forecastTreatment==="batch_component") return; // this supplier's real payment is already counted once via the Monthly Supplier Payments batch — forecasting it again here would double-count the same real cash outflow. The supplier record stays enabled and visible; it simply contributes $0 to the forecast total.
       if(r.lifecycle==="ENDED") return; // evidence-based lifecycle (spec priority 9) — stop forecasting a relationship with no evidence for 6+ expected cycles
+      if(r.skippedDates && r.skippedDates.includes(dateISO)) return; // user explicitly deleted this one occurrence from the Calendar — must genuinely remove its cash impact, not just its visual marker
       const amt = this.amountForRecurringOn(r, dateISO);
       if(amt === 0) return;
       if(this.recurringLandsOnExact(r, dateISO)) total += amt;
@@ -2965,12 +3065,20 @@ const Calendar = {
     // for this cycle — it is never a second (or sixth, or eleventh)
     // reason to create another event.
     const claimedTxIds = new Set();
-    DB.data.recurringPayments.filter(r=>r.enabled && r.direction==="out").forEach(r=>{
+    // Batch-component suppliers are excluded here for the same reason as
+    // the forecast math above — their real payment is already
+    // represented once by the Monthly Supplier Payments batch event, so
+    // they must not ALSO generate their own calendar cash-flow event
+    // (that would visually and financially double-count the same real
+    // outflow). The supplier record itself stays fully visible in the
+    // Recurring Payments tab.
+    DB.data.recurringPayments.filter(r=>r.enabled && r.direction==="out" && r.forecastTreatment!=="batch_component").forEach(r=>{
       for(let d=1; d<=daysInMonth; d++){
         const iso = `${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
         if(!Forecast.recurringLandsOnExact(r, iso)) continue; // exactly one expected day per cycle — this IS the single forecast event
         if(r.startDate && iso < r.startDate) continue; // fixed-term commitment hasn't started yet
         if(r.endDate && iso > r.endDate) continue; // fixed-term commitment has already ended
+        if(r.skippedDates && r.skippedDates.includes(iso)) continue; // user explicitly deleted this one occurrence — no marker at all, matching recurringAmountOnDate()'s exclusion
 
         // The one forecast event for this cycle — every field the spec
         // calls for attached up front, before we know whether it's
@@ -3020,10 +3128,14 @@ const Calendar = {
       const iso = `${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
       const dow = new Date(y,m-1,d).getDay();
       const isWeekend = dow===0 || dow===6;
-      const tags = (markers[iso]||[]).map(mk => mk.type==="rec"
-        ? `<span class="cal-tag rec" style="cursor:pointer;" title="Click to edit — auto-fills the real statement amount if one exists on this date" onclick="Calendar.editRecurring('${mk.meta.recurId}','${mk.meta.date}')">${mk.label} ✎</span>`
-        : `<span class="cal-tag ${mk.type}">${mk.label}</span>`
-      ).join("");
+      const tags = (markers[iso]||[]).map(mk => {
+        if(mk.type==="rec" || mk.type==="paid"){
+          const cycleDate = mk.meta.event ? mk.meta.event.expectedDate : mk.meta.date; // always the cycle's true expected date, whether shown as predicted or matched — this is what skippedDates records
+          const editBtn = mk.type==="rec" ? `<span onclick="event.stopPropagation();Calendar.editRecurring('${mk.meta.recurId}','${mk.meta.date}')" title="Click to edit — auto-fills the real statement amount if one exists on this date" style="cursor:pointer;">${mk.label} ✎</span>` : `<span>${mk.label}</span>`;
+          return `<span class="cal-tag ${mk.type}" style="display:inline-flex;align-items:center;gap:4px;">${editBtn}<span onclick="event.stopPropagation();Calendar.deleteOccurrence('${mk.meta.recurId}','${cycleDate}')" title="Delete this one occurrence — the recurring payment itself stays" style="cursor:pointer;opacity:0.65;" role="button" aria-label="Delete this occurrence">🗑</span></span>`;
+        }
+        return `<span class="cal-tag ${mk.type}">${mk.label}</span>`;
+      }).join("");
       html += `<div class="cal-cell ${isWeekend?'weekend':''}"><div class="dnum">${d}</div>${tags}</div>`;
     }
     html += `</div>`;
@@ -3048,6 +3160,30 @@ const Calendar = {
     if(isNaN(val) || val<0){ toast("Enter a valid amount"); return; }
     RecurringPayments.update(recurId, "amount", val);
     this.render();
+  },
+
+  // Deletes ONE occurrence of a recurring payment from the Calendar —
+  // Payment Calendar management feature. This does NOT touch the
+  // recurring-payment definition itself (still enabled, still forecasts
+  // every other cycle normally) and does NOT delete any historical bank
+  // transaction. It records the cycle's expected date in that series'
+  // skippedDates list, which both the Calendar display and the actual
+  // cash-flow forecast (recurringAmountOnDate/explainDate) check, so the
+  // dollar impact is genuinely removed from future projections, not just
+  // hidden visually. Persists via the normal DB.save() path — survives
+  // reload like any other data change.
+  deleteOccurrence(recurId, cycleDateISO){
+    const item = DB.data.recurringPayments.find(r=>r.id===recurId);
+    if(!item) return;
+    const label = item.canonicalPayee || item.name;
+    const ok = confirm(`Delete this scheduled payment?\n\nPayment: ${label}\nAmount: ${fmt.money(item.amount)}\nDate: ${fmt.date(cycleDateISO)}\n\nThis removes just this one occurrence from the calendar and forecast. The recurring payment itself stays active for future cycles.`);
+    if(!ok) return;
+    if(!Array.isArray(item.skippedDates)) item.skippedDates = [];
+    if(!item.skippedDates.includes(cycleDateISO)) item.skippedDates.push(cycleDateISO);
+    DB.save();
+    RecurringPayments._recalcEverything();
+    this.render();
+    toast(`Removed ${label} — ${fmt.date(cycleDateISO)} from the calendar and forecast`);
   }
 };
 
@@ -4177,8 +4313,14 @@ const CounterpartyEngine = {
     // companies that only share the generic word "Society"; several
     // distinct bank fee line items only shared "Transaction"/"Fee";
     // "Motor Trade Association" and "Ingham Motor Group" — unrelated
-    // companies — only shared "Motor").
-    "SOCIETY","FEE","FEES","TRANSACTION","DEPOSIT","ASSOCIATION","SERVICE","SERVICES","PAYMENT","GROUP","HOLDINGS","MOTOR"]),
+    // companies — only shared "Motor"; "TYREMAX LP" and "TITEX GROUP LP"
+    // — two genuinely distinct recipients confirmed by the user's own
+    // real bank batch data — only shared the company-structure suffix
+    // "LP" (Limited Partnership, structurally identical to LTD/LIMITED,
+    // which are already stopworded). Verified safe: no other real
+    // supplier name in the actual transaction data uses "LP" as a
+    // standalone token, so this fix has zero collateral risk.
+    "SOCIETY","FEE","FEES","TRANSACTION","DEPOSIT","ASSOCIATION","SERVICE","SERVICES","PAYMENT","GROUP","HOLDINGS","MOTOR","LP"]),
 
   // Strips bank transport language, AP/reference numbers, and punctuation,
   // leaving the meaningful identity tokens (names, surnames, business names).
@@ -4379,6 +4521,26 @@ const SeriesEngine = {
 const RecurringPayments = {
   WEEKDAY_NAMES: ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"],
 
+  // Evidence-based default Forecast Treatment for a canonical payee,
+  // from the Sept 2026 bank-batch reconciliation audit. Used consistently
+  // at every point a series record's forecastTreatment is first set —
+  // both when a record already exists at migration time AND when it's
+  // freshly created by evidence detection in the same session (a record
+  // that predates this feature doesn't necessarily exist in the loaded
+  // data yet; relying on the migration alone missed it silently, since a
+  // brand-new detection always used to default to "active_individual"
+  // instead of applying this classification). Never called on a record
+  // that already has a forecastTreatment — existing classifications,
+  // including a user's own change, are never overwritten.
+  AUDIT_BATCH_COMPONENTS: new Set(["BLAIRS SUPERTYRE DISTRIBUTOR","BRIDGED IT SERVICES LTD","CARTRACK","GET GAS LIMITED","NZME","PATCH RUBBER CO NZ","PICKERILL AUTO ELECTRICALS","SAM COMPUTER SYSTEMS LTD","SEAN ELDER","STUFF LIMITED","ALLIED SECURITY","RUKA WHOLESALE AND DISTRIBUTORS","VALUE TYRES LTD"]),
+  AUDIT_REVIEW_REQUIRED: new Set(["KIWI BALLOON COMPANY","OJI FIBRE SOLUTION LTD FULL CIRC","COMMTECH SUPPLIES PTY LTD","ENVIRO NZ SERVICES LIMITED","SUMMIT HIRE","DEALER CO N"]),
+  auditDefaultTreatment(canonicalPayeeOrName){
+    const name = (canonicalPayeeOrName||"").toUpperCase();
+    if(this.AUDIT_BATCH_COMPONENTS.has(name)) return "batch_component";
+    if(this.AUDIT_REVIEW_REQUIRED.has(name)) return "review_required";
+    return "active_individual";
+  },
+
   // One-time seed on first load, using averages computed from the actual
   // imported ledger. If no matching history exists yet for an item, it's
   // still seeded (disabled by default) so the user can turn it on and edit.
@@ -4392,7 +4554,7 @@ const RecurringPayments = {
       { name:"Red Circle Wholesale Limited", type:"monthly", anchor:25, amount:10218.93, source:"seed", direction:"out" },
       { name:"Blackfern Society Ltd", type:"monthly", anchor:23, amount:3412.28, source:"seed", direction:"out" },
     ];
-    defaults.forEach(d => DB.data.recurringPayments.push({ id: uid(), enabled:true, occurrences:null, ...d }));
+    defaults.forEach(d => DB.data.recurringPayments.push({ id: uid(), enabled:true, occurrences:null, skippedDates:[], forecastTreatment:"active_individual", ...d }));
     DB.save();
   },
 
@@ -4506,7 +4668,7 @@ const RecurringPayments = {
         source: "detected", enabled: tier!=="low", occurrences: list.length,
         confidenceTier: tier, dayWindow, amtStats,
         evidence: list.slice(-8).map(t=>({date:t.date, amount:t.debit})),
-        startDate:null, endDate:null, scheduledAmount:null, scheduledDate:null, matchKeyword:null
+        startDate:null, endDate:null, scheduledAmount:null, scheduledDate:null, matchKeyword:null, skippedDates:[], forecastTreatment:this.auditDefaultTreatment(name)
       });
     });
     return found;
@@ -4663,7 +4825,7 @@ const RecurringPayments = {
             minAmount: series.amountStats.min, maxAmount: series.amountStats.max, stdAmount: series.amountStats.std,
             evidenceTransactionIds: evidenceIds, firstObservedDate: series.firstObservedDate, lastObservedDate: series.lastObservedDate,
             evidence: series.transactions.slice(-8).map(t=>({date:t.date, amount:t.absAmount})),
-            startDate:null, endDate:null, scheduledAmount:null, scheduledDate:null, matchKeyword:null,
+            startDate:null, endDate:null, scheduledAmount:null, scheduledDate:null, matchKeyword:null, skippedDates:[], forecastTreatment:this.auditDefaultTreatment(canonicalPayee),
             ...forecast, forecastCreatedAt: now, forecastUpdatedAt: now
           });
           audit.added.push({ canonicalPayee, cadence: series.cadence, seriesId, amount: series.amountStats.median, observationCount: series.amountStats.observationCount });
@@ -5037,6 +5199,25 @@ const RecurringPayments = {
     if(document.getElementById("view-calendar").classList.contains("active")) Calendar.render();
   },
 
+  // Sort order for display only — never touches the underlying records,
+  // their dates, amounts, recurrence rules, or IDs. Persisted just as a
+  // small in-memory UI preference (not saved to DB), reset on reload.
+  _sortOrder: "az",
+  setSortOrder(order){ this._sortOrder = order; this.render(); },
+
+  checkAllInSection(direction){
+    DB.data.recurringPayments.filter(r => (direction==="in" ? r.direction==="in" : r.direction!=="in")).forEach(r => r.enabled = true);
+    DB.save();
+    this._recalcEverything();
+    this.render();
+  },
+  uncheckAllInSection(direction){
+    DB.data.recurringPayments.filter(r => (direction==="in" ? r.direction==="in" : r.direction!=="in")).forEach(r => r.enabled = false);
+    DB.save();
+    this._recalcEverything();
+    this.render();
+  },
+
   render(){
     const wrap = document.getElementById("recurList");
     if(!wrap) return;
@@ -5048,84 +5229,155 @@ const RecurringPayments = {
         ${flags.map(f=>`<div class="stat-sub" style="margin-bottom:6px;">⚠ <b>${escapeHtml(f.name)}</b> appears to have ${f.direction} from ~${fmt.money(f.olderMedian)} to ~${fmt.money(f.recentMedian)} (${f.changePct>=0?'+':''}${(f.changePct*100).toFixed(0)}%) partway through your history. If this is a real, permanent change, consider using "Schedule a change" below to make sure future forecasts use the new figure consistently.</div>`).join("")}
       ` : `<div class="section-title" style="margin-top:0;">Possible Regime Changes <span class="hint">none detected</span></div><div class="stat-sub">No recurring item shows a significant (15%+) step-change in your imported history right now.</div>`;
     }
-    const items = [...DB.data.recurringPayments].sort((a,b)=> (a.confidenceTier==="low") - (b.confidenceTier==="low") || (a.source==="detected") - (b.source==="detected") || a.name.localeCompare(b.name));
-    if(!items.length){ wrap.innerHTML = `<div class="stat-sub">No recurring payments tracked yet.</div>`; return; }
+    if(!DB.data.recurringPayments.length){ wrap.innerHTML = `<div class="stat-sub">No recurring payments tracked yet.</div>`; return; }
+
+    // INCOMING vs OUTGOING — kept as two clearly separate lists, never
+    // merged into one undifferentiated feed. A legacy record with no
+    // direction at all (predates the field) is treated as outgoing —
+    // same rule used everywhere else this distinction matters (Calendar,
+    // forecast math).
+    const incoming = DB.data.recurringPayments.filter(r => r.direction==="in");
+    const outgoing = DB.data.recurringPayments.filter(r => r.direction!=="in");
+    const nameOf = r => (r.canonicalPayee || r.name || "");
+    const sortFn = this._sortOrder==="za"
+      ? (a,b) => nameOf(b).localeCompare(nameOf(a))
+      : (a,b) => nameOf(a).localeCompare(nameOf(b));
+    incoming.sort(sortFn);
+    outgoing.sort(sortFn);
+
+    const sectionHeader = (title, direction, count) => `
+      <div style="grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin:${direction==='in'?'18px':'0'} 0 8px;">
+        <div class="section-title" style="margin:0;">${title} <span class="hint">(${count})</span></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button class="btn ghost" style="padding:4px 10px;font-size:11px;" onclick="RecurringPayments.checkAllInSection('${direction}')">Check All</button>
+          <button class="btn ghost" style="padding:4px 10px;font-size:11px;" onclick="RecurringPayments.uncheckAllInSection('${direction}')">Uncheck All</button>
+          <span style="width:1px;height:16px;background:var(--grey-300);display:inline-block;"></span>
+          <button class="btn ghost" style="padding:4px 10px;font-size:11px;${this._sortOrder==='az'?'font-weight:700;':''}" onclick="RecurringPayments.setSortOrder('az')">A → Z</button>
+          <button class="btn ghost" style="padding:4px 10px;font-size:11px;${this._sortOrder==='za'?'font-weight:700;':''}" onclick="RecurringPayments.setSortOrder('za')">Z → A</button>
+        </div>
+      </div>`;
+
+    const outgoingHtml = outgoing.length ? outgoing.map(r=>this._cardHtml(r)).join("") : `<div class="stat-sub" style="grid-column:1/-1;">No outgoing recurring payments tracked yet.</div>`;
+    const incomingHtml = incoming.length ? incoming.map(r=>this._cardHtml(r)).join("") : `<div class="stat-sub" style="grid-column:1/-1;">No incoming recurring payments tracked yet.</div>`;
+
+    wrap.innerHTML =
+      sectionHeader("OUTGOING PAYMENTS", "out", outgoing.length) + outgoingHtml +
+      sectionHeader("INCOMING PAYMENTS", "in", incoming.length) + incomingHtml;
+  },
+
+  // Extracted, otherwise-unchanged per-item card template — the same
+  // markup and controls as before this feature, just no longer inlined
+  // in one giant flat list.
+  _cardHtml(r){
     const sourceLabel = { detected: ["Auto-detected","var(--amber-100)","var(--amber-600)"], manual: ["Manually edited — locked","var(--red-100)","var(--red-600)"], seed: ["Auto-learning","var(--green-100)","var(--green-600)"] };
     const tierLabel = { high: ["High confidence","var(--green-100)","var(--green-600)"], medium: ["Medium confidence","var(--amber-100)","var(--amber-600)"], low: ["Low confidence — needs approval","var(--red-100)","var(--red-600)"] };
-    wrap.innerHTML = items.map(r=>{
-      const [label, bg, fg] = sourceLabel[r.source] || sourceLabel.seed;
-      const today = DateUtil.todayISO();
-      const termNote = (r.startDate || r.endDate)
-        ? `<div class="stat-sub">${r.startDate?`Starts ${fmt.date(r.startDate)}`:'No start date set'}${r.endDate?` · Ends ${fmt.date(r.endDate)}${r.endDate<today?' (already ended)':''}`:' · Ongoing, no end date'}</div>`
-        : "";
-      const scheduledNote = r.scheduledDate
-        ? `<div class="stat-sub" style="color:var(--amber-600);font-weight:600;">Changes to ${fmt.money(r.scheduledAmount)} from ${fmt.date(r.scheduledDate)} onward. <a href="#" onclick="RecurringPayments.clearScheduledChange('${r.id}'); return false;" style="color:var(--red-600);font-weight:600;">Cancel this change</a></div>`
-        : `<div style="display:flex;gap:6px;align-items:center;margin-top:6px;">
-             <span class="stat-sub" style="white-space:nowrap;">Schedule a change:</span>
-             <input type="text" id="sched_amt_${r.id}" placeholder="new amount" style="width:90px;font-size:12px;padding:4px 6px;">
-             <input type="date" id="sched_date_${r.id}" style="font-size:12px;padding:4px 6px;">
-             <button class="btn ghost" style="padding:4px 10px;font-size:11px;" onclick="RecurringPayments.scheduleChange('${r.id}')">Set</button>
-           </div>`;
-      const [tLabel, tBg, tFg] = r.confidenceTier ? tierLabel[r.confidenceTier] : [null,null,null];
-      const evidenceBlock = r.evidence && r.evidence.length ? `
-        <details style="margin-top:6px;">
-          <summary class="stat-sub" style="cursor:pointer;font-weight:600;">Evidence (${r.occurrences} occurrence${r.occurrences===1?'':'s'}${r.dayWindow ? `, day ${r.dayWindow[0]}–${r.dayWindow[1]}`:''}${r.amtStats ? `, ${fmt.money(r.amtStats.min)}–${fmt.money(r.amtStats.max)}`:''})</summary>
-          <div style="margin-top:6px;font-size:11.5px;font-family:var(--font-mono);color:var(--grey-700);">
-            ${r.evidence.map(e=>`${fmt.date(e.date)} — ${fmt.money(e.amount)}`).join("<br>")}
-          </div>
-        </details>` : "";
-      const approveBlock = r.confidenceTier==="low" && !r.enabled ? `
-        <div style="margin-top:6px;">
-          <button class="btn ghost" style="padding:4px 10px;font-size:11px;" onclick="RecurringPayments.update('${r.id}','enabled',true)">✓ Approve — include in forecasts</button>
-        </div>` : "";
-      const matchingBlock = `
-        <details style="margin-top:6px;">
-          <summary class="stat-sub" style="cursor:pointer;font-weight:600;">Matching settings ${r.matchKeyword ? '— currently: "'+escapeHtml(r.matchKeyword)+'"' : ''}</summary>
-          <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px;font-size:12px;">
-            <div>
-              <span class="stat-sub" style="display:block;margin-bottom:3px;">Match keyword <span class="hint">(text to match in your bank statement — change this if the vendor switches, e.g. MYOB → Stripe, without losing this item's history)</span></span>
-              <input type="text" style="width:100%;" placeholder="defaults to name above" value="${escapeHtml(r.matchKeyword||'')}" onchange="RecurringPayments.update('${r.id}','matchKeyword',this.value)">
-            </div>
-            <div style="display:flex;gap:16px;align-items:center;">
-              <span class="stat-sub">Date tolerance ±</span>
-              <input type="text" style="width:50px;" value="${r.dateToleranceDays!=null ? r.dateToleranceDays : 3}" onchange="RecurringPayments.update('${r.id}','dateToleranceDays',this.value)">
-              <span class="stat-sub">days</span>
-              <span class="stat-sub" style="margin-left:10px;">Amount tolerance ±</span>
-              <input type="text" style="width:50px;" placeholder="none" value="${r.amountTolerancePct!=null ? r.amountTolerancePct : ''}" onchange="RecurringPayments.update('${r.id}','amountTolerancePct',this.value)">
-              <span class="stat-sub">%</span>
-            </div>
-            <div class="stat-sub">A real payment landing within this date window and amount range counts as confirming this item — even if it's not exactly on the expected day or for exactly the expected amount.</div>
-          </div>
-        </details>`;
-      return `
-      <div class="card recur-row">
-        <div class="recur-main">
-          <input type="checkbox" ${r.enabled?"checked":""} onchange="RecurringPayments.update('${r.id}','enabled',this.checked)" title="Include in forecast">
-          <input type="text" class="recur-name" value="${escapeHtml(r.name)}" onchange="RecurringPayments.update('${r.id}','name',this.value)">
-          <span class="tag" style="background:${bg};color:${fg};">${label}</span>
-          ${tLabel ? `<span class="tag" style="background:${tBg};color:${tFg};">${tLabel}</span>` : ""}
+    const [label, bg, fg] = sourceLabel[r.source] || sourceLabel.seed;
+    const today = DateUtil.todayISO();
+    const termNote = (r.startDate || r.endDate)
+      ? `<div class="stat-sub">${r.startDate?`Starts ${fmt.date(r.startDate)}`:'No start date set'}${r.endDate?` · Ends ${fmt.date(r.endDate)}${r.endDate<today?' (already ended)':''}`:' · Ongoing, no end date'}</div>`
+      : "";
+    const scheduledNote = r.scheduledDate
+      ? `<div class="stat-sub" style="color:var(--amber-600);font-weight:600;">Changes to ${fmt.money(r.scheduledAmount)} from ${fmt.date(r.scheduledDate)} onward. <a href="#" onclick="RecurringPayments.clearScheduledChange('${r.id}'); return false;" style="color:var(--red-600);font-weight:600;">Cancel this change</a></div>`
+      : `<div style="display:flex;gap:6px;align-items:center;margin-top:6px;">
+           <span class="stat-sub" style="white-space:nowrap;">Schedule a change:</span>
+           <input type="text" id="sched_amt_${r.id}" placeholder="new amount" style="width:90px;font-size:12px;padding:4px 6px;">
+           <input type="date" id="sched_date_${r.id}" style="font-size:12px;padding:4px 6px;">
+           <button class="btn ghost" style="padding:4px 10px;font-size:11px;" onclick="RecurringPayments.scheduleChange('${r.id}')">Set</button>
+         </div>`;
+    const [tLabel, tBg, tFg] = r.confidenceTier ? tierLabel[r.confidenceTier] : [null,null,null];
+    const evidenceBlock = r.evidence && r.evidence.length ? `
+      <details style="margin-top:6px;">
+        <summary class="stat-sub" style="cursor:pointer;font-weight:600;">Evidence (${r.occurrences} occurrence${r.occurrences===1?'':'s'}${r.dayWindow ? `, day ${r.dayWindow[0]}–${r.dayWindow[1]}`:''}${r.amtStats ? `, ${fmt.money(r.amtStats.min)}–${fmt.money(r.amtStats.max)}`:''})</summary>
+        <div style="margin-top:6px;font-size:11.5px;font-family:var(--font-mono);color:var(--grey-700);">
+          ${r.evidence.map(e=>`${fmt.date(e.date)} — ${fmt.money(e.amount)}`).join("<br>")}
         </div>
-        <div class="recur-fields">
-          <span class="stat-sub">${r.type==='weekly'?'Every':'On day'}</span>
-          ${r.type==='weekly'
-            ? `<select onchange="RecurringPayments.update('${r.id}','anchor',this.value)">${this.WEEKDAY_NAMES.map((n,i)=>`<option value="${i}" ${i===r.anchor?'selected':''}>${n}</option>`).join("")}</select>`
-            : `<input type="text" style="width:50px;" value="${r.anchor}" onchange="RecurringPayments.update('${r.id}','anchor',this.value)">`
-          }
-          <span class="stat-sub">${r.amtStats && r.amtStats.min!==r.amtStats.max ? 'median' : 'avg'}</span>
-          <input type="text" style="width:110px;" value="${r.amount}" onchange="RecurringPayments.update('${r.id}','amount',this.value)">
-          <button class="fi-del" style="position:static;" onclick="RecurringPayments.remove('${r.id}')">Remove ✕</button>
+      </details>` : "";
+    const approveBlock = r.confidenceTier==="low" && !r.enabled ? `
+      <div style="margin-top:6px;">
+        <button class="btn ghost" style="padding:4px 10px;font-size:11px;" onclick="RecurringPayments.update('${r.id}','enabled',true)">✓ Approve — include in forecasts</button>
+      </div>` : "";
+    const matchingBlock = `
+      <details style="margin-top:6px;">
+        <summary class="stat-sub" style="cursor:pointer;font-weight:600;">Matching settings ${r.matchKeyword ? '— currently: "'+escapeHtml(r.matchKeyword)+'"' : ''}</summary>
+        <div style="margin-top:8px;display:flex;flex-direction:column;gap:8px;font-size:12px;">
+          <div>
+            <span class="stat-sub" style="display:block;margin-bottom:3px;">Match keyword <span class="hint">(text to match in your bank statement — change this if the vendor switches, e.g. MYOB → Stripe, without losing this item's history)</span></span>
+            <input type="text" style="width:100%;" placeholder="defaults to name above" value="${escapeHtml(r.matchKeyword||'')}" onchange="RecurringPayments.update('${r.id}','matchKeyword',this.value)">
+          </div>
+          <div style="display:flex;gap:16px;align-items:center;">
+            <span class="stat-sub">Date tolerance ±</span>
+            <input type="text" style="width:50px;" value="${r.dateToleranceDays!=null ? r.dateToleranceDays : 3}" onchange="RecurringPayments.update('${r.id}','dateToleranceDays',this.value)">
+            <span class="stat-sub">days</span>
+            <span class="stat-sub" style="margin-left:10px;">Amount tolerance ±</span>
+            <input type="text" style="width:50px;" placeholder="none" value="${r.amountTolerancePct!=null ? r.amountTolerancePct : ''}" onchange="RecurringPayments.update('${r.id}','amountTolerancePct',this.value)">
+            <span class="stat-sub">%</span>
+          </div>
+          <div class="stat-sub">A real payment landing within this date window and amount range counts as confirming this item — even if it's not exactly on the expected day or for exactly the expected amount.</div>
         </div>
-        ${termNote}
-        ${r.source==="manual"
-          ? `<div class="stat-sub">Editing this locks it from auto-updating on future imports. <a href="#" onclick="RecurringPayments.resumeAutoLearning('${r.id}'); return false;" style="color:var(--blue-accent);font-weight:600;">↻ Resume auto-learning</a> to let it recompute from your real statement data again.</div>`
-          : r.occurrences ? `<div class="stat-sub">${r.occurrences} occurrences — this average updates automatically every time you import a fresh statement.</div>` : `<div class="stat-sub">Updates automatically from your real statement data on every import.</div>`
+      </details>`;
+    // Forecast Treatment — a distinct dimension from `enabled`, only
+    // meaningful for outgoing items. Deliberately NOT touched by Check
+    // All / Uncheck All (those only toggle `enabled`), so re-enabling a
+    // batch-component supplier never silently turns it back into an
+    // active individual forecast — that requires this explicit control.
+    const treatmentInfo = {
+      active_individual: null,
+      batch_component: `Included in Monthly Supplier Payments batch. Individual amount is not separately forecast.`,
+      review_required: `Evidence is inconclusive on whether this is now paid via the Monthly Supplier Payments batch — still forecast individually until you decide.`
+    };
+    const treatmentColors = { active_individual: ["var(--green-100)","var(--green-600)"], batch_component: ["var(--grey-200)","var(--grey-700)"], review_required: ["var(--amber-100)","var(--amber-600)"] };
+    const treatmentBlock = r.direction!=="in" ? `
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="stat-sub" style="white-space:nowrap;">Forecast Treatment</span>
+          <select onchange="RecurringPayments.setForecastTreatment('${r.id}',this.value)" style="font-size:12px;padding:3px 6px;">
+            <option value="active_individual" ${r.forecastTreatment==='active_individual'||!r.forecastTreatment?'selected':''}>Active Individual</option>
+            <option value="batch_component" ${r.forecastTreatment==='batch_component'?'selected':''}>Batch Component</option>
+            <option value="review_required" ${r.forecastTreatment==='review_required'?'selected':''}>Review Required</option>
+          </select>
+          ${r.forecastTreatment && treatmentInfo[r.forecastTreatment] ? `<span class="tag" style="background:${treatmentColors[r.forecastTreatment][0]};color:${treatmentColors[r.forecastTreatment][1]};">${r.forecastTreatment==='batch_component'?'Batch Component — $0 forecast':'Review Required'}</span>` : ""}
+        </div>
+        ${r.forecastTreatment && treatmentInfo[r.forecastTreatment] ? `<div class="stat-sub" style="font-style:italic;">${treatmentInfo[r.forecastTreatment]}</div>` : ""}
+      </div>` : "";
+    return `
+    <div class="card recur-row">
+      <div class="recur-main">
+        <input type="checkbox" ${r.enabled?"checked":""} onchange="RecurringPayments.update('${r.id}','enabled',this.checked)" title="Include in forecast">
+        <input type="text" class="recur-name" value="${escapeHtml(r.name)}" onchange="RecurringPayments.update('${r.id}','name',this.value)">
+        <span class="tag" style="background:${bg};color:${fg};">${label}</span>
+        ${tLabel ? `<span class="tag" style="background:${tBg};color:${tFg};">${tLabel}</span>` : ""}
+      </div>
+      <div class="recur-fields">
+        <span class="stat-sub">${r.type==='weekly'?'Every':'On day'}</span>
+        ${r.type==='weekly'
+          ? `<select onchange="RecurringPayments.update('${r.id}','anchor',this.value)">${this.WEEKDAY_NAMES.map((n,i)=>`<option value="${i}" ${i===r.anchor?'selected':''}>${n}</option>`).join("")}</select>`
+          : `<input type="text" style="width:50px;" value="${r.anchor}" onchange="RecurringPayments.update('${r.id}','anchor',this.value)">`
         }
-        ${evidenceBlock}
-        ${approveBlock}
-        ${matchingBlock}
-        ${scheduledNote}
-      </div>`;
-    }).join("");
+        <span class="stat-sub">${r.amtStats && r.amtStats.min!==r.amtStats.max ? 'median' : 'avg'}</span>
+        <input type="text" style="width:110px;" value="${r.amount}" onchange="RecurringPayments.update('${r.id}','amount',this.value)">
+        <button class="fi-del" style="position:static;" onclick="RecurringPayments.remove('${r.id}')">Remove ✕</button>
+      </div>
+      ${termNote}
+      ${r.source==="manual"
+        ? `<div class="stat-sub">Editing this locks it from auto-updating on future imports. <a href="#" onclick="RecurringPayments.resumeAutoLearning('${r.id}'); return false;" style="color:var(--blue-accent);font-weight:600;">↻ Resume auto-learning</a> to let it recompute from your real statement data again.</div>`
+        : r.occurrences ? `<div class="stat-sub">${r.occurrences} occurrences — this average updates automatically every time you import a fresh statement.</div>` : `<div class="stat-sub">Updates automatically from your real statement data on every import.</div>`
+      }
+      ${evidenceBlock}
+      ${approveBlock}
+      ${treatmentBlock}
+      ${matchingBlock}
+      ${scheduledNote}
+    </div>`;
+  },
+
+  setForecastTreatment(id, value){
+    const item = DB.data.recurringPayments.find(r=>r.id===id);
+    if(!item) return;
+    if(!["active_individual","batch_component","review_required"].includes(value)) return;
+    item.forecastTreatment = value;
+    DB.save();
+    this._recalcEverything();
+    this.render();
   }
 };
 
