@@ -2971,7 +2971,7 @@ const Simulator = {
         <div><div class="k">Subtotal / GST</div><div class="v" style="font-size:13px;">${fmt.money(subtotal)} + ${fmt.money(gst)}</div></div>
       </div>
       <div class="verdict ${result.verdict==='safe'?'safe':'unsafe'}">
-        ${result.verdict==='safe' ? '✅ Safe to Order' : `⚠ Unsafe — would need ${result.extensionDays} business day extension`}
+        ${Forecast.statusLabel(result.paymentStatus, result.extensionDays)}
       </div>
       <div class="kv-grid">
         <div><div class="k">Due Date (est.)</div><div class="v" style="font-size:14px;">${fmt.date(result.dueDateAdjusted)}</div></div>
@@ -3214,16 +3214,20 @@ const Recommendations = {
     // fuel invoices due soon
     const dueSoon = DB.data.fuelInvoices.filter(i => i.dueDateAdjusted >= today && i.dueDateAdjusted <= DateUtil.addDays(today,7));
     dueSoon.forEach(i => {
-      insights.push(i.verdict==='safe'
-        ? `${i.supplier} invoice of ${fmt.money(i.amount)} due ${fmt.date(i.dueDateAdjusted)} is projected safe to pay on time.`
-        : `${i.supplier} invoice of ${fmt.money(i.amount)} due ${fmt.date(i.dueDateAdjusted)} is projected unsafe — a ${i.extensionDays} business day extension is recommended.`);
+      if(i.paymentStatus==="overdue") insights.push(`${i.supplier} invoice of ${fmt.money(i.amount)} (was due ${fmt.date(i.dueDateAdjusted)}) is overdue.`);
+      else if(i.paymentStatus==="extension-required") insights.push(`${i.supplier} invoice of ${fmt.money(i.amount)} due ${fmt.date(i.dueDateAdjusted)} needs a ${i.extensionDays} business day extension.`);
+      else if(i.paymentStatus==="unable-within-limit") insights.push(`${i.supplier} invoice of ${fmt.money(i.amount)} due ${fmt.date(i.dueDateAdjusted)} cannot be safely paid even within the ${i.extensionLimit}-business-day limit — worth reviewing your upcoming outgoings.`);
+      else if(i.paymentStatus==="payment-delayed") insights.push(`${i.supplier} invoice of ${fmt.money(i.amount)} due ${fmt.date(i.dueDateAdjusted)} is safer paid ${i.extensionDays} business day${i.extensionDays===1?"":"s"} later than the due date.`);
+      else insights.push(`${i.supplier} invoice of ${fmt.money(i.amount)} due ${fmt.date(i.dueDateAdjusted)} is projected safe to pay on time.`);
     });
     // other payments due soon
     const paySoon = DB.data.otherPayments.filter(p => p.dueDateAdjusted >= today && p.dueDateAdjusted <= DateUtil.addDays(today,7));
     paySoon.forEach(p => {
-      insights.push(p.verdict==='safe'
-        ? `${p.description} of ${fmt.money(p.amount)} due ${fmt.date(p.dueDateAdjusted)} is projected safe to pay on time.`
-        : `${p.description} of ${fmt.money(p.amount)} due ${fmt.date(p.dueDateAdjusted)} is projected unsafe — a ${p.extensionDays} business day extension is recommended.`);
+      if(p.paymentStatus==="overdue") insights.push(`${p.description} of ${fmt.money(p.amount)} (was due ${fmt.date(p.dueDateAdjusted)}) is overdue.`);
+      else if(p.paymentStatus==="extension-required") insights.push(`${p.description} of ${fmt.money(p.amount)} due ${fmt.date(p.dueDateAdjusted)} needs a ${p.extensionDays} business day extension.`);
+      else if(p.paymentStatus==="unable-within-limit") insights.push(`${p.description} of ${fmt.money(p.amount)} due ${fmt.date(p.dueDateAdjusted)} cannot be safely paid even within the ${p.extensionLimit}-business-day limit — worth reviewing your upcoming outgoings.`);
+      else if(p.paymentStatus==="payment-delayed") insights.push(`${p.description} of ${fmt.money(p.amount)} due ${fmt.date(p.dueDateAdjusted)} is safer paid ${p.extensionDays} business day${p.extensionDays===1?"":"s"} later than the due date.`);
+      else insights.push(`${p.description} of ${fmt.money(p.amount)} due ${fmt.date(p.dueDateAdjusted)} is projected safe to pay on time.`);
     });
 
     // forecast confidence
@@ -5515,7 +5519,7 @@ const Dashboard = {
 
     const upcomingInv = [...DB.data.fuelInvoices].filter(i=>i.dueDateAdjusted>=DateUtil.todayISO()).sort((a,b)=>a.dueDateAdjusted.localeCompare(b.dueDateAdjusted))[0];
     document.getElementById("nextInvoiceDue").textContent = upcomingInv ? `${fmt.money(upcomingInv.amount)} — ${fmt.date(upcomingInv.dueDateAdjusted)}` : "None pending";
-    document.getElementById("nextInvoiceNote").textContent = upcomingInv ? `${upcomingInv.supplier} · ${upcomingInv.verdict==='safe'?'projected safe':'extension recommended'}` : "Add one in Fuel Invoice Planner";
+    document.getElementById("nextInvoiceNote").textContent = upcomingInv ? `${upcomingInv.supplier} · ${({overdue:"overdue","extension-required":"extension required","unable-within-limit":"cannot pay within limit","payment-delayed":"pay a few days later"})[upcomingInv.paymentStatus] || "projected safe"}` : "Add one in Fuel Invoice Planner";
 
     document.getElementById("recsList").innerHTML = Recommendations.generate().map(r=>`<div class="stat-sub" style="padding:6px 0;border-bottom:1px solid var(--grey-100);">${r}</div>`).join("") || `<div class="stat-sub">No recommendations yet — import statements to begin.</div>`;
 
