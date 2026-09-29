@@ -849,6 +849,11 @@ td.num.debit{color:var(--red-600);}
       </div>
 
       <div id="recurList" class="grid cols-2"></div>
+
+      <details style="margin-top:16px;">
+        <summary class="section-title" style="cursor:pointer;display:inline-block;">Permanently Excluded Suppliers <span class="hint">deleted for good — won't reappear on future imports</span></summary>
+        <div id="excludedList" style="margin-top:10px;"></div>
+      </details>
     </section>
 
     <!-- ================= CALENDAR ================= -->
@@ -1133,7 +1138,7 @@ const DB = {
     return this.data;
   },
 
-  CURRENT_SCHEMA_VERSION: 8,
+  CURRENT_SCHEMA_VERSION: 9,
   MIGRATIONS: [
     {
       // v1: the original flat field-fill, formalized as a real migration
@@ -1296,6 +1301,43 @@ const DB = {
           if(match && r.forecastTreatment===match.from) r.forecastTreatment = match.to;
         });
       }
+    },
+    {
+      // v9: introduces excludedCanonicals — a persistent block-list of
+      // canonical identities that must NEVER form a recurring series
+      // again, regardless of future evidence. Needed because plain
+      // removal (RecurringPayments.remove()) only deleted the record —
+      // it did nothing to stop rebuildFromEvidence() re-detecting the
+      // exact same series from the same still-existing historical
+      // transactions on the very next import, silently undoing the
+      // removal. This is the actual fix for that: a canonical on this
+      // list is skipped entirely during evidence grouping, so it can't
+      // resurface no matter how much new matching evidence arrives.
+      //
+      // Pre-populated with 5 suppliers confirmed, by direct request, to
+      // be low-value, inconsistently-batched clutter (each under $250,
+      // each with thin/mixed batch evidence from the Sept 2026 audit —
+      // genuinely sometimes paid via the batch, sometimes not, never
+      // clean enough evidence to classify either way). Their existing
+      // records are removed and their canonical identities excluded
+      // going forward. Historical transactions are completely untouched
+      // — this only affects future recurring-series detection.
+      // "Dealer Co N" (also review_required) is deliberately left alone:
+      // its ambiguity is a different kind (possible identity collision
+      // with the separate fuel-supplier account, not batch-timing), and
+      // conflating the two would risk losing real information rather
+      // than just clutter.
+      toVersion: 9,
+      migrate(data){
+        if(!Array.isArray(data.excludedCanonicals)) data.excludedCanonicals = [];
+        const toExclude = ["KIWI BALLOON COMPANY","OJI FIBRE SOLUTION LTD FULL CIRC","COMMTECH SUPPLIES PTY LTD","ENVIRO NZ SERVICES LIMITED","SUMMIT HIRE"];
+        toExclude.forEach(name=>{
+          if(!data.excludedCanonicals.some(x=>x.canonicalPayee===name)){
+            data.excludedCanonicals.push({ canonicalPayee: name, direction: "out", excludedAt: new Date().toISOString(), reason: "Low-value, inconsistently-batched clutter — confirmed by direct request after the Sept 2026 batch audit" });
+          }
+        });
+        data.recurringPayments = (data.recurringPayments||[]).filter(r => !toExclude.includes((r.canonicalPayee||"").toUpperCase()));
+      }
     }
   ],
 
@@ -1336,7 +1378,8 @@ const DB = {
       championModel: null, // {architecture:'old'|'new', backtestMAE, promotedAt, backtestSummary} — set by Backtest champion/challenger governance
       aliasMappings: [], // {alias, normalizedAlias, canonicalPayee, direction, confidence, matchingMethod, evidenceTransactionIds, firstSeen, lastSeen, autoMatched, manuallyLocked, createdAt, updatedAt} — persistent counterparty identity, survives every future import
       rebuildAuditLog: [], // persistent history of every rebuildFromEvidence() run — {timestamp, sourceId, transactionsProcessed, seriesCreated, seriesUpdated, seriesRetainedManual, aliasesCreated, validationFailures, validationFixed} — survives page refresh/reload
-      schemaVersion: 8, // fresh databases start at the current version — only legacy data needs to migrate
+      excludedCanonicals: [], // {canonicalPayee, direction, excludedAt, reason} — permanently blocks a canonical identity from ever forming a recurring series again, regardless of future evidence; checked in rebuildFromEvidence()'s grouping step
+      schemaVersion: 9, // fresh databases start at the current version — only legacy data needs to migrate
       migrationHistory: [] // {fromVersion, toVersion, ranAt, status, error} — one entry per migration actually executed
       // recurringPayments items may also carry: startDate, endDate (for fixed-term
       // commitments like a vehicle loan), scheduledAmount + scheduledDate (a future
@@ -4760,6 +4803,7 @@ const RecurringPayments = {
       else return;
       const canonicalPayee = CounterpartyEngine.resolveCanonical(t.desc, t.opname, direction, t.id);
       if(!canonicalPayee || canonicalPayee.length<2) return;
+      if(DB.data.excludedCanonicals && DB.data.excludedCanonicals.some(x=>x.canonicalPayee===canonicalPayee && x.direction===direction)) return; // permanently blocked — never forms a series again, regardless of new evidence
       const key = canonicalPayee + "|" + direction;
       (groups[key] = groups[key] || { canonicalPayee, direction, txs:[] }).txs.push({ ...t, absAmount });
     });
@@ -5193,6 +5237,52 @@ const RecurringPayments = {
     this.render();
   },
 
+  // Permanent removal — unlike remove() above, this ALSO blocks the
+  // canonical identity from ever forming a recurring series again, so
+  // it can't silently resurface on the next import from its own
+  // still-existing historical evidence. Historical bank transactions
+  // are never touched — only future recurring-series detection for
+  // this specific identity is affected, and it's reversible via
+  // restoreExcluded() below.
+  deletePermanently(id){
+    const item = DB.data.recurringPayments.find(r=>r.id===id);
+    if(!item) return;
+    const label = item.canonicalPayee || item.name;
+    const ok = confirm(`Permanently stop tracking "${label}"?\n\nThis removes it from your recurring payments and stops it from reappearing on future imports, even if new matching transactions arrive. Your historical bank transactions are not affected, and you can undo this from Settings if you change your mind.`);
+    if(!ok) return;
+    if(!Array.isArray(DB.data.excludedCanonicals)) DB.data.excludedCanonicals = [];
+    if(item.canonicalPayee && !DB.data.excludedCanonicals.some(x=>x.canonicalPayee===item.canonicalPayee && x.direction===item.direction)){
+      DB.data.excludedCanonicals.push({ canonicalPayee: item.canonicalPayee, direction: item.direction||"out", excludedAt: new Date().toISOString(), reason: "Manually deleted by user" });
+    }
+    DB.data.recurringPayments = DB.data.recurringPayments.filter(r=>r.id!==id);
+    DB.save();
+    this._recalcEverything();
+    this.render();
+    toast(`"${label}" permanently removed — won't reappear on future imports`);
+  },
+
+  restoreExcluded(canonicalPayee, direction){
+    if(!Array.isArray(DB.data.excludedCanonicals)) return;
+    DB.data.excludedCanonicals = DB.data.excludedCanonicals.filter(x=>!(x.canonicalPayee===canonicalPayee && x.direction===direction));
+    DB.save();
+    this.rebuildFromEvidence(); // immediately re-detect it from existing evidence now that it's unblocked
+    this._recalcEverything();
+    this.render();
+    toast(`"${canonicalPayee}" can be tracked again — re-detected from your existing history`);
+  },
+
+  renderExcludedList(){
+    const wrap = document.getElementById("excludedList");
+    if(!wrap) return;
+    const excluded = DB.data.excludedCanonicals||[];
+    if(!excluded.length){ wrap.innerHTML = `<div class="stat-sub">No permanently-excluded suppliers.</div>`; return; }
+    wrap.innerHTML = excluded.map(x => `
+      <div class="stat-sub" style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--grey-100);">
+        <span>${escapeHtml(x.canonicalPayee)} <span class="hint">(${escapeHtml(x.direction)}, excluded ${fmt.date(x.excludedAt.slice(0,10))})</span></span>
+        <button class="btn ghost" style="padding:3px 10px;font-size:11px;" onclick="RecurringPayments.restoreExcluded('${escapeHtml(x.canonicalPayee).replace(/'/g,"\\'")}','${x.direction}')">Restore</button>
+      </div>`).join("");
+  },
+
   _recalcEverything(){
     DB.data.fuelInvoices.forEach(i=>FuelPlanner.recalc(i.id));
     DB.data.otherPayments.forEach(p=>PaymentPlanner.recalc(p.id));
@@ -5268,6 +5358,8 @@ const RecurringPayments = {
     wrap.innerHTML =
       sectionHeader("OUTGOING PAYMENTS", "out", outgoing.length) + outgoingHtml +
       sectionHeader("INCOMING PAYMENTS", "in", incoming.length) + incomingHtml;
+
+    this.renderExcludedList();
   },
 
   // Extracted, otherwise-unchanged per-item card template — the same
@@ -5360,7 +5452,7 @@ const RecurringPayments = {
         }
         <span class="stat-sub">${r.amtStats && r.amtStats.min!==r.amtStats.max ? 'median' : 'avg'}</span>
         <input type="text" style="width:110px;" value="${r.amount}" onchange="RecurringPayments.update('${r.id}','amount',this.value)">
-        <button class="fi-del" style="position:static;" onclick="RecurringPayments.remove('${r.id}')">Remove ✕</button>
+        <button class="fi-del" style="position:static;" onclick="RecurringPayments.deletePermanently('${r.id}')" title="Removes it for good — won't come back on future imports even with new matching transactions">Delete ✕</button>
       </div>
       ${termNote}
       ${r.source==="manual"
