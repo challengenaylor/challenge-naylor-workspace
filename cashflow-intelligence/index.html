@@ -1138,7 +1138,7 @@ const DB = {
     return this.data;
   },
 
-  CURRENT_SCHEMA_VERSION: 9,
+  CURRENT_SCHEMA_VERSION: 10,
   MIGRATIONS: [
     {
       // v1: the original flat field-fill, formalized as a real migration
@@ -1338,6 +1338,29 @@ const DB = {
         });
         data.recurringPayments = (data.recurringPayments||[]).filter(r => !toExclude.includes((r.canonicalPayee||"").toUpperCase()));
       }
+    },
+    {
+      // v10: retroactively shrinks the two fields found to be driving the
+      // Firestore document toward — and in at least one real case,
+      // apparently past — its 1MB per-document limit, which is the
+      // actual cause of "saved locally but couldn't sync" errors, not a
+      // connection problem. recordAlias() and rebuildFromEvidence() were
+      // both fixed to stop growing these unbounded going forward (see
+      // their own comments), but that only prevents FUTURE growth — this
+      // migration is what actually shrinks the bloat that already
+      // accumulated in existing data before today. Purely a storage
+      // trim: only the raw evidence-ID lists are capped to their most
+      // recent entries; every count, amount, and cadence figure is
+      // computed from separate fields and is completely unaffected.
+      toVersion: 10,
+      migrate(data){
+        (data.recurringPayments||[]).forEach(r=>{
+          if(Array.isArray(r.evidenceTransactionIds) && r.evidenceTransactionIds.length>50) r.evidenceTransactionIds = r.evidenceTransactionIds.slice(-50);
+        });
+        (data.aliasMappings||[]).forEach(a=>{
+          if(Array.isArray(a.evidenceTransactionIds) && a.evidenceTransactionIds.length>20) a.evidenceTransactionIds = a.evidenceTransactionIds.slice(-20);
+        });
+      }
     }
   ],
 
@@ -1379,7 +1402,7 @@ const DB = {
       aliasMappings: [], // {alias, normalizedAlias, canonicalPayee, direction, confidence, matchingMethod, evidenceTransactionIds, firstSeen, lastSeen, autoMatched, manuallyLocked, createdAt, updatedAt} — persistent counterparty identity, survives every future import
       rebuildAuditLog: [], // persistent history of every rebuildFromEvidence() run — {timestamp, sourceId, transactionsProcessed, seriesCreated, seriesUpdated, seriesRetainedManual, aliasesCreated, validationFailures, validationFixed} — survives page refresh/reload
       excludedCanonicals: [], // {canonicalPayee, direction, excludedAt, reason} — permanently blocks a canonical identity from ever forming a recurring series again, regardless of future evidence; checked in rebuildFromEvidence()'s grouping step
-      schemaVersion: 9, // fresh databases start at the current version — only legacy data needs to migrate
+      schemaVersion: 10, // fresh databases start at the current version — only legacy data needs to migrate
       migrationHistory: [] // {fromVersion, toVersion, ranAt, status, error} — one entry per migration actually executed
       // recurringPayments items may also carry: startDate, endDate (for fixed-term
       // commitments like a vehicle loan), scheduledAmount + scheduledDate (a future
@@ -3116,7 +3139,12 @@ const Calendar = {
     // (that would visually and financially double-count the same real
     // outflow). The supplier record itself stays fully visible in the
     // Recurring Payments tab.
-    DB.data.recurringPayments.filter(r=>r.enabled && r.direction==="out" && r.forecastTreatment!=="batch_component").forEach(r=>{
+    // Same ENDED-lifecycle exclusion as recurringAmountOnDate()/explainDate()
+    // — without this, an item that correctly contributes $0 to the actual
+    // forecast could still show a misleading calendar marker every time
+    // its (sometimes wrongly-classified) cadence pattern happened to
+    // match, drifting the calendar and the real forecast math out of sync.
+    DB.data.recurringPayments.filter(r=>r.enabled && r.direction==="out" && r.forecastTreatment!=="batch_component" && r.lifecycle!=="ENDED").forEach(r=>{
       for(let d=1; d<=daysInMonth; d++){
         const iso = `${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
         if(!Forecast.recurringLandsOnExact(r, iso)) continue; // exactly one expected day per cycle — this IS the single forecast event
@@ -4403,7 +4431,17 @@ const CounterpartyEngine = {
     let a = DB.data.aliasMappings.find(x => x.normalizedAlias===normalizedAlias && x.direction===direction);
     const now = new Date().toISOString();
     if(a){
-      if(!a.evidenceTransactionIds.includes(txId)) a.evidenceTransactionIds.push(txId);
+      if(!a.evidenceTransactionIds.includes(txId)){
+        a.evidenceTransactionIds.push(txId);
+        // Same unbounded-growth fix as the recurring-series evidence
+        // arrays — a long-confirmed alias otherwise accumulates a new ID
+        // forever, every import, with no cap, and this field measured as
+        // the single largest contributor to the Firestore document size
+        // (214 KB on its own in one real snapshot, on a document already
+        // at 44.8% of Firestore's 1 MB per-document limit). Only the
+        // most recent confirmations are ever actually needed as evidence.
+        if(a.evidenceTransactionIds.length > 20) a.evidenceTransactionIds = a.evidenceTransactionIds.slice(-20);
+      }
       a.lastSeen = now; a.updatedAt = now;
     } else {
       DB.data.aliasMappings.push({
@@ -4817,7 +4855,16 @@ const RecurringPayments = {
         if(series.transactions.length < 2) return;
         const cadenceMeta = SeriesEngine.CADENCES.find(c=>c.name===series.cadence);
         const seriesId = (canonicalPayee + "_" + direction + "_" + series.cadence).toUpperCase().replace(/[^A-Z0-9]+/g,"_");
-        const evidenceIds = series.transactions.map(t=>t.id);
+        const trueObservationCount = series.transactions.length; // the real, uncapped historical count — always accurate for display, independent of how many raw IDs are actually stored below
+        // Firestore has a hard 1MB per-document limit, and this array was
+        // growing unbounded — every month that passes adds more real
+        // transaction IDs to a long-running series with no cap, and the
+        // document was measured at 44.8% of that limit even on an older
+        // snapshot. Only the most recent evidence is ever actually needed
+        // (amount/cadence statistics are computed separately and are NOT
+        // affected by this cap); capping here is the real fix for the
+        // "saved locally but couldn't sync" error, not a workaround.
+        const evidenceIds = series.transactions.map(t=>t.id).slice(-50);
         const lastTx = series.transactions[series.transactions.length-1];
 
         let anchor, type, cadenceDays, anchorDate, dateTolerance;
@@ -4851,7 +4898,7 @@ const RecurringPayments = {
           existing.minAmount = series.amountStats.min; existing.maxAmount = series.amountStats.max; existing.stdAmount = series.amountStats.std;
           existing.evidenceTransactionIds = evidenceIds;
           existing.lastObservedDate = series.lastObservedDate;
-          existing.occurrences = evidenceIds.length;
+          existing.occurrences = trueObservationCount;
           existing.evidence = series.transactions.slice(-8).map(t=>({date:t.date, amount:t.absAmount}));
           Object.assign(existing, forecast, { forecastUpdatedAt: new Date().toISOString() });
           if(existing.source!=="manual"){
@@ -4869,7 +4916,7 @@ const RecurringPayments = {
             id: uid(), seriesId, name: canonicalPayee, canonicalPayee, direction, type, anchor,
             cadenceDays, anchorDate, dateTolerance,
             amount: Math.round(series.amountStats.median*100)/100, source:"detected", enabled: tier!=="low",
-            occurrences: evidenceIds.length, observationCount: evidenceIds.length, confidenceTier: tier,
+            occurrences: trueObservationCount, observationCount: trueObservationCount, confidenceTier: tier,
             medianAmount: series.amountStats.median, meanAmount: series.amountStats.mean,
             minAmount: series.amountStats.min, maxAmount: series.amountStats.max, stdAmount: series.amountStats.std,
             evidenceTransactionIds: evidenceIds, firstObservedDate: series.firstObservedDate, lastObservedDate: series.lastObservedDate,
