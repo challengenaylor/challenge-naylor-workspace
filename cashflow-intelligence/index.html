@@ -1115,6 +1115,27 @@ const DB = {
         this.data = metaDoc.data();
         const txSnap = await fbDb.collection("cashFlowApp").doc("data").collection("transactions").get();
         this.data.transactions = txSnap.docs.map(d => d.data());
+
+        // recurringPayments and aliasMappings moved into their own
+        // subcollections (same reasoning as transactions above) — these
+        // two fields were the actual cause of repeated "saved locally
+        // but couldn't sync" errors: every schema addition over time
+        // grew them with no cap, and even after capping the evidence
+        // list stored PER record, the NUMBER of records itself keeps
+        // growing forever as more suppliers and bank-description
+        // variants get discovered on every import — eventually pushing
+        // the single 1MB-limited meta document over Firestore's hard
+        // ceiling. Moving them to subcollections removes that ceiling
+        // entirely, the same way it already does for transactions.
+        // A database that hasn't been re-saved since this change won't
+        // have these subcollections populated yet — fall back to
+        // whatever is still embedded in the meta document (the old
+        // location) in that case, and the next save() call migrates it
+        // into the new subcollections automatically.
+        const recurSnap = await fbDb.collection("cashFlowApp").doc("data").collection("recurringPayments").get();
+        if(!recurSnap.empty) this.data.recurringPayments = recurSnap.docs.map(d => d.data());
+        const aliasSnap = await fbDb.collection("cashFlowApp").doc("data").collection("aliasMappings").get();
+        if(!aliasSnap.empty) this.data.aliasMappings = aliasSnap.docs.map(d => d.data());
       } else {
         this.data = this._empty();
       }
@@ -1138,7 +1159,7 @@ const DB = {
     return this.data;
   },
 
-  CURRENT_SCHEMA_VERSION: 10,
+  CURRENT_SCHEMA_VERSION: 11,
   MIGRATIONS: [
     {
       // v1: the original flat field-fill, formalized as a real migration
@@ -1361,6 +1382,33 @@ const DB = {
           if(Array.isArray(a.evidenceTransactionIds) && a.evidenceTransactionIds.length>20) a.evidenceTransactionIds = a.evidenceTransactionIds.slice(-20);
         });
       }
+    },
+    {
+      // v11: repairs invoices/payments already stuck in the exact broken
+      // state this session found and fixed at the source — status
+      // genuinely "paid" (correctly matched to a real transaction by
+      // ReconciliationEngine), but paymentStatus/verdict/reason still
+      // frozen at whatever they were the instant BEFORE payment was
+      // detected (typically "overdue"/"unsafe"), because recalc()
+      // freezes anything already marked paid and so could never correct
+      // them. ReconciliationEngine now sets these correctly at the
+      // moment it marks something paid, but that only fixes it going
+      // forward — this migration is what repairs data affected before
+      // that fix existed. A real, matched paidTxId already proves the
+      // payment genuinely happened; this only touches the display
+      // fields, never status/paidDate/paidTxId themselves.
+      toVersion: 11,
+      migrate(data){
+        [...(data.fuelInvoices||[]), ...(data.otherPayments||[])].forEach(item=>{
+          if(item.status==="paid" && item.paymentStatus!=="paid"){
+            item.paymentStatus = "paid";
+            item.verdict = "safe";
+            if(item.reason && /overdue|extension|cannot safely pay|unsafe/i.test(item.reason)){
+              item.reason = `Paid${item.paidDate ? ' on '+item.paidDate : ''}.`;
+            }
+          }
+        });
+      }
     }
   ],
 
@@ -1402,7 +1450,7 @@ const DB = {
       aliasMappings: [], // {alias, normalizedAlias, canonicalPayee, direction, confidence, matchingMethod, evidenceTransactionIds, firstSeen, lastSeen, autoMatched, manuallyLocked, createdAt, updatedAt} — persistent counterparty identity, survives every future import
       rebuildAuditLog: [], // persistent history of every rebuildFromEvidence() run — {timestamp, sourceId, transactionsProcessed, seriesCreated, seriesUpdated, seriesRetainedManual, aliasesCreated, validationFailures, validationFixed} — survives page refresh/reload
       excludedCanonicals: [], // {canonicalPayee, direction, excludedAt, reason} — permanently blocks a canonical identity from ever forming a recurring series again, regardless of future evidence; checked in rebuildFromEvidence()'s grouping step
-      schemaVersion: 10, // fresh databases start at the current version — only legacy data needs to migrate
+      schemaVersion: 11, // fresh databases start at the current version — only legacy data needs to migrate
       migrationHistory: [] // {fromVersion, toVersion, ranAt, status, error} — one entry per migration actually executed
       // recurringPayments items may also carry: startDate, endDate (for fixed-term
       // commitments like a vehicle loan), scheduledAmount + scheduledDate (a future
@@ -1425,18 +1473,73 @@ const DB = {
       if(typeof toast === "function") toast("⚠ Couldn't save locally — your browser blocked storage (private browsing mode?) or it's full.");
     }
     clearTimeout(this._saveDebounceTimer);
-    this._saveDebounceTimer = setTimeout(() => this._syncMetaToFirestore(), 600);
+    this._saveDebounceTimer = setTimeout(() => {
+      this._syncMetaToFirestore();
+      this.syncRecurringAndAliasesToFirestore();
+    }, 600);
     return true;
   },
 
   async _syncMetaToFirestore(){
     if(typeof fbDb === "undefined") return;
-    const { transactions, ...meta } = this.data; // transactions live in their own subcollection, never in this doc
+    const { transactions, recurringPayments, aliasMappings, ...meta } = this.data; // all three live in their own subcollections, never duplicated in this doc — recurringPayments/aliasMappings moved out for the same reason transactions always was: keeping this single document safely under Firestore's 1MB limit
     try{
       await fbDb.collection("cashFlowApp").doc("data").set(meta);
     }catch(e){
       console.error("Firestore sync failed", e);
       if(typeof toast === "function") toast("⚠ Saved locally but couldn't sync to the live database — check your connection.");
+    }
+  },
+
+  // Batched write for recurringPayments and aliasMappings — mirrors
+  // addTransactionsToFirestore()'s proven chunking pattern (Firestore
+  // batch writes are capped at 500 operations). Each alias mapping
+  // doesn't have its own id field (it never needed one before living in
+  // its own collection), so a stable, deterministic document ID is
+  // derived from its normalizedAlias+direction here — this makes writes
+  // naturally idempotent (the same alias always maps to the same
+  // document) without needing to track one separately.
+  async syncRecurringAndAliasesToFirestore(){
+    if(typeof fbDb === "undefined") return;
+    const CHUNK = 450;
+    try{
+      const recurring = this.data.recurringPayments||[];
+      for(let i=0;i<recurring.length;i+=CHUNK){
+        const batch = fbDb.batch();
+        recurring.slice(i,i+CHUNK).forEach(r=>{
+          const ref = fbDb.collection("cashFlowApp").doc("data").collection("recurringPayments").doc(r.id);
+          batch.set(ref, r);
+        });
+        await batch.commit();
+      }
+      const aliases = this.data.aliasMappings||[];
+      for(let i=0;i<aliases.length;i+=CHUNK){
+        const batch = fbDb.batch();
+        aliases.slice(i,i+CHUNK).forEach(a=>{
+          const docId = ((a.normalizedAlias||"")+"_"+(a.direction||"out")).replace(/[^a-zA-Z0-9_-]/g,"_").slice(0,400) || uid();
+          const ref = fbDb.collection("cashFlowApp").doc("data").collection("aliasMappings").doc(docId);
+          batch.set(ref, a);
+        });
+        await batch.commit();
+      }
+    }catch(e){
+      console.error("Firestore recurring/alias sync failed", e);
+      if(typeof toast === "function") toast("⚠ Saved locally but couldn't sync recurring-payment data to the live database — check your connection.");
+    }
+  },
+
+  // Explicit deletion for a recurring-series document — the batched
+  // write above only ever adds/updates documents it still knows about;
+  // it never removes a document Firestore has that the local array no
+  // longer does. Called wherever a recurring record is actually removed
+  // (RecurringPayments.remove/deletePermanently), so a deleted series
+  // doesn't silently persist in the cloud and reappear on next load.
+  async deleteRecurringFromFirestore(id){
+    if(typeof fbDb === "undefined") return;
+    try{
+      await fbDb.collection("cashFlowApp").doc("data").collection("recurringPayments").doc(id).delete();
+    }catch(e){
+      console.error("Firestore recurring-delete sync failed", e);
     }
   },
 
@@ -2769,6 +2872,7 @@ const Forecast = {
   statusLabel(status, extensionDays, recommendedDate){
     const onDate = recommendedDate ? ` — pay by ${fmt.date(recommendedDate)}` : "";
     switch(status){
+      case "paid": return "✅ Paid";
       case "safe": return "✅ Safe to Pay";
       case "due-today": return "📅 Due Today";
       case "due-soon": return "📅 Due Soon";
@@ -4239,6 +4343,20 @@ const ReconciliationEngine = {
         item.status = "paid";
         item.paidDate = candidate.date;
         item.paidTxId = candidate.id;
+        // Set the display fields to their paid-state values HERE, at the
+        // exact moment status transitions to "paid" — this is the only
+        // correct place to do it. recalc() deliberately freezes anything
+        // already marked paid (so a paid invoice can never later show a
+        // live overdue/extension warning as time passes), which means
+        // the very next recalc() call after this point becomes a no-op
+        // for this item. Without setting these here, whatever
+        // paymentStatus/verdict/reason existed the instant before
+        // payment was detected — typically "overdue"/"unsafe" for a
+        // genuinely late payment — would stay frozen forever, showing a
+        // paid invoice as if it were still unpaid.
+        item.paymentStatus = "paid";
+        item.verdict = "safe";
+        item.reason = `Paid on ${fmt.date(candidate.date)}${candidate.desc ? ' via ' + candidate.desc : ''}.`;
         claimed.add(candidate.id);
         matched++;
       }
@@ -4289,7 +4407,14 @@ const ReconciliationEngine = {
               i.status = "paid";
               i.paidDate = candidate.date;
               i.paidTxId = candidate.id;
+              // Same fix as tryMatch() above — these display fields must
+              // be set at the exact moment status becomes "paid", since
+              // recalc() freezes anything already paid and would
+              // otherwise never correct a stale "overdue" state.
+              i.paymentStatus = "paid";
+              i.verdict = "safe";
               i.notes = (i.notes ? i.notes + " — " : "") + `Paid as part of a combined ${fmt.money(sum)} payment with ${size-1} other invoice${size>2?'s':''} (${candidate.desc})`;
+              i.reason = `Paid on ${fmt.date(candidate.date)} as part of a combined ${fmt.money(sum)} payment (${candidate.desc}).`;
             });
             claimed.add(candidate.id);
             matched += combo.length;
@@ -5280,6 +5405,7 @@ const RecurringPayments = {
   remove(id){
     DB.data.recurringPayments = DB.data.recurringPayments.filter(r=>r.id!==id);
     DB.save();
+    DB.deleteRecurringFromFirestore(id); // batched save only adds/updates — deletion needs this explicit call or the record silently persists in the cloud
     this._recalcEverything();
     this.render();
   },
@@ -5303,6 +5429,7 @@ const RecurringPayments = {
     }
     DB.data.recurringPayments = DB.data.recurringPayments.filter(r=>r.id!==id);
     DB.save();
+    DB.deleteRecurringFromFirestore(id); // batched save only adds/updates — deletion needs this explicit call or the record silently persists in the cloud
     this._recalcEverything();
     this.render();
     toast(`"${label}" permanently removed — won't reappear on future imports`);
