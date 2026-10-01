@@ -454,6 +454,7 @@ td.num.debit{color:var(--red-600);}
       <button data-view="forecast"><span class="icon">&#8599;</span> Cash Flow Forecast</button>
       <button data-view="recurring"><span class="icon">&#8635;</span> Recurring Payments</button>
       <button data-view="calendar"><span class="icon">&#128197;</span> Calendar</button>
+      <button data-view="discount"><span class="icon">&#9981;</span> Fuel Discount Days</button>
       <button data-view="reports"><span class="icon">&#128196;</span> Reports</button>
       <button data-view="import"><span class="icon">&#8595;</span> Statement Import</button>
       <button data-view="transactions"><span class="icon">&#8801;</span> Transactions</button>
@@ -856,6 +857,11 @@ td.num.debit{color:var(--red-600);}
       </details>
     </section>
 
+    <!-- ================= FUEL DISCOUNT DAYS ================= -->
+    <section class="view" id="view-discount">
+      <div id="discountDaysBody"></div>
+    </section>
+
     <!-- ================= CALENDAR ================= -->
     <section class="view" id="view-calendar">
       <div class="card" style="margin-bottom:16px;">
@@ -1159,7 +1165,7 @@ const DB = {
     return this.data;
   },
 
-  CURRENT_SCHEMA_VERSION: 11,
+  CURRENT_SCHEMA_VERSION: 12,
   MIGRATIONS: [
     {
       // v1: the original flat field-fill, formalized as a real migration
@@ -1409,8 +1415,27 @@ const DB = {
           }
         });
       }
+    },
+    {
+      // v12: Fuel Discount Days. Seeds the business's real historical
+      // 15c/L discount days, supplied directly by the owner, as evidence
+      // for the EFTPOS discount-day model. The gap between 5 May 2026 and
+      // the earlier dates is intentional (discounts paused while fuel
+      // prices were high) — nothing is inferred to fill it. Stored in the
+      // existing meta document (cashFlowApp/data → fuelDiscountDays); no
+      // other Firestore collection or field is touched. Never duplicates a
+      // date already present.
+      toVersion: 12,
+      migrate(data){
+        if(!Array.isArray(data.fuelDiscountDays)) data.fuelDiscountDays = [];
+        DB.HISTORICAL_DISCOUNT_DAYS.forEach(date=>{
+          if(!data.fuelDiscountDays.some(d=>d.date===date)) data.fuelDiscountDays.push({ id: uid(), date, addedAt: new Date().toISOString(), source: "historical-seed" });
+        });
+        data.fuelDiscountDays.sort((a,b)=>a.date.localeCompare(b.date));
+      }
     }
   ],
+  HISTORICAL_DISCOUNT_DAYS: ["2025-12-10","2025-12-23","2026-01-21","2026-02-04","2026-02-20","2026-05-05","2026-05-29","2026-06-12","2026-06-30","2026-07-09","2026-07-21","2026-08-05","2026-08-21","2026-09-02","2026-09-18"],
 
   runMigrations(){
     if(this.data.schemaVersion===undefined) this.data.schemaVersion = 0;
@@ -1450,7 +1475,8 @@ const DB = {
       aliasMappings: [], // {alias, normalizedAlias, canonicalPayee, direction, confidence, matchingMethod, evidenceTransactionIds, firstSeen, lastSeen, autoMatched, manuallyLocked, createdAt, updatedAt} — persistent counterparty identity, survives every future import
       rebuildAuditLog: [], // persistent history of every rebuildFromEvidence() run — {timestamp, sourceId, transactionsProcessed, seriesCreated, seriesUpdated, seriesRetainedManual, aliasesCreated, validationFailures, validationFixed} — survives page refresh/reload
       excludedCanonicals: [], // {canonicalPayee, direction, excludedAt, reason} — permanently blocks a canonical identity from ever forming a recurring series again, regardless of future evidence; checked in rebuildFromEvidence()'s grouping step
-      schemaVersion: 11, // fresh databases start at the current version — only legacy data needs to migrate
+      schemaVersion: 12, // fresh databases start at the current version — only legacy data needs to migrate
+      fuelDiscountDays: DB.HISTORICAL_DISCOUNT_DAYS.map(date=>({ id: uid(), date, addedAt: new Date().toISOString(), source: "historical-seed" })), // {id, date, addedAt, source} — past dates are EFTPOS evidence, future dates are forecast
       migrationHistory: [] // {fromVersion, toVersion, ranAt, status, error} — one entry per migration actually executed
       // recurringPayments items may also carry: startDate, endDate (for fixed-term
       // commitments like a vehicle loan), scheduledAmount + scheduledDate (a future
@@ -1947,9 +1973,23 @@ const Forecast = {
   // behaviour every time "today" advances with a fresh import — no
   // separate re-training step needed.
   weekdayAverages(lookbackDays = 90){
+    return this._weekdayResidualCore(lookbackDays).avg;
+  },
+
+  // EFTPOS income already embedded inside weekdayAverages()'s residual, per
+  // weekday — computed over EXACTLY the same dates, exclusions and
+  // recency weights. Fuel Discount Days uses this to REPLACE the normal
+  // EFTPOS a weekday already carries with the discount-day EFTPOS figure,
+  // rather than stacking a discount amount on top of it (no double-count).
+  weekdayEftposEmbedded(lookbackDays = 90){
+    return this._weekdayResidualCore(lookbackDays).eftposAvg;
+  },
+
+  _weekdayResidualCore(lookbackDays = 90){
     const today = DateUtil.todayISO();
     const cutoff = DateUtil.addDays(today, -lookbackDays);
     const byDate = {};
+    const eftposByDate = {};
     const recurringNames = DB.data.recurringPayments.filter(r=>r.enabled && !(r.direction && r.direction!=="out")).map(r=>(r.matchKeyword||r.name).toLowerCase()); // CRITICAL Phase 4 fix: only exclude OUTGOING recurring items from this baseline — those get properly re-added via recurringAmountOnDate()'s subtraction. An "in" (income) item has no such add-back pathway, so excluding it here with no compensation would make recognized recurring income silently vanish from the forecast entirely.
     DB.data.transactions.forEach(t=>{
       if(t.date < cutoff || t.date > today) return;
@@ -1965,22 +2005,24 @@ const Forecast = {
       const isRecurringMatch = recurringNames.some(n => n && (descLower.includes(n) || (t.opname && t.opname.toLowerCase().includes(n))));
       if(isRecurringMatch) return;
       byDate[t.date] = (byDate[t.date]||0) + t.amount;
+      if(t.category===FuelDiscountDays.EFTPOS_CATEGORY && t.credit>0) eftposByDate[t.date] = (eftposByDate[t.date]||0) + t.credit;
     });
     const HALF_LIFE_DAYS = 45;
     const byWeekday = {0:[],1:[],2:[],3:[],4:[],5:[],6:[]};
     Object.entries(byDate).forEach(([d,net])=>{
       const daysAgo = Math.max(0, (new Date(today+"T00:00:00") - new Date(d+"T00:00:00")) / 86400000);
       const weight = Math.pow(0.5, daysAgo / HALF_LIFE_DAYS);
-      byWeekday[new Date(d+"T00:00:00").getDay()].push({ net, weight });
+      byWeekday[new Date(d+"T00:00:00").getDay()].push({ net, eftpos: eftposByDate[d]||0, weight });
     });
-    const avg = {};
+    const avg = {}, eftposAvg = {};
     for(let i=0;i<7;i++){
       const vals = byWeekday[i];
-      if(!vals.length){ avg[i]=0; continue; }
+      if(!vals.length){ avg[i]=0; eftposAvg[i]=0; continue; }
       const wsum = vals.reduce((a,v)=>a+v.weight,0);
       avg[i] = vals.reduce((a,v)=>a+v.net*v.weight,0) / wsum;
+      eftposAvg[i] = vals.reduce((a,v)=>a+v.eftpos*v.weight,0) / wsum;
     }
-    return avg;
+    return { avg, eftposAvg };
   },
 
   // ================================================================
@@ -2130,7 +2172,9 @@ const Forecast = {
       return { amount: real, isActual: true };
     }
     const wd = new Date(dateISO+"T00:00:00").getDay();
-    return { amount: this.weekdayIncomeAverages()[wd], isActual: false };
+    // a discount day swaps that weekday's normal EFTPOS for the discount-day figure (same replacement as projectBalance)
+    const discountExtra = FuelDiscountDays.isDiscountDate(dateISO) ? FuelDiscountDays.upliftOnDate(dateISO, this.weekdayEftposEmbedded()) : 0;
+    return { amount: this.weekdayIncomeAverages()[wd] + discountExtra, isActual: false, discountDay: discountExtra!==0 };
   },
 
   // ================================================================
@@ -2153,13 +2197,17 @@ const Forecast = {
     const fuelMap = {};
     this.predictFuelEvents(anchor.date, dateISO).forEach(e=>{ fuelMap[e.date] = e.amount; });
 
-    let residualTotal = 0, fuelTotal = 0, recurringTotal = 0;
+    let residualTotal = 0, fuelTotal = 0, recurringTotal = 0, discountTotal = 0;
     const recurringBreakdown = {};
     let cursor = anchor.date;
+    const discountActive = FuelDiscountDays.anyUpcomingBetween(cursor, dateISO);
+    const discountModel = discountActive ? FuelDiscountDays.model() : null;
+    const eftposEmbedded = discountActive ? this.weekdayEftposEmbedded() : null;
     while(cursor < dateISO){
       cursor = DateUtil.addDays(cursor, 1);
       const wd = new Date(cursor+"T00:00:00").getDay();
       residualTotal += avg[wd];
+      if(discountActive) discountTotal += FuelDiscountDays.upliftOnDate(cursor, eftposEmbedded, discountModel); // same adjustment as projectBalance()
       DB.data.recurringPayments.forEach(r=>{
         if(!r.enabled) return;
         if(r.direction && r.direction!=="out") return; // same fix as recurringAmountOnDate() — this breakdown must reconcile exactly with the real forecast math, including which series it's allowed to include at all
@@ -2174,7 +2222,7 @@ const Forecast = {
     }
     const commitments = this._allCommitments().filter(c => c.dueDateAdjusted<=dateISO && c.dueDateAdjusted>=anchor.date);
     const commitmentsTotal = commitments.reduce((s,c)=>s+c.amount,0);
-    const endBalance = anchor.balance + residualTotal - recurringTotal - fuelTotal - commitmentsTotal;
+    const endBalance = anchor.balance + residualTotal + discountTotal - recurringTotal - fuelTotal - commitmentsTotal;
 
     // income category context (Phase 3) — informational only, since it isn't
     // literally subtracted out of the residual by the current calculation;
@@ -2184,7 +2232,7 @@ const Forecast = {
     return {
       date: dateISO, isActual: false,
       startDate: anchor.date, startBalance: anchor.balance, anchorSource: anchor.source,
-      residual: residualTotal, fuel: fuelTotal, recurring: recurringTotal, recurringBreakdown,
+      residual: residualTotal, discountDays: discountTotal, fuel: fuelTotal, recurring: recurringTotal, recurringBreakdown,
       commitments: commitmentsTotal, commitmentsList: commitments,
       endBalance, confidence: this.confidence(),
       incomeProfiles
@@ -2725,10 +2773,16 @@ const Forecast = {
     const fuelEventMap = {};
     if(targetISO > (anchor.date || today)) this.predictFuelEvents(anchor.date || today, targetISO).forEach(e=>{ fuelEventMap[e.date] = e.amount; });
     let cursor = anchor.date || today;
+    // Fuel Discount Days: only computed when an upcoming discount day falls
+    // inside this projection window, so every other forecast is untouched.
+    const discountActive = FuelDiscountDays.anyUpcomingBetween(cursor, targetISO);
+    const discountModel = discountActive ? FuelDiscountDays.model() : null;
+    const eftposEmbedded = discountActive ? this.weekdayEftposEmbedded() : null;
     let guard = 0; // safety cap — never loop more than ~3 years of days even if a date bug is reintroduced
     while(cursor < targetISO && guard < 1200){
       cursor = DateUtil.addDays(cursor, 1);
       balance += avg[new Date(cursor+"T00:00:00").getDay()];
+      if(discountActive) balance += FuelDiscountDays.upliftOnDate(cursor, eftposEmbedded, discountModel); // lands ON the discount date only — never earlier
       balance -= this.recurringAmountOnDate(cursor);
       if(fuelEventMap[cursor]) balance -= fuelEventMap[cursor];
       guard++;
@@ -2961,12 +3015,16 @@ const Forecast = {
     this.predictFuelEvents(startDate, DateUtil.addDays(startDate, days)).forEach(e=>{ fuelEventMap[e.date] = e.amount; });
     const out = [{ date: startDate, balance }];
     let cursor = startDate;
+    const discountActive = FuelDiscountDays.anyUpcomingBetween(startDate, DateUtil.addDays(startDate, days));
+    const discountModel = discountActive ? FuelDiscountDays.model() : null;
+    const eftposEmbedded = discountActive ? this.weekdayEftposEmbedded() : null;
     for(let i=0;i<days;i++){
       cursor = DateUtil.addDays(cursor,1);
       const wd = new Date(cursor+"T00:00:00").getDay();
       const base = avg[wd];
       const adj = base >= 0 ? base*incomeMult : base; // scale only positive (income-skewed) days
       balance += adj;
+      if(discountActive) balance += FuelDiscountDays.upliftOnDate(cursor, eftposEmbedded, discountModel) * incomeMult; // same replacement adjustment as projectBalance(), scaled by the same income scenario
       balance -= this.recurringAmountOnDate(cursor);
       if(fuelEventMap[cursor]) balance -= fuelEventMap[cursor];
       if(depositByDate[cursor]) balance += depositByDate[cursor];
@@ -4309,6 +4367,162 @@ const ChampionChallenger = {
       DB.data.championModel = { ...prevChampion, lastChallengerRejectedAt: new Date().toISOString(), lastChallengerReason: `Challenger v${versionNum} (avg MAE ${fmt.money(candidate.avgMAE)}) did not beat current Champion (avg MAE ${fmt.money(prevChampion.avgMAE)}) — Champion retained.` };
     }
     return DB.data.championModel;
+  }
+};
+
+/* ================================================================
+   FUEL DISCOUNT DAYS — 15c/L discount days lift EFTPOS income well above
+   a normal day. One list (DB.data.fuelDiscountDays) holds every discount
+   day: dates on/before the last imported statement are HISTORICAL
+   EVIDENCE (their real EFTPOS income builds the model); later dates are
+   UPCOMING and get an automatically calculated EFTPOS forecast. Nothing
+   here is hard-coded — every figure is recomputed from the actual
+   transactions on demand, so re-imports or category corrections flow
+   straight through, and an upcoming day automatically becomes evidence
+   once its real statement is imported.
+   ================================================================ */
+const FuelDiscountDays = {
+  EFTPOS_CATEGORY: "EFTPOS Income",
+  MIN_SAMPLES: 3,
+  BASELINE_LOOKBACK_DAYS: 365,
+
+  _list(){ if(!Array.isArray(DB.data.fuelDiscountDays)) DB.data.fuelDiscountDays = []; return DB.data.fuelDiscountDays; },
+  isDiscountDate(dateISO){ return this._list().some(d=>d.date===dateISO); },
+
+  // Real EFTPOS income per date, from the existing EFTPOS Income classification.
+  _eftposByDate(){
+    const m = {};
+    DB.data.transactions.forEach(t=>{ if(t.category===this.EFTPOS_CATEGORY && t.credit>0) m[t.date] = (m[t.date]||0) + t.credit; });
+    return m;
+  },
+
+  model(){
+    const today = DateUtil.todayISO();
+    const S = RecurringPayments._stats;
+    const eft = this._eftposByDate();
+    const txDates = DB.data.transactions.map(t=>t.date).sort();
+    const firstData = txDates[0] || today;
+    const discountSet = new Set(this._list().map(d=>d.date));
+    const historical = this._list().filter(d=>d.date<=today).map(d=>d.date).sort();
+    const samples = [], missing = [];
+    historical.forEach(date=>{
+      if(date < firstData){ missing.push({date, reason:"before imported history"}); return; }
+      if(!eft[date]){ missing.push({date, reason:"no EFTPOS income found that day"}); return; }
+      samples.push({date, eftpos: eft[date]});
+    });
+    const baseStart = DateUtil.addDays(today, -this.BASELINE_LOOKBACK_DAYS);
+    const normalDays = Object.entries(eft).filter(([d,v])=>d>=baseStart && d<=today && v>0 && !discountSet.has(d));
+    const normalAvg = normalDays.length ? S.mean(normalDays.map(([,v])=>v)) : 0;
+    const discountAvg = samples.length ? S.mean(samples.map(x=>x.eftpos)) : 0;
+    const valid = samples.length >= this.MIN_SAMPLES && normalDays.length > 0;
+    return {
+      valid, samples, missing, discountAvg, normalAvg, normalDayCount: normalDays.length,
+      uplift: discountAvg - normalAvg,
+      upliftPct: normalAvg ? (discountAvg - normalAvg) / normalAvg : null,
+      min: samples.length ? Math.min(...samples.map(x=>x.eftpos)) : 0,
+      max: samples.length ? Math.max(...samples.map(x=>x.eftpos)) : 0
+    };
+  },
+
+  // Expected EFTPOS income for a discount day (the historical discount-day average).
+  forecastFor(dateISO, model){
+    const m = model || this.model();
+    return m.valid ? Math.round(m.discountAvg*100)/100 : null;
+  },
+
+  // Amount to ADD to a forecast day on top of the weekday residual. The
+  // residual already carries that weekday's normal EFTPOS (eftposEmbedded),
+  // so this is the replacement difference — discount EFTPOS minus the
+  // EFTPOS already counted — never the full discount amount stacked on top.
+  upliftOnDate(dateISO, eftposEmbedded, model){
+    if(dateISO <= DateUtil.todayISO()) return 0; // real history already contains what actually happened
+    if(!this.isDiscountDate(dateISO)) return 0;
+    const m = model || this.model();
+    if(!m.valid) return 0;
+    const wd = new Date(dateISO+"T00:00:00").getDay();
+    return m.discountAvg - (eftposEmbedded[wd]||0);
+  },
+
+  // True when at least one upcoming discount day falls in (fromISO, toISO]
+  // — lets the forecast skip all of this work when it's irrelevant.
+  anyUpcomingBetween(fromISO, toISO){
+    return this._list().some(d=>d.date>fromISO && d.date<=toISO);
+  },
+
+  add(){
+    const input = document.getElementById("discountDateInput");
+    const date = input ? FuelPlanner._parseDMY(input.value) : null;
+    if(!date){ toast("Pick a discount date first"); return; }
+    if(this.isDiscountDate(date)){ toast(`${fmt.date(date)} is already a discount day`); return; }
+    this._list().push({ id: uid(), date, addedAt: new Date().toISOString(), source: "user" });
+    this._list().sort((a,b)=>a.date.localeCompare(b.date));
+    DB.save();
+    RecurringPayments._recalcEverything(); // pending invoices/payments re-assessed with the new expected income
+    if(input) input.value = "";
+    this.render();
+    const f = this.forecastFor(date);
+    toast(f!==null ? `Added ${fmt.date(date)} — expected EFTPOS ${fmt.money(f)}` : `Added ${fmt.date(date)}`);
+  },
+
+  remove(id){
+    const rec = this._list().find(d=>d.id===id);
+    if(!rec) return;
+    if(!confirm(`Remove the discount day on ${fmt.date(rec.date)}?\n\nIts expected EFTPOS income will be removed from the forecast.`)) return;
+    DB.data.fuelDiscountDays = this._list().filter(d=>d.id!==id);
+    DB.save();
+    RecurringPayments._recalcEverything();
+    this.render();
+  },
+
+  render(){
+    const wrap = document.getElementById("discountDaysBody");
+    if(!wrap) return;
+    const today = DateUtil.todayISO();
+    const m = this.model();
+    const embedded = Forecast.weekdayEftposEmbedded();
+    const upcoming = this._list().filter(d=>d.date>today);
+    const pct = m.upliftPct===null ? "–" : `${m.upliftPct>=0?'+':''}${(m.upliftPct*100).toFixed(0)}%`;
+    const stats = `
+      <div class="grid cols-4">
+        <div class="card"><div class="stat-label">Historical discount-day average EFTPOS</div><div class="stat-value">${m.samples.length?fmt.money(m.discountAvg):'–'}</div><div class="stat-sub">${m.samples.length} discount day${m.samples.length===1?'':'s'} · range ${fmt.money(m.min)}–${fmt.money(m.max)}</div></div>
+        <div class="card"><div class="stat-label">Normal EFTPOS baseline</div><div class="stat-value">${fmt.money(m.normalAvg)}</div><div class="stat-sub">average of ${m.normalDayCount} non-discount EFTPOS days, last 12 months</div></div>
+        <div class="card"><div class="stat-label">Typical additional discount-day EFTPOS</div><div class="stat-value pos">${m.samples.length?fmt.money(m.uplift):'–'}</div><div class="stat-sub">discount-day average minus normal baseline</div></div>
+        <div class="card"><div class="stat-label">Discount-day EFTPOS uplift</div><div class="stat-value">${m.samples.length?pct:'–'}</div><div class="stat-sub">vs the normal EFTPOS baseline</div></div>
+      </div>
+      ${m.valid ? "" : `<div class="stat-sub" style="color:var(--amber-600);font-weight:600;margin-top:8px;">⚠ Need at least ${this.MIN_SAMPLES} past discount days with imported EFTPOS data before upcoming discount days can affect the forecast.</div>`}`;
+    const addForm = `
+      <div class="card" style="margin-top:16px;">
+        <div class="section-title" style="margin-top:0;">Add an Upcoming Discount Day <span class="hint">enter only the date — the expected EFTPOS income is calculated automatically</span></div>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <input type="date" id="discountDateInput">
+          <button class="btn primary" onclick="FuelDiscountDays.add()">Add Discount Day</button>
+        </div>
+      </div>`;
+    const upRows = upcoming.map(d=>{
+      const wd = new Date(d.date+"T00:00:00").getDay();
+      const f = this.forecastFor(d.date, m);
+      const extra = m.valid ? m.discountAvg - (embedded[wd]||0) : null;
+      return `<tr><td>${fmt.date(d.date)}</td><td>${RecurringPayments.WEEKDAY_NAMES[wd]}</td>
+        <td style="text-align:right;">${f!==null?fmt.money(f):'–'}</td>
+        <td style="text-align:right;">${extra!==null?fmt.money(extra):'–'}</td>
+        <td><span class="pill ok"><span class="dot"></span>Upcoming</span></td>
+        <td><button class="fi-del" style="position:static;" onclick="FuelDiscountDays.remove('${d.id}')">Remove ✕</button></td></tr>`;
+    }).join("");
+    const upcomingTable = `
+      <div class="card" style="margin-top:16px;">
+        <div class="section-title" style="margin-top:0;">Upcoming Discount Days <span class="hint">included in the daily cash-flow forecast and payment-safety checks</span></div>
+        ${upcoming.length ? `<div style="overflow-x:auto;"><table><thead><tr><th>Discount Date</th><th>Day</th><th style="text-align:right;">Forecast EFTPOS Income</th><th style="text-align:right;">Added vs normal that weekday</th><th>Status</th><th></th></tr></thead><tbody>${upRows}</tbody></table></div>`
+          : `<div class="stat-sub">No upcoming discount days yet.</div>`}
+        <div class="stat-sub" style="margin-top:8px;">"Added vs normal that weekday" is exactly what the forecast adds on that date: the normal EFTPOS already built into that weekday's forecast is replaced by the discount-day figure, never counted twice. The income only appears on the discount date itself.</div>
+      </div>`;
+    const histRows = m.samples.map(x=>`<tr><td>${fmt.date(x.date)}</td><td style="text-align:right;">${fmt.money(x.eftpos)}</td><td style="text-align:right;">${fmt.money(x.eftpos-m.normalAvg)}</td><td><span class="pill"><span class="dot"></span>Passed</span></td></tr>`).join("")
+      + m.missing.map(x=>`<tr><td>${fmt.date(x.date)}</td><td colspan="2" class="stat-sub">${escapeHtml(x.reason)} — not used</td><td><span class="pill"><span class="dot"></span>Passed</span></td></tr>`).join("");
+    const histTable = `
+      <div class="card" style="margin-top:16px;">
+        <div class="section-title" style="margin-top:0;">Historical Discount Days <span class="hint">actual EFTPOS income from your imported bank statements</span></div>
+        <div style="overflow-x:auto;"><table><thead><tr><th>Date</th><th style="text-align:right;">Actual EFTPOS Income</th><th style="text-align:right;">vs Normal Baseline</th><th>Status</th></tr></thead><tbody>${histRows||'<tr><td colspan="4" class="stat-sub">No past discount days recorded.</td></tr>'}</tbody></table></div>
+      </div>`;
+    wrap.innerHTML = stats + addForm + upcomingTable + histTable;
   }
 };
 
@@ -6144,6 +6358,7 @@ const App = {
       forecast:["Cash Flow Forecast","7 to 180-day projections, Friday deposits, and scenario planning"],
       recurring:["Recurring Payments","Wages, monthly creditor runs, and auto-detected repeating direct debits"],
       calendar:["Calendar","Deliveries, due dates, deposits, recurring payments and public holidays"],
+      discount:["Fuel Discount Days","15c discount days — historical EFTPOS uplift and upcoming days in the forecast"],
       reports:["Reports","Period summaries, forecast accuracy, and exports"],
       import:["Statement Import","Drop Kiwibank CSV/PDF exports to build your permanent history"],
       transactions:["Transactions","Full ledger across every imported statement"],
@@ -6161,6 +6376,7 @@ const App = {
     if(view==="forecast") Forecast_renderView();
     if(view==="recurring") RecurringPayments.render();
     if(view==="calendar") Calendar.render();
+    if(view==="discount") FuelDiscountDays.render();
     if(view==="reports") Reports.render();
   },
   renderAll(){
@@ -6364,6 +6580,7 @@ function Forecast_renderExplain(){
       <tbody>
         <tr><td>Starting balance (${fmt.date(exp.startDate)}${exp.anchorSource==='manual-check'?', confirmed':''})</td><td class="num" style="font-weight:700;">${fmt.money(exp.startBalance)}</td></tr>
         <tr><td>+ Residual daily cash flow (net operating flow, income, bank fees — everything not itemised below)</td><td class="num credit">${fmt.money(exp.residual)}</td></tr>
+        ${exp.discountDays ? `<tr><td>+ Fuel discount days (extra EFTPOS on upcoming discount days, replacing that weekday's normal EFTPOS)</td><td class="num credit">${fmt.money(exp.discountDays)}</td></tr>` : ""}
         <tr><td>– Recurring payments${recurRows?'':''}</td><td class="num debit">${fmt.money(exp.recurring)}</td></tr>
         ${recurRows}
         <tr><td>– Fuel (predicted, from your real purchasing pattern)</td><td class="num debit">${fmt.money(exp.fuel)}</td></tr>
