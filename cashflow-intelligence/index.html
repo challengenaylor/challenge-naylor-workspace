@@ -1138,10 +1138,35 @@ const DB = {
         // whatever is still embedded in the meta document (the old
         // location) in that case, and the next save() call migrates it
         // into the new subcollections automatically.
+        // Read the subcollection copies, then keep whichever source
+        // actually has the most complete data. This "never shrink"
+        // guard exists because of a real, confirmed data-loss incident:
+        // the subcollection writes were silently failing (Firestore
+        // rejects any document containing an `undefined` field value,
+        // and these records had 283 of them), so the subcollections were
+        // left empty/partial while the meta document had already stopped
+        // carrying these arrays. The next load then resurrected a tiny
+        // stale remnant, wiping ~145 detected series and ~315 learned
+        // aliases. Taking the LARGER of the two sources makes a partial
+        // or failed subcollection write incapable of destroying good data.
         const recurSnap = await fbDb.collection("cashFlowApp").doc("data").collection("recurringPayments").get();
-        if(!recurSnap.empty) this.data.recurringPayments = recurSnap.docs.map(d => d.data());
+        const recurSub = recurSnap.docs.map(d => d.data());
+        if(recurSub.length >= (this.data.recurringPayments||[]).length) this.data.recurringPayments = recurSub;
         const aliasSnap = await fbDb.collection("cashFlowApp").doc("data").collection("aliasMappings").get();
-        if(!aliasSnap.empty) this.data.aliasMappings = aliasSnap.docs.map(d => d.data());
+        const aliasSub = aliasSnap.docs.map(d => d.data());
+        if(aliasSub.length >= (this.data.aliasMappings||[]).length) this.data.aliasMappings = aliasSub;
+
+        // Last-resort recovery: if the cloud copy came back emptier than
+        // the local cache, the local cache is the better truth — use it
+        // rather than letting a bad cloud read destroy the user's data.
+        try{
+          const rawLocal = localStorage.getItem(CONFIG.storageKey);
+          if(rawLocal){
+            const localData = JSON.parse(rawLocal);
+            if((localData.recurringPayments||[]).length > (this.data.recurringPayments||[]).length) this.data.recurringPayments = localData.recurringPayments;
+            if((localData.aliasMappings||[]).length > (this.data.aliasMappings||[]).length) this.data.aliasMappings = localData.aliasMappings;
+          }
+        }catch(e2){ /* a damaged local cache must never block a successful cloud load */ }
       } else {
         this.data = this._empty();
       }
@@ -1437,7 +1462,41 @@ const DB = {
   ],
   HISTORICAL_DISCOUNT_DAYS: ["2025-12-10","2025-12-23","2026-01-21","2026-02-04","2026-02-20","2026-05-05","2026-05-29","2026-06-12","2026-06-30","2026-07-09","2026-07-21","2026-08-05","2026-08-21","2026-09-02","2026-09-18"],
 
+  // Firestore REJECTS any document containing a field whose value is
+  // `undefined` — the write throws before it is ever sent. That is the
+  // confirmed cause of the repeated "saved locally but couldn't sync"
+  // errors: these records carried 283 undefined fields, so every
+  // recurring/alias batch write aborted. Stripping them here makes the
+  // writes valid. A missing key and an undefined value mean the same
+  // thing to this app, so nothing is lost by removing them.
+  _stripUndefined(obj){
+    if(Array.isArray(obj)) return obj.map(v=>this._stripUndefined(v));
+    if(obj && typeof obj === "object"){
+      const out = {};
+      Object.keys(obj).forEach(k=>{ if(obj[k] !== undefined) out[k] = this._stripUndefined(obj[k]); });
+      return out;
+    }
+    return obj;
+  },
+
+  // Guarantees every array-shaped field actually IS an array before any
+  // code touches it. rebuildFromEvidence() -> recordAlias() does
+  // `DB.data.aliasMappings.find(...)`, which threw a TypeError the moment
+  // aliasMappings came back undefined from a bad load — killing the
+  // entire recurring-detection engine on every single import, which is
+  // why detected series stopped matching at all. A missing array must
+  // degrade to "empty", never to a crash.
+  ARRAY_FIELDS: ["transactions","statements","fuelInvoices","otherPayments","recurringPayments","cashDeposits","balanceChecks","predictionMemory","aliasMappings","rebuildAuditLog","excludedCanonicals","migrationHistory","fuelDiscountDays"],
+  normalizeShape(){
+    if(!this.data || typeof this.data !== "object") this.data = this._empty();
+    this.ARRAY_FIELDS.forEach(f=>{ if(!Array.isArray(this.data[f])) this.data[f] = []; });
+    if(!this.data.settings || typeof this.data.settings !== "object") this.data.settings = { overdraftLimit: 85000 };
+    if(this.data.settings.overdraftLimit == null) this.data.settings.overdraftLimit = 85000;
+    if(!this.data.categoryOverrides || typeof this.data.categoryOverrides !== "object") this.data.categoryOverrides = {};
+  },
+
   runMigrations(){
+    this.normalizeShape(); // must run FIRST — a migration that touches a missing array would otherwise throw and abort the whole chain
     if(this.data.schemaVersion===undefined) this.data.schemaVersion = 0;
     if(!Array.isArray(this.data.migrationHistory)) this.data.migrationHistory = [];
     const alreadySucceeded = new Set(this.data.migrationHistory.filter(m=>m.status==="success").map(m=>m.toVersion));
@@ -1510,7 +1569,7 @@ const DB = {
     if(typeof fbDb === "undefined") return;
     const { transactions, recurringPayments, aliasMappings, ...meta } = this.data; // all three live in their own subcollections, never duplicated in this doc — recurringPayments/aliasMappings moved out for the same reason transactions always was: keeping this single document safely under Firestore's 1MB limit
     try{
-      await fbDb.collection("cashFlowApp").doc("data").set(meta);
+      await fbDb.collection("cashFlowApp").doc("data").set(this._stripUndefined(meta));
     }catch(e){
       console.error("Firestore sync failed", e);
       if(typeof toast === "function") toast("⚠ Saved locally but couldn't sync to the live database — check your connection.");
@@ -1534,7 +1593,7 @@ const DB = {
         const batch = fbDb.batch();
         recurring.slice(i,i+CHUNK).forEach(r=>{
           const ref = fbDb.collection("cashFlowApp").doc("data").collection("recurringPayments").doc(r.id);
-          batch.set(ref, r);
+          batch.set(ref, this._stripUndefined(r));
         });
         await batch.commit();
       }
@@ -1544,7 +1603,7 @@ const DB = {
         aliases.slice(i,i+CHUNK).forEach(a=>{
           const docId = ((a.normalizedAlias||"")+"_"+(a.direction||"out")).replace(/[^a-zA-Z0-9_-]/g,"_").slice(0,400) || uid();
           const ref = fbDb.collection("cashFlowApp").doc("data").collection("aliasMappings").doc(docId);
-          batch.set(ref, a);
+          batch.set(ref, this._stripUndefined(a));
         });
         await batch.commit();
       }
@@ -1579,7 +1638,7 @@ const DB = {
         const batch = fbDb.batch();
         newTx.slice(i, i+CHUNK).forEach(t=>{
           const ref = fbDb.collection("cashFlowApp").doc("data").collection("transactions").doc(t.id);
-          batch.set(ref, t);
+          batch.set(ref, this._stripUndefined(t));
         });
         await batch.commit();
       }
@@ -3328,7 +3387,21 @@ const Calendar = {
           actualDate: null, actualAmount: null, actualTxId: null
         };
 
-        const tol = r.dateToleranceDays != null ? r.dateToleranceDays : 3;
+        // Matching tolerance. This previously used ONLY the legacy,
+        // hand-editable `dateToleranceDays` field (default 3), which
+        // silently ignored the engine's own evidence-based
+        // `dateTolerance` (5 for monthly, 2 for weekly, proportionate
+        // for other cadences). A monthly bill paid 5 days early — e.g.
+        // Meridian expected 5 Oct but debited 30 Sep — therefore fell
+        // OUTSIDE the ±3 window and was reported as unpaid even though
+        // the real payment was sitting right there in the statement.
+        // The engine's value is the authoritative one; the legacy field
+        // is honoured only when a user has actually set it, and the
+        // wider of the two always wins so a stale narrow default can
+        // never hide a genuine payment.
+        const engineTol = r.dateTolerance != null ? r.dateTolerance : (r.type === "weekly" ? 2 : 5);
+        const userTol = r.dateToleranceDays != null ? r.dateToleranceDays : 0;
+        const tol = Math.max(engineTol, userTol);
         event.matchingWindowStart = DateUtil.addDays(iso, -tol);
         event.matchingWindowEnd = DateUtil.addDays(iso, tol);
         const windowTx = DB.data.transactions.filter(t=>t.date>=event.matchingWindowStart && t.date<=event.matchingWindowEnd && !claimedTxIds.has(t.id));
@@ -3348,7 +3421,21 @@ const Calendar = {
           event.actualTxId = real.id;
           const daysOff = Math.round((new Date(real.date+"T00:00:00")-new Date(iso+"T00:00:00"))/86400000);
           const offNote = daysOff !== 0 ? ` (${Math.abs(daysOff)}d ${daysOff>0?'late':'early'})` : '';
-          mark(real.date, "paid", `${r.name} ✓ ${fmt.money(real.debit)}${offNote}`, { recurId: r.id, date: real.date, event });
+          // Where the marker is drawn. Previously it was always placed on
+          // the real transaction's date — which silently DELETED the
+          // event from view whenever that date fell in an adjacent month
+          // (a bill due 1 Oct but paid 30 Sep vanished from the October
+          // calendar entirely). The forecast cycle belongs to the month
+          // of its expected date, so a cross-month match keeps its place
+          // on the expected date and simply states when it was actually
+          // paid. Same-month matches are unchanged: they still sit on
+          // the real payment date.
+          const sameMonth = real.date.slice(0,7) === iso.slice(0,7);
+          if(sameMonth){
+            mark(real.date, "paid", `${r.name} ✓ ${fmt.money(real.debit)}${offNote}`, { recurId: r.id, date: real.date, event });
+          } else {
+            mark(iso, "paid", `${r.name} ✓ ${fmt.money(real.debit)} — paid ${fmt.date(real.date)}`, { recurId: r.id, date: iso, event });
+          }
         } else {
           mark(iso, "rec", `${r.name} ${fmt.money(event.expectedAmount)}${r.scheduledDate && iso>=r.scheduledDate ? ' (new)' : ''}`, { recurId: r.id, date: iso, event });
         }
@@ -6334,6 +6421,29 @@ const Settings = {
 const App = {
   async init(){
     await DB.load();
+
+    // SELF-HEALING RECOVERY. The evidence-based recurring engine is the
+    // only thing that produces series carrying a seriesId. If the
+    // database holds real transactions but no such series, the engine's
+    // entire output has been lost (a failed cloud write, a bad restore,
+    // a partial sync) and every detected recurring payment would
+    // silently stop matching until the next manual import. Rebuilding
+    // here is safe and non-destructive: rebuildFromEvidence() derives
+    // everything from the real transactions, merges into existing
+    // records by deterministic seriesId, preserves manually-locked
+    // items, and honours excludedCanonicals — so running it when it
+    // wasn't needed is a no-op rather than a risk.
+    try{
+      const hasTx = DB.data.transactions.length > 0;
+      const hasSeries = DB.data.recurringPayments.some(r => r.seriesId);
+      if(hasTx && !hasSeries){
+        RecurringPayments.seedDefaults();
+        const audit = RecurringPayments.rebuildFromEvidence();
+        DB.save();
+        if(typeof toast === "function" && audit && audit.added.length) toast(`Recovered ${audit.added.length} recurring payment series from your transaction history`);
+      }
+    }catch(e){ console.error("Recurring self-heal failed", e); }
+
     // Every pending fuel invoice / other payment gets recalculated fresh
     // with the CURRENT code on every load — not just when some unrelated
     // action happens to trigger it. This is the actual fix for the class
