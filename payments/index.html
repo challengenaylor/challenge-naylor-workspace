@@ -410,13 +410,17 @@
   </div>
   <div class="btn-row">
     <button class="btn ghost" id="clearBtn">📁 Archive month &amp; start new</button>
-    <button class="btn ghost" id="restoreAugustBtn" style="border-color:#0B6B8A;color:#0B6B8A;" title="One-time recovery from your saved backup">↺ Restore recovered August 2026 data</button>
+    <button class="btn" id="restoreRecoveredBtn" style="display:none;border-color:#0B6B8A;color:#0B6B8A;" title="One-time: puts back the June, August and September 2026 figures recovered from your saved files">↺ Restore recovered months</button>
+    <button class="btn" id="restoreFileBtn" title="Pick a saved Payments .html or backup .json file — any months missing here are added back">⭱ Restore from backup file</button>
+    <input type="file" id="restoreFileInput" accept=".html,.htm,.json" style="display:none">
+    <button class="btn" id="backupJsonBtn" title="Downloads one file containing every month — the current one and all archived months">⭳ Backup all months (.json)</button>
     <button class="btn" id="autosaveBtn">🔗 Connect autosave file</button>
     <button class="btn" id="printBtn">🖨 Print / Export PDF</button>
     <button class="btn primary" id="saveBtn">⭳ Save copy (.html)</button>
   </div>
 </div>
 <div class="autosave-status" id="autosaveStatus"></div>
+<div id="cloudAlert" style="display:none;margin:8px 0;padding:10px 14px;border-radius:10px;background:#7a1f1f;color:#fff;font-size:13px;line-height:1.5;"></div>
 
 <div class="archived-banner" id="archivedBanner">🔒 Viewing an archived month — read-only. Switch to the current tab to make changes.</div>
 <div class="board" id="board"></div>
@@ -733,6 +737,7 @@ document.getElementById('clearBtn').addEventListener('click', ()=>{
   if(!confirm(`Archive "${state.month}" as-is (you'll be able to view it anytime from the tabs above), then start a fresh month?`)) return;
   const nextLabel = prompt('Name for the new month (e.g. "September 2026"):', '');
   if(nextLabel === null) return; // cancelled — nothing archived
+  const archivedMonthName = state.month;
   state.history.unshift({
     month: state.month,
     sections: JSON.parse(JSON.stringify(state.sections))
@@ -741,7 +746,8 @@ document.getElementById('clearBtn').addEventListener('click', ()=>{
   state.month = nextLabel.trim() || state.month;
   viewingIndex = null;
   render();
-  flushSaveNow();
+  cloudDirty = true;
+  flushSaveNow().then(() => { if (!cloudDirty) cloudBackup('backup-archived-' + monthSlug(archivedMonthName)); });
 });
 
 function serializeCurrentHtml(){
@@ -753,7 +759,6 @@ document.getElementById('printBtn').addEventListener('click', ()=>{
   window.print();
 });
 
-document.getElementById('restoreAugustBtn').addEventListener('click', restoreAugust2026);
 
 document.getElementById('saveBtn').addEventListener('click', ()=>{
   const htmlNow = serializeCurrentHtml();
@@ -817,6 +822,7 @@ async function writeToFile(){
 }
 
 function scheduleAutosave(){
+  cloudDirty = true;
   clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => {
     if (fileHandle) writeToFile();
@@ -825,82 +831,275 @@ function scheduleAutosave(){
 }
 
 /* -----------------------------------------------------------------
-   CLOUD SYNC — this is what makes the dashboard's data persistent
-   and shared across every device, independent of the optional
-   local-file autosave above.
+   CLOUD SYNC — the dashboard's data lives in Firestore (paymentsApp/main)
+   and is shared across every device.
+
+   SAFETY RULES (added after the October 2026 data loss):
+   1. Nothing is EVER saved until a cloud load has succeeded this session.
+      If the load fails, saving stays OFF and a red warning is shown.
+   2. A save is refused if the cloud already holds MORE archived months
+      than this page has (so a stale/blank page can never wipe history).
+   3. Tab-close / tab-hide only saves if there is a real unsaved edit.
+   4. Rolling cloud backups: paymentsApp/backup-Mon … backup-Sun (taken at
+      login) and paymentsApp/backup-archived-<month> (taken on archive).
 ----------------------------------------------------------------- */
 const paymentsDocRef = db.collection("paymentsApp").doc("main");
+let cloudLoaded = false;        // true ONLY after a successful read of the cloud
+let cloudDirty = false;         // true when there is an unsaved real edit
+let cloudBlocked = false;       // true if a save was refused for safety
 let cloudSaveInFlight = false;
 let cloudSaveNeedsRerun = false;
 
+function deepCopy(o){ return JSON.parse(JSON.stringify(o)); }
+
+function showToast(msg){
+  let el = document.getElementById('toastMsg');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toastMsg';
+    el.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#0B6B8A;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;z-index:99999;box-shadow:0 6px 24px rgba(0,0,0,.3);max-width:90vw;text-align:center;';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.style.display = 'block';
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.style.display = 'none'; }, 5000);
+}
+
+function showCloudAlert(html){
+  const el = document.getElementById('cloudAlert');
+  el.innerHTML = html;
+  el.style.display = 'block';
+}
+function hideCloudAlert(){ document.getElementById('cloudAlert').style.display = 'none'; }
+
 async function loadFromCloud(){
   try {
-    const snap = await paymentsDocRef.get();
-    if (snap.exists && snap.data().state) {
-      state = snap.data().state;
+    const snap = await paymentsDocRef.get({ source: 'server' });
+    if (snap.exists) {
+      const d = snap.data();
+      if (!d || !validState(d.state)) {
+        console.error('Cloud document exists but its contents are not usable — refusing to continue.');
+        return 'error';
+      }
+      if (!Array.isArray(d.state.history)) d.state.history = [];
+      state = d.state;
     }
+    // (no document yet = genuine first run; the built-in default is used)
+    cloudLoaded = true;
+    return 'ok';
   } catch (e) {
-    console.error("Could not load saved data from the cloud, starting fresh (offline).", e);
+    console.error("Could not load saved data from the cloud.", e);
+    cloudLoaded = false;
+    return 'error';
   }
 }
 
-// FIXED: previously, if a save was already running when another change came
-// in, that second save was silently dropped — the newer data was never
-// retried. Now it queues a re-run instead of losing it.
 async function saveToCloud(){
+  if (!cloudLoaded || cloudBlocked) return;          // rules 1 & 2
   if (cloudSaveInFlight) { cloudSaveNeedsRerun = true; return; }
   cloudSaveInFlight = true;
   try {
-    await paymentsDocRef.set({ state: state });
+    const toSave = deepCopy(state);
+    await db.runTransaction(async (tx) => {
+      const cur = await tx.get(paymentsDocRef);
+      const cs = cur.exists && cur.data() ? cur.data().state : null;
+      const cloudMonths = (cs && Array.isArray(cs.history)) ? cs.history.length : 0;
+      if (cloudMonths > toSave.history.length) {
+        const err = new Error('Cloud has more archived months than this page');
+        err.code = 'guard/fewer-months';
+        throw err;
+      }
+      tx.set(paymentsDocRef, { state: toSave, savedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    });
+    cloudDirty = false;
   } catch (e) {
-    console.error("Could not sync to the cloud — check your internet connection.", e);
+    if (e && e.code === 'guard/fewer-months') {
+      cloudBlocked = true;
+      showCloudAlert('⚠ <b>Save stopped to protect your data.</b> The cloud holds more archived months than this page shows (another device or tab has newer data). Nothing was overwritten. <button class="btn-inline" onclick="location.reload()">Reload the page</button>');
+    } else {
+      console.error("Could not sync to the cloud — check your internet connection.", e);
+    }
   } finally {
     cloudSaveInFlight = false;
-    if (cloudSaveNeedsRerun) {
-      cloudSaveNeedsRerun = false;
-      saveToCloud();
-    }
+    if (cloudSaveNeedsRerun) { cloudSaveNeedsRerun = false; saveToCloud(); }
   }
 }
 
-// Forces an immediate save, bypassing the normal 800ms debounce delay.
-// Used right after archiving, and as a safety net when the tab is closing.
 async function flushSaveNow(){
   clearTimeout(autosaveTimer);
   await saveToCloud();
 }
 
-// Best-effort safety net: if the tab is closed or the browser is backgrounded
-// with an unsaved change still pending, try to push it immediately. This
-// can't be guaranteed to finish (browsers can kill the page at any point
-// during unload), but it closes most of the gap where a fast close after
-// typing could otherwise lose that last edit.
-window.addEventListener('pagehide', () => { flushSaveNow(); });
+// Rule 3: only push on tab hide/close when there is a real unsaved edit.
+window.addEventListener('pagehide', () => { if (cloudDirty) flushSaveNow(); });
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') flushSaveNow();
+  if (document.visibilityState === 'hidden' && cloudDirty) flushSaveNow();
+});
+window.addEventListener('beforeunload', (e) => {
+  if (cloudDirty) { e.preventDefault(); e.returnValue = ''; }
 });
 
-/* -----------------------------------------------------------------
-   ONE-TIME RECOVERY — restores the real August 2026 figures found in
-   a locally saved backup, since the live archived copy was blank due
-   to the save-timing gap fixed above. Merges into the archived August
-   entry only; current month and everything else is untouched. Safe
-   to click more than once — it always re-applies the same recovered
-   numbers rather than duplicating anything.
------------------------------------------------------------------ */
-const RECOVERED_AUGUST_SECTIONS = [{"id": "main", "title": "20th of Month Payments", "companies": [{"name": "Accurate Line Marking", "amount": null}, {"name": "Admirals Holden", "amount": 334.65}, {"name": "Allied Autoparts", "amount": null}, {"name": "Allied Security", "amount": 58.24}, {"name": "ALT NZ", "amount": 399.86}, {"name": "Apex Auto", "amount": 323.6}, {"name": "Arpit", "amount": null}, {"name": "ATL Balancing", "amount": null}, {"name": "Automaster", "amount": null}, {"name": "Automotech", "amount": null}, {"name": "Bayteck", "amount": null}, {"name": "Bhavini", "amount": null}, {"name": "Blairs", "amount": 4921.1}, {"name": "Boot IT", "amount": null}, {"name": "Bridged IT", "amount": 551.8}, {"name": "CarTrack", "amount": 92}, {"name": "City Glass", "amount": null}, {"name": "Commtech Supplies", "amount": null}, {"name": "Competetive Couriers", "amount": null}, {"name": "Coombes Johnston BMW", "amount": null}, {"name": "Crafty Weka Bar", "amount": null}, {"name": "DAM Doors Ltd", "amount": null}, {"name": "Dealer Co NZ", "amount": null}, {"name": "Dealer Co NZ 0891451-01", "amount": 54.48}, {"name": "Drive Smart", "amount": null}, {"name": "Duncan & Ebbett", "amount": null}, {"name": "Ebbett Toyota", "amount": null}, {"name": "Ebbett Waikato", "amount": null}, {"name": "Elgas -  Bottle", "amount": null}, {"name": "Elgas - Auto", "amount": null}, {"name": "Enivor NZ", "amount": null}, {"name": "Enterprise Engineering", "amount": null}, {"name": "Enviro Haz", "amount": null}, {"name": "Fargo Group", "amount": null}, {"name": "Faria Holdings", "amount": null}, {"name": "Firewatch", "amount": null}, {"name": "Fortus Safety", "amount": null}, {"name": "Get Gas", "amount": 1846.29}, {"name": "GJS Tradding (BOTO)", "amount": null}, {"name": "Greame Clunie", "amount": null}, {"name": "Hamilton City - Water", "amount": 136}, {"name": "Herbert Morton", "amount": null}, {"name": "HillWay Enterprises LTD", "amount": 69}, {"name": "Holden Haven", "amount": null}, {"name": "Honda", "amount": null}, {"name": "Incafe", "amount": null}, {"name": "Ingham Motors", "amount": null}, {"name": "Inland Revenue", "amount": null}, {"name": "Jim Wright", "amount": null}, {"name": "Jimmy It UP", "amount": null}, {"name": "King Commercial", "amount": null}, {"name": "Kiwi Baloon Company", "amount": null}, {"name": "Nippon South Pacific (NSPL)", "amount": 616.17}, {"name": "Northland Waste", "amount": 45.49}, {"name": "Nothing Naughty", "amount": 314.01}, {"name": "NZME", "amount": 177.15}, {"name": "Oji Fibre", "amount": null}, {"name": "Patch Rubber", "amount": 214.25}, {"name": "Pickerill", "amount": null}, {"name": "Prima Deli North", "amount": null}, {"name": "Pure Group", "amount": null}, {"name": "Reed Product", "amount": 156.98}, {"name": "Ruka", "amount": 499.34}, {"name": "Sam Computers", "amount": 240.35}, {"name": "Sean Elder Garage", "amount": 40}, {"name": "Shalini D Sharma (Sparky)", "amount": null}, {"name": "Stuff", "amount": 208.8}, {"name": "Summit Hire", "amount": null}, {"name": "Supercheap Auto NZ", "amount": null}, {"name": "The Brand Makers", "amount": null}, {"name": "Titex", "amount": null}, {"name": "Toolshed Hamilton", "amount": null}, {"name": "Tyre Tracks", "amount": null}, {"name": "Tyremax", "amount": null}, {"name": "Tyres 4 U", "amount": null}, {"name": "Value Tyres", "amount": 197.34}, {"name": "VAMS - bluebird", "amount": null}, {"name": "Waikato Auto Locksmith", "amount": null}, {"name": "Waikato Bearings", "amount": null}, {"name": "Waikato Cleaning Supplies", "amount": null}, {"name": "Waikato Commercial Spare", "amount": null}, {"name": "Waikato Kia", "amount": null}, {"name": "Wests Original", "amount": null}, {"name": "Windscreens Aotearoa", "amount": null}, {"name": "Winger Hamilton", "amount": 260.82}]}, {"id": "dd25", "title": "Direct Debits \u2013 25th of Month", "companies": [{"name": "AL Distribution", "amount": null}, {"name": "BakeShack", "amount": null}, {"name": "Black Fern", "amount": 3222.64}, {"name": "British American Tobacco", "amount": null}, {"name": "Capricorn", "amount": 7403.02}, {"name": "HCC - Rent", "amount": null}, {"name": "Imperial Tobacco", "amount": null}, {"name": "MTA", "amount": null}, {"name": "Meridian Energy", "amount": null}, {"name": "Myob", "amount": null}, {"name": "Paymark", "amount": 82.8}, {"name": "Phillip Morris", "amount": null}, {"name": "Red Circle", "amount": 5635.49}, {"name": "Spark", "amount": null}]}, {"id": "dd20", "title": "Direct Debits \u2013 20th of Month (Auto Debit)", "companies": [{"name": "Coregas", "amount": 514.27}, {"name": "Nalsun", "amount": null}, {"name": "Swole Foods", "amount": null}, {"name": "Worldline", "amount": null}]}];
+// Rule 4: backup copies inside Firestore (failure here never blocks the app).
+async function cloudBackup(id){
+  try {
+    await db.collection('paymentsApp').doc(id).set({
+      state: deepCopy(state),
+      savedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      kind: id
+    });
+  } catch (e) { console.warn('Cloud backup copy not saved (' + id + ')', e); }
+}
+function cloudBackupDaily(){
+  if (!state.history || state.history.length === 0) return; // never back up an empty page
+  const day = new Date().toLocaleDateString('en-US', { weekday: 'short' }); // Mon, Tue …
+  cloudBackup('backup-' + day);
+}
+function monthSlug(m){ return String(m || 'month').replace(/[^a-z0-9]+/gi, '-'); }
 
-function restoreAugust2026(){
-  const entry = state.history.find(h => h.month === 'August 2026');
-  if (!entry) {
-    alert('No archived "August 2026" entry was found to restore into.');
+/* -----------------------------------------------------------------
+   RESTORE — from a saved Payments .html copy or a backup .json file.
+   Merges: any month missing here is added back; months already here
+   are kept unless the file holds a fuller copy. Nothing is deleted.
+----------------------------------------------------------------- */
+function validState(s){
+  return !!s && typeof s === 'object' && typeof s.month === 'string' &&
+         Array.isArray(s.sections) && s.sections.every(x => x && Array.isArray(x.companies));
+}
+function monthFilled(secs){
+  let n = 0;
+  (secs || []).forEach(s => (s.companies || []).forEach(c => {
+    if (c.amount !== null && c.amount !== undefined && c.amount !== '') n++;
+  }));
+  return n;
+}
+function isBlankState(s){
+  return (!s.history || s.history.length === 0) && monthFilled(s.sections) === 0;
+}
+function sameMonth(a, b){ return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase(); }
+function monthTime(m){ const d = new Date('1 ' + m); return isNaN(d) ? null : d.getTime(); }
+
+// Merges `backup` into the live `state`. Returns { added:[], kept:[] }.
+function mergeBackupIntoState(backup){
+  const out = { added: [], kept: [] };
+  const incoming = [];
+  (backup.history || []).forEach(h => {
+    if (h && h.month && Array.isArray(h.sections)) incoming.push({ month: h.month, sections: h.sections });
+  });
+  if (monthFilled(backup.sections) > 0) incoming.push({ month: backup.month, sections: backup.sections });
+
+  if (isBlankState(state) && validState(backup)) {      // wiped page: take the backup's live month + layout
+    state.month = backup.month;
+    state.sections = deepCopy(backup.sections);
+    out.added.push(backup.month + ' (current month)');
+  }
+  incoming.forEach(inc => {
+    if (sameMonth(inc.month, state.month)) {
+      if (monthFilled(inc.sections) > monthFilled(state.sections)) {
+        state.sections = deepCopy(inc.sections);
+        out.added.push(inc.month + ' (current month, fuller copy)');
+      } else { out.kept.push(inc.month); }
+      return;
+    }
+    const ex = state.history.find(h => sameMonth(h.month, inc.month));
+    if (!ex) { state.history.push(deepCopy(inc)); out.added.push(inc.month); }
+    else if (monthFilled(inc.sections) > monthFilled(ex.sections)) {
+      ex.sections = deepCopy(inc.sections);
+      out.added.push(inc.month + ' (fuller copy)');
+    } else { out.kept.push(inc.month); }
+  });
+  if (state.history.every(h => monthTime(h.month) !== null)) {   // newest first, like normal archiving
+    state.history.sort((a, b) => monthTime(b.month) - monthTime(a.month));
+  }
+  return out;
+}
+
+function applyRestore(backup, label){
+  if (!cloudLoaded) {
+    alert('Cannot restore right now: this page is not connected to your saved cloud data. Reload the page first.');
     return;
   }
-  if (!confirm('Replace the archived August 2026 figures with the recovered backup? This only affects August — your current month is untouched.')) return;
-  entry.sections = JSON.parse(JSON.stringify(RECOVERED_AUGUST_SECTIONS));
+  const before = deepCopy(state);
+  const out = mergeBackupIntoState(backup);
+  if (out.added.length === 0) {
+    state = before;
+    alert('Nothing to restore — every month in ' + label + ' is already here.\nAlready present: ' + (out.kept.join(', ') || 'none'));
+    return;
+  }
+  const msg = 'Restore from ' + label + '?\n\nWill be added back: ' + out.added.join(', ') +
+              (out.kept.length ? '\nAlready here (kept): ' + out.kept.join(', ') : '') +
+              '\n\nNothing is deleted.';
+  if (!confirm(msg)) { state = before; return; }
+  viewingIndex = null;
+  unlockedArchiveIndex = null;
   render();
-  flushSaveNow().then(() => showToast('August 2026 figures restored and saved to the cloud'));
+  updateRecoveryButton();
+  cloudDirty = true;
+  flushSaveNow().then(() => {
+    if (!cloudDirty) { showToast('Restored and saved to the cloud'); cloudBackup('backup-after-restore'); }
+    else showToast('Restored on screen, but the cloud save failed — check your connection and try again');
+  });
 }
+
+function parseBackupText(text, fileName){
+  const trimmed = text.trim();
+  let obj = null;
+  if (trimmed.startsWith('{')) {
+    obj = JSON.parse(trimmed);
+    if (obj && obj.state) obj = obj.state;
+  } else {
+    const m = text.match(/let state = (\{[\s\S]*?\});\s*\n\s*let mode/);
+    if (!m) throw new Error('This does not look like a saved Payments file.');
+    obj = JSON.parse(m[1]);
+  }
+  if (!validState(obj)) throw new Error('This file does not contain Payments data I can read.');
+  if (!Array.isArray(obj.history)) obj.history = [];
+  return obj;
+}
+
+document.getElementById('restoreFileBtn').addEventListener('click', () => {
+  document.getElementById('restoreFileInput').click();
+});
+document.getElementById('restoreFileInput').addEventListener('change', async (ev) => {
+  const f = ev.target.files && ev.target.files[0];
+  ev.target.value = '';
+  if (!f) return;
+  try {
+    const backup = parseBackupText(await f.text(), f.name);
+    applyRestore(backup, '"' + f.name + '"');
+  } catch (e) {
+    alert('Could not restore from that file: ' + e.message);
+  }
+});
+
+document.getElementById('backupJsonBtn').addEventListener('click', () => {
+  const payload = { format: 'payments-backup-v1', exportedAt: new Date().toISOString(), state: deepCopy(state) };
+  const blob = new Blob([JSON.stringify(payload, null, 1)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'Payments-ALL-MONTHS-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  showToast('Backup downloaded — it contains all ' + (state.history.length + 1) + ' months');
+});
+
+/* ONE-TIME RECOVERY — the June, August and September 2026 figures rebuilt
+   from the user's own saved files after the October 2026 data loss. */
+const RECOVERY_BUNDLE = {"current":{"month":"October 2026","sections":[{"title":"20th of Month Payments","companies":[{"amount":null,"name":"Accurate Line Marking"},{"name":"Admirals Holden","amount":null},{"name":"Allied Autoparts","amount":null},{"name":"Allied Security","amount":null},{"amount":null,"name":"ALT Balancing"},{"name":"ALT NZ","amount":null},{"name":"Apex Auto","amount":null},{"name":"Arpit","amount":null},{"amount":null,"name":"ATL Balancing"},{"name":"Automaster","amount":null},{"amount":null,"name":"Automotech"},{"name":"Bayteck","amount":null},{"amount":null,"name":"Bhavini"},{"amount":null,"name":"Blairs"},{"amount":null,"name":"Boot IT"},{"amount":null,"name":"Bridged IT"},{"name":"CarTrack","amount":null},{"amount":null,"name":"City Glass"},{"name":"Commtech Supplies","amount":null},{"name":"Competetive Couriers","amount":null},{"amount":null,"name":"Cookie Time"},{"amount":null,"name":"Coombes Johnston BMW"},{"name":"Crafty Weka Bar","amount":null},{"amount":null,"name":"DAM Doors Ltd"},{"name":"Dealer Co NZ","amount":null},{"name":"Dealer Co NZ 0891451-01","amount":null},{"amount":null,"name":"Drive Smart"},{"name":"Duncan & Ebbett","amount":null},{"amount":null,"name":"Ebbett Toyota"},{"amount":null,"name":"Ebbett Waikato"},{"name":"Elgas -  Bottle","amount":null},{"name":"Elgas - Auto","amount":null},{"name":"Enivor NZ","amount":null},{"amount":null,"name":"Enterprise Engineering"},{"amount":null,"name":"Enviro Haz"},{"amount":null,"name":"Fargo Group"},{"amount":null,"name":"Faria Holdings"},{"name":"Firewatch","amount":null},{"name":"Fortus Safety","amount":null},{"amount":null,"name":"Full Circle"},{"name":"Get Gas","amount":null},{"amount":null,"name":"GJS Tradding (BOTO)"},{"name":"Greame Clunie","amount":null},{"amount":null,"name":"Hamilton City - Water"},{"amount":null,"name":"Herbert Morton"},{"amount":null,"name":"Holden Haven"},{"name":"Honda","amount":null},{"name":"Incafe","amount":null},{"name":"Ingham Motors","amount":null},{"name":"Inland Revenue","amount":null},{"amount":null,"name":"Jim Wright"},{"amount":null,"name":"Jimmy It UP"},{"name":"King Commercial","amount":null},{"amount":null,"name":"Kiwi Baloon Company"},{"name":"LoveGrove Autoparts","amount":null},{"name":"Nippon South Pacific","amount":null},{"amount":null,"name":"Northland Waste"},{"amount":null,"name":"Nothing Naughty"},{"amount":null,"name":"NZME"},{"name":"Oji Fibre","amount":null},{"name":"Patch Rubber","amount":null},{"amount":null,"name":"Pickerill"},{"name":"Prima Deli North","amount":null},{"amount":null,"name":"Pure Group"},{"amount":null,"name":"Reed Product"},{"amount":null,"name":"Ruka"},{"amount":null,"name":"Sam Computers"},{"name":"Sean Elder Garage","amount":null},{"amount":null,"name":"Shalini D Sharma (Sparky)"},{"name":"Stuff","amount":null},{"amount":null,"name":"Summit Hire"},{"amount":null,"name":"Supercheap Auto NZ"},{"name":"The Brand Makers","amount":null},{"amount":null,"name":"Titex"},{"amount":null,"name":"Toolshed Hamilton"},{"amount":null,"name":"Tyre Tracks"},{"name":"Tyremax","amount":null},{"amount":null,"name":"Tyres 4 U"},{"amount":null,"name":"Value Tyres"},{"amount":null,"name":"VAMS - bluebird"},{"amount":null,"name":"Waikato Auto Locksmith"},{"amount":null,"name":"Waikato Bearings"},{"name":"Waikato Cleaning Supplies","amount":null},{"name":"Waikato Commercial Spare","amount":null},{"amount":null,"name":"Waikato Kia"},{"amount":null,"name":"Wests Original"},{"name":"Windscreens Aotearoa","amount":null},{"name":"Winger Hamilton","amount":null}],"id":"main"},{"companies":[{"name":"AL Distribution","amount":null},{"amount":null,"name":"BakeShack"},{"name":"Black Fern","amount":null},{"name":"British American Tobacco","amount":null},{"name":"Capricorn","amount":null},{"amount":null,"name":"Cookies Time"},{"name":"HCC - Rent","amount":null},{"name":"Imperial Tobacco","amount":null},{"name":"MTA","amount":null},{"name":"Meridian Energy","amount":null},{"amount":null,"name":"Myob"},{"name":"Paymark","amount":null},{"name":"Phillip Morris","amount":null},{"amount":null,"name":"Red Circle"},{"amount":null,"name":"Spark"}],"id":"dd25","title":"Direct Debits \u2013 25th of Month"},{"companies":[{"name":"Coregas","amount":null},{"amount":null,"name":"Nalsun"},{"amount":null,"name":"Swole Foods"},{"name":"Worldline","amount":null}],"title":"Direct Debits \u2013 20th of Month (Auto Debit)","id":"dd20"}]},"history":[{"month":"September 2026","sections":[{"title":"20th of Month Payments","companies":[{"amount":null,"name":"Accurate Line Marking"},{"name":"Admirals Holden","amount":null},{"name":"Allied Autoparts","amount":null},{"name":"Allied Security","amount":58.24},{"amount":null,"name":"ALT Balancing"},{"name":"ALT NZ","amount":818.63},{"name":"Apex Auto","amount":null},{"name":"Arpit","amount":null},{"amount":null,"name":"ATL Balancing"},{"name":"Automaster","amount":null},{"amount":null,"name":"Automotech"},{"name":"Bayteck","amount":null},{"amount":null,"name":"Bhavini"},{"amount":5485.6,"name":"Blairs"},{"amount":null,"name":"Boot IT"},{"amount":551.8,"name":"Bridged IT"},{"name":"CarTrack","amount":92},{"amount":null,"name":"City Glass"},{"name":"Commtech Supplies","amount":null},{"name":"Competetive Couriers","amount":287.39},{"amount":null,"name":"Cookie Time"},{"amount":null,"name":"Coombes Johnston BMW"},{"name":"Crafty Weka Bar","amount":null},{"amount":null,"name":"DAM Doors Ltd"},{"name":"Dealer Co NZ","amount":null},{"name":"Dealer Co NZ 0891451-01","amount":2092.82},{"amount":null,"name":"Drive Smart"},{"name":"Duncan & Ebbett","amount":null},{"amount":416.19,"name":"Ebbett Toyota"},{"amount":null,"name":"Ebbett Waikato"},{"name":"Elgas -  Bottle","amount":null},{"name":"Elgas - Auto","amount":null},{"name":"Enivor NZ","amount":null},{"amount":null,"name":"Enterprise Engineering"},{"amount":null,"name":"Enviro Haz"},{"amount":null,"name":"Fargo Group"},{"amount":null,"name":"Faria Holdings"},{"name":"Firewatch","amount":null},{"name":"Fortus Safety","amount":null},{"amount":null,"name":"Full Circle"},{"name":"Get Gas","amount":919.8},{"amount":null,"name":"GJS Tradding (BOTO)"},{"name":"Greame Clunie","amount":null},{"amount":111.84,"name":"Hamilton City - Water"},{"amount":null,"name":"Herbert Morton"},{"amount":null,"name":"Holden Haven"},{"name":"Honda","amount":26.89},{"name":"Incafe","amount":null},{"name":"Ingham Motors","amount":null},{"name":"Inland Revenue","amount":null},{"amount":null,"name":"Jim Wright"},{"amount":null,"name":"Jimmy It UP"},{"name":"King Commercial","amount":null},{"amount":null,"name":"Kiwi Baloon Company"},{"name":"LoveGrove Autoparts","amount":null},{"name":"Nippon South Pacific","amount":null},{"amount":62.12,"name":"Northland Waste"},{"amount":857.17,"name":"Nothing Naughty"},{"amount":221.43,"name":"NZME"},{"name":"Oji Fibre","amount":null},{"name":"Patch Rubber","amount":228.98},{"amount":155.25,"name":"Pickerill"},{"name":"Prima Deli North","amount":null},{"amount":null,"name":"Pure Group"},{"amount":null,"name":"Reed Product"},{"amount":1423.03,"name":"Ruka"},{"amount":240.35,"name":"Sam Computers"},{"name":"Sean Elder Garage","amount":80},{"amount":null,"name":"Shalini D Sharma (Sparky)"},{"name":"Stuff","amount":214.5},{"amount":null,"name":"Summit Hire"},{"amount":null,"name":"Supercheap Auto NZ"},{"name":"The Brand Makers","amount":null},{"amount":474.33,"name":"Titex"},{"amount":null,"name":"Toolshed Hamilton"},{"amount":null,"name":"Tyre Tracks"},{"name":"Tyremax","amount":700.71},{"amount":null,"name":"Tyres 4 U"},{"amount":775.4,"name":"Value Tyres"},{"amount":null,"name":"VAMS - bluebird"},{"amount":null,"name":"Waikato Auto Locksmith"},{"amount":null,"name":"Waikato Bearings"},{"name":"Waikato Cleaning Supplies","amount":62.56},{"name":"Waikato Commercial Spare","amount":null},{"amount":null,"name":"Waikato Kia"},{"amount":null,"name":"Wests Original"},{"name":"Windscreens Aotearoa","amount":null},{"name":"Winger Hamilton","amount":34.5}],"id":"main"},{"companies":[{"name":"AL Distribution","amount":null},{"amount":null,"name":"BakeShack"},{"name":"Black Fern","amount":3861.14},{"name":"British American Tobacco","amount":null},{"name":"Capricorn","amount":8288.66},{"amount":null,"name":"Cookies Time"},{"name":"HCC - Rent","amount":null},{"name":"Imperial Tobacco","amount":null},{"name":"MTA","amount":null},{"name":"Meridian Energy","amount":null},{"amount":49.45,"name":"Myob"},{"name":"Paymark","amount":null},{"name":"Phillip Morris","amount":null},{"amount":9990.41,"name":"Red Circle"},{"amount":null,"name":"Spark"}],"id":"dd25","title":"Direct Debits \u2013 25th of Month"},{"companies":[{"name":"Coregas","amount":105.52},{"amount":null,"name":"Nalsun"},{"amount":null,"name":"Swole Foods"},{"name":"Worldline","amount":null}],"title":"Direct Debits \u2013 20th of Month (Auto Debit)","id":"dd20"}]},{"month":"August 2026","sections":[{"title":"20th of Month Payments","id":"main","companies":[{"name":"Accurate Line Marking","amount":null},{"name":"Admirals Holden","amount":334.65},{"name":"Allied Autoparts","amount":null},{"name":"Allied Security","amount":58.24},{"name":"ALT NZ","amount":399.86},{"name":"Apex Auto","amount":323.6},{"name":"Arpit","amount":null},{"name":"ATL Balancing","amount":null},{"amount":null,"name":"Automaster"},{"name":"Automotech","amount":null},{"amount":null,"name":"Bayteck"},{"name":"Bhavini","amount":null},{"amount":4921.1,"name":"Blairs"},{"amount":null,"name":"Boot IT"},{"amount":551.8,"name":"Bridged IT"},{"name":"CarTrack","amount":92},{"name":"City Glass","amount":null},{"amount":null,"name":"Commtech Supplies"},{"amount":null,"name":"Competetive Couriers"},{"name":"Coombes Johnston BMW","amount":null},{"amount":null,"name":"Crafty Weka Bar"},{"amount":null,"name":"DAM Doors Ltd"},{"name":"Dealer Co NZ","amount":null},{"amount":54.48,"name":"Dealer Co NZ 0891451-01"},{"amount":null,"name":"Drive Smart"},{"amount":null,"name":"Duncan & Ebbett"},{"name":"Ebbett Toyota","amount":null},{"amount":null,"name":"Ebbett Waikato"},{"name":"Elgas -  Bottle","amount":null},{"name":"Elgas - Auto","amount":null},{"name":"Enivor NZ","amount":null},{"amount":null,"name":"Enterprise Engineering"},{"name":"Enviro Haz","amount":null},{"amount":null,"name":"Fargo Group"},{"amount":null,"name":"Faria Holdings"},{"name":"Firewatch","amount":null},{"amount":null,"name":"Fortus Safety"},{"name":"Get Gas","amount":1846.29},{"name":"GJS Tradding (BOTO)","amount":null},{"name":"Greame Clunie","amount":null},{"amount":136,"name":"Hamilton City - Water"},{"name":"Herbert Morton","amount":null},{"name":"HillWay Enterprises LTD","amount":69},{"amount":null,"name":"Holden Haven"},{"amount":null,"name":"Honda"},{"name":"Incafe","amount":null},{"amount":null,"name":"Ingham Motors"},{"amount":null,"name":"Inland Revenue"},{"name":"Jim Wright","amount":null},{"name":"Jimmy It UP","amount":null},{"amount":null,"name":"King Commercial"},{"name":"Kiwi Baloon Company","amount":null},{"amount":616.17,"name":"Nippon South Pacific (NSPL)"},{"name":"Northland Waste","amount":45.49},{"name":"Nothing Naughty","amount":314.01},{"name":"NZME","amount":177.15},{"name":"Oji Fibre","amount":null},{"name":"Patch Rubber","amount":214.25},{"name":"Pickerill","amount":null},{"amount":null,"name":"Prima Deli North"},{"name":"Pure Group","amount":null},{"amount":156.98,"name":"Reed Product"},{"amount":499.34,"name":"Ruka"},{"amount":240.35,"name":"Sam Computers"},{"name":"Sean Elder Garage","amount":40},{"name":"Shalini D Sharma (Sparky)","amount":null},{"name":"Stuff","amount":208.8},{"amount":null,"name":"Summit Hire"},{"amount":null,"name":"Supercheap Auto NZ"},{"amount":null,"name":"The Brand Makers"},{"amount":null,"name":"Titex"},{"name":"Toolshed Hamilton","amount":null},{"name":"Tyre Tracks","amount":null},{"name":"Tyremax","amount":null},{"name":"Tyres 4 U","amount":null},{"name":"Value Tyres","amount":197.34},{"name":"VAMS - bluebird","amount":null},{"name":"Waikato Auto Locksmith","amount":null},{"amount":null,"name":"Waikato Bearings"},{"amount":null,"name":"Waikato Cleaning Supplies"},{"amount":null,"name":"Waikato Commercial Spare"},{"amount":null,"name":"Waikato Kia"},{"name":"Wests Original","amount":null},{"amount":null,"name":"Windscreens Aotearoa"},{"amount":260.82,"name":"Winger Hamilton"}]},{"id":"dd25","title":"Direct Debits \u2013 25th of Month","companies":[{"name":"AL Distribution","amount":null},{"name":"BakeShack","amount":null},{"name":"Black Fern","amount":3222.64},{"amount":null,"name":"British American Tobacco"},{"name":"Capricorn","amount":7403.02},{"amount":null,"name":"HCC - Rent"},{"name":"Imperial Tobacco","amount":null},{"name":"MTA","amount":null},{"amount":null,"name":"Meridian Energy"},{"name":"Myob","amount":null},{"name":"Paymark","amount":82.8},{"amount":null,"name":"Phillip Morris"},{"name":"Red Circle","amount":5635.49},{"amount":null,"name":"Spark"}]},{"title":"Direct Debits \u2013 20th of Month (Auto Debit)","id":"dd20","companies":[{"amount":514.27,"name":"Coregas"},{"name":"Nalsun","amount":null},{"name":"Swole Foods","amount":null},{"name":"Worldline","amount":null}]}]},{"month":"June 2026","sections":[{"id":"main","title":"20th of Month Payments","companies":[{"name":"Accurate Line Marking","amount":null},{"name":"Admirals Holden","amount":null},{"name":"Allied Autoparts","amount":80.5},{"name":"Allied Security","amount":58.24},{"name":"ALT NZ","amount":null},{"name":"Apex Auto","amount":null},{"name":"Arpit","amount":2000},{"name":"ATL Balancing","amount":null},{"name":"Automaster","amount":null},{"name":"Automotech","amount":null},{"name":"Bayteck","amount":511.75},{"name":"Bhavini","amount":null},{"name":"Blairs","amount":2646.74},{"name":"Boot IT","amount":null},{"name":"Bridged IT","amount":551.8},{"name":"CarTrack","amount":92},{"name":"City Glass","amount":null},{"name":"Commtech Supplies","amount":null},{"name":"Competetive Couriers","amount":null},{"name":"Cookie Time","amount":null},{"name":"Coombes Johnston BMW","amount":null},{"name":"Crafty Weka Bar","amount":null},{"name":"DAM Doors Ltd","amount":null},{"name":"Dealer Co NZ","amount":null},{"name":"Dealer Co NZ 0891451-01","amount":519.67},{"name":"Drive Smart","amount":null},{"name":"Duncan & Ebbett","amount":null},{"name":"Ebbett Toyota","amount":55},{"name":"Ebbett Waikato","amount":60.33},{"name":"Elgas -  Bottle","amount":null},{"name":"Elgas - Auto","amount":null},{"name":"Enivro NZ","amount":105.82},{"name":"Enterprise Engineering","amount":null},{"name":"Enviro Haz","amount":null},{"name":"Fargo Group","amount":null},{"name":"Faria Holdings","amount":null},{"name":"Firewatch","amount":null},{"name":"Fortus Safety","amount":null},{"name":"Full Circle","amount":null},{"name":"Get Gas","amount":1533.85},{"name":"GJS Tradding (BOTO)","amount":null},{"name":"Greame Clunie","amount":null},{"name":"Hamilton City - Water","amount":null},{"name":"Herbert Morton","amount":null},{"name":"Hill Way Packaging","amount":130},{"name":"Holden Haven","amount":null},{"name":"Honda","amount":null},{"name":"Incafe","amount":null},{"name":"Ingham Motors","amount":null},{"name":"Inland Revenue","amount":null},{"name":"Jim Wright","amount":null},{"name":"Jimmy It UP","amount":null},{"name":"King Commercial","amount":null},{"name":"Kiwi Baloon Company","amount":null},{"name":"LoveGrove Autoparts","amount":null},{"name":"Nippon South Pacific","amount":null},{"name":"Northland Waste","amount":null},{"name":"Nothing Naughty","amount":781.44},{"name":"NZ Auto Diagnostic  (scaNZed)","amount":662.4},{"name":"NZME","amount":177.15},{"name":"Oji Fibre","amount":null},{"name":"Patch Rubber","amount":17.05},{"name":"Pickerill","amount":39.3},{"name":"Prima Deli North","amount":null},{"name":"Pure Group","amount":null},{"name":"Reed Product","amount":null},{"name":"Ruka","amount":1255.9},{"name":"Sam Computers","amount":240.35},{"name":"Shalini D Sharma (Sparky)","amount":null},{"name":"Stuff","amount":190.8},{"name":"Summit Hire","amount":null},{"name":"Supercheap Auto NZ","amount":null},{"name":"The Brand Makers","amount":null},{"name":"Titex","amount":null},{"name":"Toolshed Hamilton","amount":499},{"name":"Tyre Tracks","amount":null},{"name":"Tyremax","amount":816.22},{"name":"Tyres 4 U","amount":null},{"name":"Value Tyres","amount":null},{"name":"VAMS - Bluebird","amount":256.45},{"name":"Waikato Auto Locksmith","amount":null},{"name":"Waikato Bearings","amount":null},{"name":"Waikato Cleaning Supplies","amount":null},{"name":"Waikato Commercial Spare","amount":null},{"name":"Waikato Kia","amount":null},{"name":"Wally Elder Garage","amount":160},{"name":"Wests Original","amount":null},{"name":"Windscreens Aotearoa","amount":null},{"name":"Winger Hamilton","amount":null}]},{"id":"dd25","title":"Direct Debits \u2013 25th of Month","companies":[{"name":"AL Distribution","amount":null},{"name":"Black Fern","amount":4213.22},{"name":"British American Tobacco","amount":null},{"name":"Capricorn","amount":7193.43},{"name":"HCC - Rent","amount":null},{"name":"Imperial Tobacco","amount":null},{"name":"MTA","amount":null},{"name":"Meridian Energy","amount":null},{"name":"Myob","amount":null},{"name":"Paymark","amount":null},{"name":"Phillip Morris","amount":null},{"name":"Red Circle","amount":11652.43},{"name":"Spark","amount":null}]},{"id":"dd20","title":"Direct Debits \u2013 20th of Month (Auto Debit)","companies":[{"name":"Coregas","amount":79.14},{"name":"Nalsun","amount":null},{"name":"Swole Foods","amount":538.37},{"name":"Worldline","amount":null}]}]}]};
+function recoveryNeeded(){
+  return RECOVERY_BUNDLE.history.some(h => !state.history.find(x => sameMonth(x.month, h.month)));
+}
+function updateRecoveryButton(){
+  document.getElementById('restoreRecoveredBtn').style.display = (cloudLoaded && recoveryNeeded()) ? '' : 'none';
+}
+document.getElementById('restoreRecoveredBtn').addEventListener('click', () => {
+  applyRestore({
+    month: RECOVERY_BUNDLE.current.month,
+    sections: RECOVERY_BUNDLE.current.sections,
+    history: RECOVERY_BUNDLE.history
+  }, 'the recovered June / August / September 2026 data');
+});
 </script>
 
 </div><!-- /#appWrap -->
@@ -950,10 +1149,20 @@ function restoreAugust2026(){
     appWrap.style.display = 'block';
     if (!appHasStarted) {
       appHasStarted = true;
-      await loadFromCloud();
+      let loadResult = 'error';
+      for (let attempt = 0; attempt < 3 && loadResult !== 'ok'; attempt++) {
+        if (attempt > 0) await new Promise(r => setTimeout(r, 1500));
+        loadResult = await loadFromCloud();
+      }
+      if (loadResult !== 'ok') {
+        showCloudAlert('⚠ <b>Could not load your saved data from the cloud.</b> Saving is switched OFF so nothing can be overwritten. Do not type new figures yet. <button class="btn-inline" onclick="location.reload()">Reload the page</button>');
+      } else {
+        cloudBackupDaily();
+      }
       if(!state.theme) state.theme = 'light';
       applyTheme();
       render();
+      updateRecoveryButton();
     }
   });
 </script>
